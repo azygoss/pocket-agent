@@ -25,3 +25,16 @@ fun StateDot(state: ConnectionState) {
     }
     Box(Modifier.size(10.dp).clip(CircleShape).background(color))
 }
+
+// "az önce / 5 dk önce / 3 sa önce / 2 g önce" — bağlantı kartlarında son
+// bağlanma zamanı için.
+fun relativeTime(ts: Long, now: Long = System.currentTimeMillis()): String {
+    if (ts <= 0) return "hiç"
+    val d = (now - ts) / 1000
+    return when {
+        d < 60 -> "az önce"
+        d < 3600 -> "${d / 60} dk önce"
+        d < 86400 -> "${d / 3600} sa önce"
+        else -> "${d / 86400} g önce"
+    }
+}

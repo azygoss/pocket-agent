@@ -41,6 +41,22 @@ class TerminalController(
         if (_state.value == ConnectionState.CONNECTING || _state.value == ConnectionState.ACTIVE) return
         lastConn = conn
         lastSecret = secret
+        doConnect(conn, secret)
+    }
+
+    // Son bağlantıyı (varsa) yeniden kurar; secret RAM'de tutulanla aynı.
+    fun reconnect(): Boolean {
+        val c = lastConn ?: return false
+        if (_state.value == ConnectionState.CONNECTING || _state.value == ConnectionState.ACTIVE) return false
+        disconnect()
+        doConnect(c, lastSecret)
+        return true
+    }
+
+    fun canReconnect(): Boolean =
+        lastConn != null && (_state.value == ConnectionState.CLOSED || _state.value == ConnectionState.FAILED)
+
+    private fun doConnect(conn: SavedConnection, secret: Secret?) {
         _failure.value = null
         _pendingHostKey.value = null
         vm.clear()
@@ -52,6 +68,7 @@ class TerminalController(
                 transport = t
                 _connectedTo.value = conn
                 _state.value = ConnectionState.ACTIVE
+                onConnected?.invoke(conn)
                 readLoop(t)
             } catch (e: UnknownHostKeyException) {
                 _pendingHostKey.value = e.presented
@@ -71,6 +88,8 @@ class TerminalController(
             }
         }
     }
+    // Başarılı bağlantıda tetiklenir (örn. lastConnectedAt güncellemesi).
+    var onConnected: ((SavedConnection) -> Unit)? = null
 
     // User confirmed the fingerprint: pin it, then retry the same connection.
     fun acceptHostKeyAndReconnect() {

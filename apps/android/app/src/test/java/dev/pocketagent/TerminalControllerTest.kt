@@ -100,4 +100,21 @@ class TerminalControllerTest {
         await { c.state.value == ConnectionState.FAILED }
         assertEquals(TransportFailure.AuthFailed, c.failure.value)
     }
+
+    @Test fun reconnectReusesLastProfile() = runBlocking {
+        val f = File.createTempFile("khst", null).apply { delete() }
+        val store = TofuHostKeyStore(f)
+        store.pin(PresentedKey("h", 22, "ssh-ed25519", byteArrayOf(1, 2, 3)))
+        val c = TerminalController(scope, FakeConnector(store), store)
+        assertFalse(c.reconnect()) // hiç bağlanılmadı
+        c.connect(conn, Secret.Password("pw"))
+        await { c.state.value == ConnectionState.ACTIVE }
+        c.disconnect()
+        assertTrue(c.canReconnect())
+        assertTrue(c.reconnect())
+        await { c.state.value == ConnectionState.ACTIVE }
+        assertEquals("c1", c.connectedTo.value!!.id)
+        c.disconnect()
+        assertFalse(c.canReconnect() && c.state.value == ConnectionState.ACTIVE)
+    }
 }

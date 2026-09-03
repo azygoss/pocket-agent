@@ -14,6 +14,7 @@ data class SavedConnection(
     val etPort: Int = 2022,
     val agentForward: Boolean = false,
     val id: String = "",
+    val lastConnectedAt: Long = 0L,
 ) {
     fun validate(): List<String> {
         val errs = mutableListOf<String>()
