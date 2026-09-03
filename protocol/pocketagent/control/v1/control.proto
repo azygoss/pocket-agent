@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Pocket Agent control plane v1 — daemon <-> backend (outbound TLS) + backend <-> Android.
+// Privacy: AgentEventSummary is a WHITELIST. Anything else => 400, dropped without logging.
+syntax = "proto3";
+
+package pocketagent.control.v1;
+
+option go_package = "github.com/pocket-agent/pocket-agent/gen/go/control/v1;controlv1";
+option java_package = "dev.pocketagent.protocol.control";
+option java_multiple_files = true;
+
+enum AgentCategory {
+  AGENT_CATEGORY_UNSPECIFIED = 0;
+  APPROVAL_REQUIRED = 1;
+  TASK_COMPLETE = 2;
+  SESSION_STARTED = 3;
+  SESSION_ENDED = 4;
+  TOOL_RUNNING = 5;
+  TOOL_FINISHED = 6;
+  ERROR = 7;
+}
+
+enum ApprovalState {
+  APPROVAL_STATE_UNSPECIFIED = 0;
+  PENDING = 1;
+  RESOLVED = 2;
+  EXPIRED = 3;
+}
+
+// Backend-stored short summary ONLY. No transcript/code/diff/path/body/secrets/audio.
+message AgentEventSummary {
+  string event_id = 1;        // event:<ulid>
+  string opaque_host_id = 2;  // opaque, not routable
+  string opaque_session_id = 3;
+  string source = 4;          // claude|codex|opencode|cursor|kimi|grok|pi|omp|hermes|gemini|antigravity|qwen
+  AgentCategory category = 5;
+  string title = 6;
+  string message = 7;         // <= 256 chars, truncated with truncated=true
+  bool truncated = 8;
+  string project_label = 9;
+  string model_label = 10;
+  string tool_label = 11;
+  uint32 context_percent = 12;
+  string request_digest = 13; // hex sha256 binding approval to exact request
+  string revision = 14;
+  string created_at = 15;     // RFC3339
+  string expires_at = 16;     // <= created_at + 24h
+}
+
+message ApprovalDecision {
+  string event_id = 1;
+  string request_digest = 2;
+  string revision = 3;
+  string decision = 4;        // approve|deny
+  string expires_at = 5;
+  string nonce = 6;
+  bytes device_signature = 7; // Ed25519/P-256 over fields 1-6
+}
