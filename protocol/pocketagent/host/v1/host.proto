@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Pocket Agent host protocol v1 — Android <-> host daemon/gateway.
-// Clean-room: independent schema, no Moshi protocol reuse.
+// Clean-room: independent schema, no third-party protocol reuse.
 syntax = "proto3";
 
 package pocketagent.host.v1;
