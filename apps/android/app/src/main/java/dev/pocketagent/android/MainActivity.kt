@@ -71,7 +71,15 @@ enum class RouteTab(val label: String) {
 fun HomePane(inbox: InboxViewModel) {
     Column {
         Text("Pocket Agent", style = MaterialTheme.typography.headlineMedium)
-        Text("Unread: ${inbox.rows.count { it.unread }} sessions: ${inbox.rows.size}")
+        ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            Column(Modifier.padding(12.dp)) {
+                Text("Başlangıç (60 sn)", style = MaterialTheme.typography.titleMedium)
+                Text("1. Host'ta: pocket-agent host setup → QR")
+                Text("2. İlk SSH'de parmak izini onayla (pinlenir)")
+                Text("3. tmux oturumu seç → resume hazır")
+            }
+        }
+        Text("Unread: ${inbox.rows.count { it.unread }} • sessions: ${inbox.rows.size}")
         Button(onClick = { inbox.add("s1", "e${System.currentTimeMillis()}", "Approve deploy?") }) { Text("Simulate event") }
     }
 }
@@ -80,7 +88,13 @@ fun HomePane(inbox: InboxViewModel) {
 fun ConnectionsPane(sc: ShortcutModel) {
     Column {
         Text("Connections", style = MaterialTheme.typography.titleLarge)
-        Text("tmux prefix: ${sc.tmuxPrefix()} • custom: ${sc.custom.size}")
+        ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            Column(Modifier.padding(12.dp)) {
+                Text("Transport: Mosh → ET → SSH (auth/host-key'te fallback yok)")
+                Text("tmux prefix: ${sc.tmuxPrefix()} • özel: ${sc.custom.size}")
+                Text("Özel port • ProxyJump • Mosh UDP aralığı • ET :2022")
+            }
+        }
         Button(onClick = { sc.add("Run ${sc.custom.size}", "Ctrl-${sc.custom.size}") }) { Text("Add shortcut") }
     }
 }
@@ -105,10 +119,17 @@ fun SessionsPane(settings: SettingsViewModel) {
 
 @Composable
 fun AgentsPane(inbox: InboxViewModel, approval: ApprovalViewModel) {
+    var filter by remember { mutableStateOf("Tümü") }
     Column {
         Text("Agents", style = MaterialTheme.typography.titleLarge)
+        Row {
+            listOf("Tümü", "Okunmamış").forEach { f ->
+                FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f) }, modifier = Modifier.padding(end = 4.dp))
+            }
+        }
+        val shown = inbox.rows.filter { if (filter == "Okunmamış") it.unread else true }
         LazyColumn {
-            items(inbox.rows) { r ->
+            items(shown) { r ->
                 ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Column(Modifier.padding(12.dp)) {
                         Text(r.title, fontSize = 16.sp)
@@ -130,8 +151,14 @@ fun AgentsPane(inbox: InboxViewModel, approval: ApprovalViewModel) {
 fun FilesPane(files: FilesViewModel) {
     Column {
         Text("Files", style = MaterialTheme.typography.titleLarge)
+        Text("ws / docs / a.md", style = MaterialTheme.typography.bodySmall)
         Text("canOpen docs/a.md = ${files.canOpen("docs/a.md")}")
-        Text("Binary listelenir, render edilmez • 10MB/24h paylaşım")
+        ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            Column(Modifier.padding(12.dp)) {
+                Text("app.apk — binary (listelenir, render edilmez)")
+                Text("Paylaşım: 10MB cap • 24h kısa URL • tek-tık revoke")
+            }
+        }
     }
 }
 
