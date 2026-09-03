@@ -28,13 +28,25 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    buildFeatures {
+        compose = true
+    }
 }
 
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.androidx.core.ktx)
+    implementation(libs.compose.ui)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.tooling.preview)
+    implementation(libs.androidx.activity.compose)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     implementation(libs.datastore)
     implementation(libs.biometric)
+    annotationProcessor(libs.room.compiler)
+    testImplementation(libs.junit4)
 }

@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Headless wrapper: uses local Gradle 8.7 if present, else downloads wrapper dist.
+if [ -x /tmp/gradle-8.7/bin/gradle ]; then exec /tmp/gradle-8.7/bin/gradle "$@"; fi
+exec gradle "$@"
