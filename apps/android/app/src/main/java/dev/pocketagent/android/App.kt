@@ -2,14 +2,18 @@
 package dev.pocketagent.android
 
 import android.app.Application
+import android.provider.Settings
 import androidx.room.Room
 import dev.pocketagent.data.AppDatabase
 import dev.pocketagent.data.ConnectionRepository
 import dev.pocketagent.data.DataStoreSettingsStore
+import dev.pocketagent.net.BackendClient
+import dev.pocketagent.net.EventSync
 import dev.pocketagent.security.KeystoreSecretStore
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.SshjConnector
 import dev.pocketagent.transport.TofuHostKeyStore
+import dev.pocketagent.ui.InboxViewModel
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,9 +39,27 @@ class App : Application() {
 
     val hostKeys: TofuHostKeyStore by lazy { TofuHostKeyStore(File(filesDir, "known_hosts")) }
 
+    val deviceId: String by lazy {
+        Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
+    }
+
     val sessions: SessionManager by lazy {
         SessionManager(appScope, hostKeys) { SshjConnector(hostKeys, appScope) }.apply {
             onConnected = { conn -> appScope.launch { connections.touch(conn.id) } }
         }
+    }
+
+    // P13: agent inbox app-seviyesinde — EventSync poller'ı besler.
+    val inbox by lazy { InboxViewModel() }
+
+    @Volatile var backendClient: BackendClient? = null
+        private set
+
+    val eventSync: EventSync by lazy {
+        EventSync(appScope, { backendClient }, onEvents = { events -> inbox.mergeRemote(events) })
+    }
+
+    fun configureBackend(url: String, tenant: String) {
+        backendClient = if (url.isNotBlank() && tenant.isNotBlank()) BackendClient(url, tenant) else null
     }
 }

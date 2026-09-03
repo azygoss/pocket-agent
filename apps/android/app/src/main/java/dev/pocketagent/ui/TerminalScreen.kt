@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
@@ -52,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -383,6 +385,7 @@ private fun ActiveTerminal(
 
         // Giriş satırı: geçmiş ↑↓ + metin + gönder
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            val clipboard = LocalClipboardManager.current
             IconButton(
                 onClick = { vm.historyOlder()?.let { text = it } },
                 enabled = state == ConnectionState.ACTIVE,
@@ -408,6 +411,18 @@ private fun ActiveTerminal(
                 keyboardActions = KeyboardActions(onSend = { sendInput() }),
             )
             Spacer(Modifier.width(8.dp))
+            IconButton(
+                onClick = { clipboard.getText()?.text?.let { text += it } },
+                enabled = state == ConnectionState.ACTIVE,
+                modifier = Modifier.semantics { contentDescription = "Yapıştır" },
+            ) {
+                Icon(
+                    Icons.Filled.ContentPaste,
+                    contentDescription = null,
+                    tint = if (state == ConnectionState.ACTIVE) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             IconButton(
                 onClick = { sendInput() },
                 enabled = state == ConnectionState.ACTIVE && text.isNotEmpty(),

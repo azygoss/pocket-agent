@@ -88,6 +88,8 @@ func (s *Server) handlePostEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Store.PutEvent(tenant, store.Event{
 		EventID: v.EventID, TenantID: tenant, CreatedAt: created, ExpiresAt: expires,
+		OpaqueHost: v.OpaqueH, OpaqueSess: v.OpaqueS, Source: v.Source, Category: v.Cat,
+		Message: v.Message, Digest: v.Digest, Revision: v.Rev,
 	})
 	w.WriteHeader(202)
 }
