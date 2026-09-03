@@ -271,3 +271,33 @@ func (s *Store) DeleteUpload(callerTenant, id string) error {
 }
 
 func errTooLarge() error { return storeErr("too large") }
+
+// Webhook tokens (P02): prefix lookup, hash-only secret.
+func (s *Store) PutWebhookToken(prefix, secretHash, tenant string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.byShort == nil {
+		s.byShort = map[string]string{}
+	}
+	s.byShort["wh:"+prefix] = secretHash + "|" + tenant
+}
+
+func (s *Store) GetWebhookToken(prefix string) (hash, tenant string, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.byShort["wh:"+prefix]
+	if !ok {
+		return "", "", false
+	}
+	parts := splitOnce(v)
+	return parts[0], parts[1], true
+}
+
+func splitOnce(v string) [2]string {
+	for i := 0; i < len(v); i++ {
+		if v[i] == '|' {
+			return [2]string{v[:i], v[i+1:]}
+		}
+	}
+	return [2]string{v, ""}
+}

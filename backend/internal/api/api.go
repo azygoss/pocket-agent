@@ -10,16 +10,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pocket-agent/pocket-agent/backend/internal/approvals"
 	"github.com/pocket-agent/pocket-agent/backend/internal/store"
 	pocketprotocol "github.com/pocket-agent/pocket-agent/protocol"
 )
 
 type Server struct {
 	Store *store.Store
+	Table *approvals.Table
 }
 
 // New builds the handler with shared store.
-func New(st *store.Store) *Server { return &Server{Store: st} }
+func New(st *store.Store) *Server { return &Server{Store: st, Table: approvals.New()} }
 
 // Handler exposes routes for cmd/server.
 func (s *Server) Handler() http.Handler { return s.routes() }
@@ -252,10 +254,27 @@ func (s *Server) handleUploadDel(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
-// Approvals (P13): decision recorded; replay/expiry enforced by approvals table in next slice.
+// Approvals (P13): CAS first-wins; digest/revision mismatch rejected.
 func (s *Server) handleApprovalAction(w http.ResponseWriter, r *http.Request) {
 	if tenantOf(r) == "" {
 		http.Error(w, "missing tenant", 401)
+		return
+	}
+	var v struct {
+		Digest   string `json:"digest"`
+		Revision string `json:"revision"`
+		Device   string `json:"device"`
+	}
+	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&v)
+	if v.Digest == "" || v.Revision == "" || v.Device == "" {
+		http.Error(w, "digest/revision/device required", 400)
+		return
+	}
+	if s.Table == nil {
+		s.Table = approvals.New()
+	}
+	if _, err := s.Table.Decide(r.PathValue("approvalId"), v.Digest, v.Revision, v.Device); err != nil {
+		http.Error(w, "conflict: "+err.Error(), 409)
 		return
 	}
 	w.WriteHeader(202)
