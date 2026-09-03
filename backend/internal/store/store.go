@@ -93,7 +93,7 @@ func (s *Store) GetEvents(callerTenant, after string) []Event {
 	return out
 }
 
-// SweepTTL deletes expired events/pairings; returns counts.
+// SweepTTL deletes expired events/pairings/uploads; returns events+pairings swept.
 func (s *Store) SweepTTL(now time.Time) (events, pairings int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -107,6 +107,12 @@ func (s *Store) SweepTTL(now time.Time) (events, pairings int) {
 		if !p.ExpiresAt.After(now) && p.State == "PENDING" {
 			s.pairings[c] = Pairing{Code: p.Code, TenantID: p.TenantID, State: "EXPIRED"}
 			pairings++
+		}
+	}
+	for id, u := range s.uploads {
+		if !u.ExpiresAt.After(now) {
+			delete(s.byShort, u.ShortCode)
+			delete(s.uploads, id)
 		}
 	}
 	return
