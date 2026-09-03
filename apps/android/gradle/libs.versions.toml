@@ -8,6 +8,7 @@ room = "2.6.1"
 datastore = "1.1.1"
 biometric = "1.2.0-alpha05"
 activity-compose = "1.9.2"
+coroutines = "1.8.1"
 junit = "4.13.2"
 
 [libraries]
@@ -23,6 +24,7 @@ compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 compose-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 junit4 = { group = "junit", name = "junit", version.ref = "junit" }
+coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 
 [plugins]
 android-app = { id = "com.android.application", version.ref = "agp" }
