@@ -23,19 +23,26 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import dev.pocketagent.transport.TofuHostKeyStore
 import dev.pocketagent.ui.theme.TermBg
 import dev.pocketagent.ui.theme.TermBlue
 import dev.pocketagent.ui.theme.TermGreen
 
 @Composable
-fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel) {
+fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys: TofuHostKeyStore) {
+    var pinnedKeys by remember { mutableStateOf(hostKeys.all()) }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -100,6 +107,44 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel) {
             }
         }
 
+        // Bilinen host anahtarları (TOFU pin)
+        Card(
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Bilinen host anahtarları", style = MaterialTheme.typography.titleMedium)
+                if (pinnedKeys.isEmpty()) {
+                    Text(
+                        "Henüz pinlenen anahtar yok. İlk bağlantıda parmak izi sorulur.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    pinnedKeys.forEach { k ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("${k.host}:${k.port}", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    k.fingerprint,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            TextButton(onClick = { hostKeys.forget(k.host, k.port); pinnedKeys = hostKeys.all() }) {
+                                Text("Unut", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+                Text(
+                    "Pinlenen anahtar değişirse bağlantı durur (MITM koruması).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
         // Hakkında
         Card(
             Modifier.fillMaxWidth(),
@@ -107,7 +152,7 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel) {
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Hakkında", style = MaterialTheme.typography.titleMedium)
-                Text("Pocket Agent 0.3.0 • GPL-3.0-or-later")
+                Text("Pocket Agent 0.4.0 • GPL-3.0-or-later")
                 Text(
                     "Terminal baytları, diff ve dosya içerikleri backend'den geçmez; yalnız kısa özetler (≤256 karakter, 24s TTL) tutulur.",
                     style = MaterialTheme.typography.bodySmall,

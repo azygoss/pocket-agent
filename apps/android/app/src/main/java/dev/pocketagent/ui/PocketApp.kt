@@ -3,6 +3,7 @@ package dev.pocketagent.ui
 
 import android.content.Intent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -35,7 +36,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -43,7 +43,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.core.content.ContextCompat
 import dev.pocketagent.android.App
 import dev.pocketagent.service.TerminalService
-import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.ui.theme.PocketAgentTheme
 
 enum class AppTab(val label: String, val icon: ImageVector) {
@@ -67,26 +66,20 @@ fun PocketAgentApp(app: App) {
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
 
-    val terminal = app.terminal
-    val pendingHostKey by terminal.pendingHostKey.collectAsState()
-    val connState by terminal.state.collectAsState()
+    val sessions = app.sessions
+    val hostKeyPrompt by sessions.hostKeyPrompt.collectAsState()
+    val anyActive by sessions.anyActive.collectAsState()
     val unread = inbox.rows.count { it.unread }
 
     LaunchedEffect(Unit) { app.connections.refresh() }
 
-    // Bağlantı durumu değişimlerinde bildirim + foreground service.
-    LaunchedEffect(Unit) {
-        var prev = ConnectionState.CLOSED
-        snapshotFlow { terminal.state.value }.collect { s ->
-            if (s == ConnectionState.ACTIVE && prev != ConnectionState.ACTIVE) {
-                snackbar.showSnackbar("Bağlandı")
-                ContextCompat.startForegroundService(context, Intent(context, TerminalService::class.java))
-            }
-            if ((s == ConnectionState.CLOSED || s == ConnectionState.FAILED) && prev == ConnectionState.ACTIVE) {
-                context.stopService(Intent(context, TerminalService::class.java))
-                if (s == ConnectionState.CLOSED) snackbar.showSnackbar("Bağlantı kapandı")
-            }
-            prev = s
+    // Oturum varken foreground service ayakta; yokken durur.
+    LaunchedEffect(anyActive) {
+        if (anyActive) {
+            ContextCompat.startForegroundService(context, Intent(context, TerminalService::class.java))
+            snackbar.showSnackbar("Oturum bağlandı")
+        } else {
+            context.stopService(Intent(context, TerminalService::class.java))
         }
     }
 
@@ -95,11 +88,15 @@ fun PocketAgentApp(app: App) {
             topBar = {
                 TopAppBar(
                     title = {
-                        Text(
-                            "pocket-agent",
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        Column {
+                            Text(
+                                "pocket-agent",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(tab.label, style = MaterialTheme.typography.titleMedium)
+                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -132,29 +129,38 @@ fun PocketAgentApp(app: App) {
             Box(Modifier.fillMaxSize().padding(pad)) {
                 when (tab) {
                     AppTab.Home -> HomeScreen(
-                        terminal = terminal,
+                        sessions = sessions,
                         connections = app.connections,
                         inbox = inbox,
                         onGoTo = { tab = it },
                     )
                     AppTab.Connections -> ConnectionsScreen(
                         repo = app.connections,
-                        terminal = terminal,
+                        sessions = sessions,
                         onConnected = { tab = AppTab.Terminal },
                     )
-                    AppTab.Terminal -> TerminalScreen(controller = terminal, settings = settings)
+                    AppTab.Terminal -> TerminalScreen(
+                        manager = sessions,
+                        settings = settings,
+                        onNewConnection = { tab = AppTab.Connections },
+                    )
                     AppTab.Agents -> AgentsScreen(inbox = inbox, approval = approval)
                     AppTab.Files -> FilesScreen(files = files)
-                    AppTab.Settings -> SettingsScreen(settings = settings, usage = usage)
+                    AppTab.Settings -> SettingsScreen(
+                        settings = settings,
+                        usage = usage,
+                        hostKeys = app.hostKeys,
+                    )
                 }
             }
         }
     }
 
     // TOFU: ilk bağlantıda parmak izi onayı; değişim zaten hard-stop.
-    pendingHostKey?.let { key ->
+    hostKeyPrompt?.let { prompt ->
+        val key = prompt.key
         AlertDialog(
-            onDismissRequest = { terminal.rejectHostKey() },
+            onDismissRequest = { prompt.controller.rejectHostKey() },
             title = { Text("Host anahtarını onayla") },
             text = {
                 Text(
@@ -164,10 +170,10 @@ fun PocketAgentApp(app: App) {
                 )
             },
             confirmButton = {
-                Button(onClick = { terminal.acceptHostKeyAndReconnect() }) { Text("Pinle ve bağlan") }
+                Button(onClick = { prompt.controller.acceptHostKeyAndReconnect() }) { Text("Pinle ve bağlan") }
             },
             dismissButton = {
-                TextButton(onClick = { terminal.rejectHostKey() }) { Text("Vazgeç") }
+                TextButton(onClick = { prompt.controller.rejectHostKey() }) { Text("Vazgeç") }
             },
         )
     }

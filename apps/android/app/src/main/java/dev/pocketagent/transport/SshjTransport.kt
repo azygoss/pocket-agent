@@ -163,7 +163,7 @@ class SshjTransport(
 
     fun startReader() {
         readScope.launch(Dispatchers.IO) {
-            val buf = ByteArray(8192)
+            val buf = ByteArray(32768)
             try {
                 while (!closed) {
                     val n = shell.inputStream.read(buf)
@@ -197,6 +197,8 @@ class SshjTransport(
     }
 
     override suspend fun read(): TerminalFrame = chan.receive()
+
+    override fun poll(): TerminalFrame? = chan.tryReceive().getOrNull()
 
     override suspend fun resize(size: TerminalSize) {
         withContext(Dispatchers.IO) {

@@ -129,7 +129,17 @@ class TerminalController(
     private suspend fun readLoop(t: SshTransport) {
         try {
             while (currentCoroutineContext().isActive) {
-                vm.onFrame(t.read())
+                val first = t.read()
+                // Burst toplama: hazır bekleyen frame'leri tek güncellemeye
+                // kat — UI her 1KB parçada değil, batch başına recombine olur.
+                var bytes = first.bytes
+                var drained = 0
+                while (drained < 64 && bytes.size < 256 * 1024) {
+                    val nxt = t.poll() ?: break
+                    bytes += nxt.bytes
+                    drained++
+                }
+                vm.onFrame(TerminalFrame(bytes, first.transport))
             }
         } catch (_: Exception) {
             // channel closed / EOF / remote hangup

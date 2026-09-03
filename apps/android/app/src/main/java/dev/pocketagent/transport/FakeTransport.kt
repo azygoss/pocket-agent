@@ -41,13 +41,18 @@ class FakeSshTransport : SshTransport {
         return outbox.receive() // suspends until data; throws once closed
     }
 
+    override fun poll(): TerminalFrame? = outbox.tryReceive().getOrNull()
+
     override suspend fun resize(size: TerminalSize) = send(TerminalInput.Resize(size))
     override fun close() { closed = true; outbox.close() }
 }
 
-// Ekran ViewModel'i: scrollback (sınırlı), giriş, boyut, transport rozeti,
-// komut geçmişi (yukarı/aşağı gezinme). Frame'ler ANSI'dan arındırılır.
-class TerminalViewModel(val session: SessionId) {
+// Ekran ViewModel'i: TerminalBuffer (satır-tabanlı, stilli) + giriş + boyut +
+// transport rozeti + komut geçmişi. frames = düz metin görünüm (test uyumu).
+class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_000) {
+    private val buffer = TerminalBuffer(maxLines)
+    private val _lines = MutableStateFlow<List<TermLine>>(emptyList())
+    val lines: StateFlow<List<TermLine>> = _lines
     private val _frames = MutableStateFlow<List<String>>(emptyList())
     val frames: StateFlow<List<String>> = _frames
     var size = TerminalSize(80, 24)
@@ -60,15 +65,40 @@ class TerminalViewModel(val session: SessionId) {
     var historyCount = 0
         private set
 
+    private var pendingBytes = ByteArray(0) // chunk sınırında bölünen UTF-8
+
     fun onFrame(f: TerminalFrame) {
-        val text = Ansi.strip(f.bytes.decodeToString())
-        if (text.isBlank()) return
-        _frames.value = (_frames.value + text).takeLast(5000) // scrollback sınırı
+        val all = pendingBytes + f.bytes
+        if (all.isEmpty()) return
+        val safe = utf8SafeEnd(all)
+        pendingBytes = all.copyOfRange(safe, all.size)
+        if (safe == 0) return
+        buffer.feed(String(all, 0, safe, Charsets.UTF_8))
+        val snap = buffer.snapshot()
+        _lines.value = snap
+        _frames.value = snap.map { it.text }
         badge = f.transport.name
     }
 
+    // Sondaki eksik UTF-8 dizisinin başlangıcını döner (tamamsa size).
+    private fun utf8SafeEnd(b: ByteArray): Int {
+        var i = b.size
+        var cont = 0
+        while (i > 0 && b[i - 1].toInt() and 0xC0 == 0x80) { cont++; i-- }
+        if (i == 0) return b.size
+        val lead = b[i - 1].toInt()
+        val need = when {
+            lead and 0x80 == 0 -> 0
+            lead and 0xE0 == 0xC0 -> 1
+            lead and 0xF0 == 0xE0 -> 2
+            lead and 0xF8 == 0xF0 -> 3
+            else -> 0
+        }
+        return if (cont < need) i - 1 else b.size
+    }
+
     fun setBadge(t: TerminalTransport) { badge = t.name }
-    fun clear() { _frames.value = emptyList() }
+    fun clear() { buffer.clear(); pendingBytes = ByteArray(0); _lines.value = emptyList(); _frames.value = emptyList() }
 
     fun grow() { size = TerminalSize((size.cols + 10).coerceAtMost(200), size.rows) }
     fun shrink() { size = TerminalSize((size.cols - 10).coerceAtLeast(40), size.rows) }

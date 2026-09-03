@@ -53,19 +53,18 @@ import dev.pocketagent.data.ConnectionRepository
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.SavedConnection
 import dev.pocketagent.transport.Secret
-import dev.pocketagent.transport.TerminalController
+import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalTransport
 import kotlinx.coroutines.launch
 
 @Composable
 fun ConnectionsScreen(
     repo: ConnectionRepository,
-    terminal: TerminalController,
+    sessions: SessionManager,
     onConnected: () -> Unit,
 ) {
     val items by repo.items.collectAsState()
-    val active by terminal.connectedTo.collectAsState()
-    val state by terminal.state.collectAsState()
+    val sessionList by sessions.sessions.collectAsState()
     var editing by remember { mutableStateOf<SavedConnection?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -106,17 +105,18 @@ fun ConnectionsScreen(
                     contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),
                 ) {
                     items(items, key = { it.id }) { c ->
+                        val openSession = sessionList.firstOrNull { it.conn.id == c.id }
+                        val sessionState = openSession?.controller?.state?.collectAsState()?.value
                         ConnectionCard(
                             conn = c,
-                            isActive = active?.id == c.id && state == ConnectionState.ACTIVE,
-                            isConnecting = state == ConnectionState.CONNECTING,
+                            isActive = sessionState == ConnectionState.ACTIVE,
                             hasSecret = repo.hasSavedSecret(c.id),
                             onConnect = {
                                 val secret = repo.secret(c.id)
-                                if (secret == null && state != ConnectionState.ACTIVE) {
+                                if (secret == null && openSession == null) {
                                     editing = c // secret sor: diyalog düzenleme modunda açılır
                                 } else {
-                                    terminal.connect(c, secret)
+                                    sessions.open(c, secret)
                                     onConnected()
                                 }
                             },
@@ -148,7 +148,6 @@ fun ConnectionsScreen(
 private fun ConnectionCard(
     conn: SavedConnection,
     isActive: Boolean,
-    isConnecting: Boolean,
     hasSecret: Boolean,
     onConnect: () -> Unit,
     onEdit: () -> Unit,
@@ -207,7 +206,7 @@ private fun ConnectionCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.weight(1f))
-                Button(onClick = onConnect, enabled = !isConnecting) {
+                Button(onClick = onConnect) {
                     Text(if (isActive) "Terminale git" else "Bağlan")
                 }
             }

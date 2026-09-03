@@ -41,7 +41,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 ## 4. Test raporu (son yeşil koşu)
 
 - Go: 18 paket `ok`, 0 FAIL (`go test ./... -count=1`), `go vet` + `go build ./...` temiz.
-- Android: 44/44 unit (0 fail, SshjLiveTest env-gated) + `lintDebug` (0 hata) + `assembleDebug` yeşil. Robolectric `MainActivity` launch + Room repo testi dahil.
+- Android: 54/54 unit (0 fail, SshjLiveTest env-gated) + `lintDebug` (0 hata) + `assembleDebug` yeşil. Robolectric `MainActivity` launch + Room repo testi dahil.
 - Canlı SSH kanıtı: `PA_LIVE_SSH=1 PA_LIVE_USER=pa-dev PA_LIVE_PEM=/tmp/pa-dev-key ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SshjLiveTest` → localhost sshd'ye TOFU hard-stop → pin → ed25519 key auth → PTY → `echo PA_ALIVE_42` okundu (test user `pa-dev` bu makinede hazır).
 - Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (66MB, debug imzalı; SSHJ+bcprov+icons dahil).
 - CLI: `dist/` git-dışı (tarballs + `SHA256SUMS` + `sbom-go.json`).
@@ -79,13 +79,15 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 6. WSL/macOS/Windows doğrulama; Homebrew tap; prod Postgres backup/restore + Caddy TLS.
 7. Çoklu eşzamanlı oturum (sekme/bölünmüş terminal); port-forward yönetici UI'ı; tmux/Zellij seçim UI'ı (capability probe cihazda).
 
-## 7b. Günlük kullanım katmanı (0.3.0'da eklendi)
+## 7b. Günlük kullanım katmanı (0.4.0'a kadar eklendi)
 
 - Ayarlar DataStore'da kalıcı (tema + font ölçeği); `SettingsViewModel(store, scope)`.
 - Secret'lar: RAM-only varsayılan, "Keystore ile sakla" opt-in → AES-256-GCM (`KeystoreSecretStore`); plaintext diskte yok.
 - Bağlantı düzenleme diyaloğu, `lastConnectedAt` sıralaması, eksik secret'ta bağlan → düzenleme diyaloğu.
-- Terminal: komut geçmişi (↑↓, dedupe, 100 cap), Ctrl toggle, reconnect, sonda-otomatik kaydırma + alta-in FAB, 30s SSH keepalive.
-- Snackbar (bağlandı/kapandı), Agents tab okunmamış rozeti, FGS bağlantıyla start/stop.
+- **TerminalBuffer (0.4.0)**: satır-tabanlı ANSI motoru — SGR 8/16/256/truecolor + bold/underline, CR overwrite, BS, tab, EL/J, imleç kolon hareketi; chunk sınırında bölünen escape ve UTF-8 güvenli; 10MB burst 1.7s (JVM); readLoop'ta 64-frame/256KB batching.
+- **SessionManager (0.4.0)**: çoklu eşzamanlı oturum, çip ile geçiş, aynı profilde reuse/reconnect, oturum başına kapatma; FGS herhangi oturum aktifken ayakta.
+- Terminal: komut geçmişi (↑↓, dedupe, 100 cap), Ctrl toggle, reconnect, sonda-otomatik kaydırma + alta-in FAB, scrollback arama (eşleşme vurgusu), 30s SSH keepalive, bilinen-hosts yönetimi (Ayarlar).
+- Snackbar (bağlandı/kapandı), Agents tab okunmamış rozeti, sekmeye göre TopAppBar başlığı.
 
 ## 8. Sıradaki iş (önerilen sıra)
 
