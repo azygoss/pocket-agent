@@ -1,0 +1,13 @@
+name: ci-p00
+on: [push, pull_request]
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: P00 gates
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/secret-scan.sh
+          ./scripts/license-check.sh
+          ./scripts/check-packaging.sh

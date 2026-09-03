@@ -1,0 +1,12 @@
+# Normalize line endings; keep protos and toml stable
+* text=auto eol=lf
+*.proto text eol=lf
+*.toml text eol=lf
+*.tsv text eol=lf
+*.sh text eol=lf
+
+# Large binaries / models never committed (use release attachments)
+/build/** export-ignore
+*.apk export-ignore
+*.aab export-ignore
+docs/reference/** export-ignore
