@@ -1,0 +1,22 @@
+[versions]
+agp = "8.5.2"
+kotlin = "2.0.20"
+compose-bom = "2024.09.00"
+core-ktx = "1.13.1"
+lifecycle = "2.8.6"
+room = "2.6.1"
+datastore = "1.1.1"
+biometric = "1.2.0-alpha05"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
+compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
+room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+datastore = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
+
+[plugins]
+android-app = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
