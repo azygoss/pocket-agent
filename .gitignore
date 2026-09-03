@@ -36,3 +36,4 @@ upload-keystore*
 
 # Reference evidence must never ship in release packages (P00 gate)
 # (packaging scripts must explicitly exclude docs/reference/)
+dist-checksums.txt
