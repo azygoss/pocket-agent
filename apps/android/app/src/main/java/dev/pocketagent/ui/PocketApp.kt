@@ -44,6 +44,7 @@ import androidx.core.content.ContextCompat
 import dev.pocketagent.android.App
 import dev.pocketagent.service.TerminalService
 import dev.pocketagent.ui.theme.PocketAgentTheme
+import kotlinx.coroutines.flow.MutableStateFlow
 
 enum class AppTab(val label: String, val icon: ImageVector) {
     Home("Ana Sayfa", Icons.Filled.Home),
@@ -56,9 +57,9 @@ enum class AppTab(val label: String, val icon: ImageVector) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PocketAgentApp(app: App) {
+fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = MutableStateFlow(null)) {
     val settings = remember { SettingsViewModel(app.settingsStore, app.appScope) }
-    val inbox = remember { InboxViewModel() }
+    val inbox = app.inbox
     val approval = remember { ApprovalViewModel() }
     val usage = remember { UsageViewModel() }
     val files = remember { FilesViewModel() }
@@ -72,6 +73,22 @@ fun PocketAgentApp(app: App) {
     val unread = inbox.rows.count { it.unread }
 
     LaunchedEffect(Unit) { app.connections.refresh() }
+
+    // pocketagent://tmux|herdr → Terminal sekmesine düş.
+    LaunchedEffect(Unit) {
+        deepLinkAction.collect { action ->
+            if (action != null) {
+                tab = AppTab.Terminal
+                deepLinkAction.value = null
+            }
+        }
+    }
+
+    // Backend ayarı değişince client'ı yeniden kur, poller'ı başlat.
+    LaunchedEffect(settings.backendUrl, settings.tenantToken) {
+        app.configureBackend(settings.backendUrl, settings.tenantToken)
+        if (settings.backendConfigured) app.eventSync.start() else app.eventSync.stop()
+    }
 
     // Oturum varken foreground service ayakta; yokken durur.
     LaunchedEffect(anyActive) {
@@ -144,12 +161,13 @@ fun PocketAgentApp(app: App) {
                         settings = settings,
                         onNewConnection = { tab = AppTab.Connections },
                     )
-                    AppTab.Agents -> AgentsScreen(inbox = inbox, approval = approval)
+                    AppTab.Agents -> AgentsScreen(inbox = inbox, approval = approval, app = app)
                     AppTab.Files -> FilesScreen(files = files)
                     AppTab.Settings -> SettingsScreen(
                         settings = settings,
                         usage = usage,
                         hostKeys = app.hostKeys,
+                        app = app,
                     )
                 }
             }

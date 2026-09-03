@@ -31,7 +31,8 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 | P05–P10 Android terminal | ✅ headless | Room entities/DAO, TerminalService (dataSync FGS), `SshTransport` arayüzü + `TransportManager`, 6-fallback matrisi, **gerçek SSH: `SshjConnector` (SSHJ) + TOFU pin diyaloğu + `TerminalController` yaşam döngüsü** — Fake yalnız testlerde. UI sıfırdan: M3 tema + NavigationBar + 6 ekran (`ui/PocketApp.kt` + screens) |
 | P11 gateway | ✅ | strict jail, loopback-only, binary guard, dosya sunucusu 401/400/200, git diff 4 tür, preview fetch (1MB/5s), hepsi canlı testli |
 | P12 hook'lar | ✅ | 12 agent merge (tekrar kurulumda dubl yok), Claude/Codex JSONL parser + fixture, ANSI-ban, journal-first emit |
-| P13 inbox/onay | ✅ | session-merge + 24h, CAS ilk-kazanan, digest/rev bağlı, tenant gate |
+| P07 Mosh | ⚠️ derleme tamam | 3 ABI `libmoshclient.so` kaynaktan (`native/mosh/SHA256SUMS`, upstream android branch resmi NDK scripti, `scripts/build-mosh.sh`), terminfo asset, `MoshRuntime`; roaming kanıtı cihaz bekler |
+| P13 inbox/onay | ✅ + canlı | session-merge + 24h, CAS ilk-kazanan, digest/rev bağlı, tenant gate; **BackendClient + EventSync (15s poll) gerçek backend'e bağlı — BackendLiveTest: event→özet→cursor→CAS 202/409→tenant izolasyonu** |
 | P14 Chat | ✅ | `ChatViewModel` aynı `SessionId`, MiniDiff gateway-only, unsupported→terminale |
 | P15 paylaşım | ✅ | 10MB cap, 24h sweep, short-code invalidate, Files jail VM |
 | P16 ses/deeplink | ✅ | BYOK kapalı=varsayılan (unit), `pocketagent://tmux\|herdr` parse |
@@ -41,7 +42,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 ## 4. Test raporu (son yeşil koşu)
 
 - Go: 18 paket `ok`, 0 FAIL (`go test ./... -count=1`), `go vet` + `go build ./...` temiz.
-- Android: 54/54 unit (0 fail, SshjLiveTest env-gated) + `lintDebug` (0 hata) + `assembleDebug` yeşil. Robolectric `MainActivity` launch + Room repo testi dahil.
+- Android: 55/55 unit (2 canlı env-gated: SSH + backend — ikisi de bu makinede kanıtlı) + `lintDebug` (0 hata) + `assembleDebug` yeşil.
 - Canlı SSH kanıtı: `PA_LIVE_SSH=1 PA_LIVE_USER=pa-dev PA_LIVE_PEM=/tmp/pa-dev-key ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SshjLiveTest` → localhost sshd'ye TOFU hard-stop → pin → ed25519 key auth → PTY → `echo PA_ALIVE_42` okundu (test user `pa-dev` bu makinede hazır).
 - Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (66MB, debug imzalı; SSHJ+bcprov+icons dahil).
 - CLI: `dist/` git-dışı (tarballs + `SHA256SUMS` + `sbom-go.json`).
@@ -71,7 +72,7 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 
 ## 7. Bilinen eksikler (cihaz/ağ/kimlik bilgisi ister)
 
-1. Mosh/ET `.so` + roaming kanıtı; termlib render (tam VT100, renk) + IME/CJK/OSC52 + gesture.
+1. Mosh runtime: JNI exec + SSH bootstrap wiring (binary hazır, D014); ET derlemesi (libsodium+openssl) başlanmadı; termlib render + IME/CJK/OSC52 + gesture.
 2. Keystore StrongBox + Biometric CryptoObject; biyometrik app-kilit.
 3. FCM service-account push; Passkey/OIDC turu; whisper model; S3 adapter.
 4. AAB + Play kanalı + upload-keystore imza; cosign/SLSA/syft-CycloneDX; CCS paketi.

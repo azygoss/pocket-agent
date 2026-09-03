@@ -2,6 +2,7 @@
 package dev.pocketagent.ui
 
 import androidx.compose.runtime.*
+import dev.pocketagent.data.PersistedSettings
 import dev.pocketagent.data.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -20,12 +21,18 @@ class SettingsViewModel(
 ) {
     var theme by mutableStateOf(AppTheme(true, 1f, DarkPalette))
         private set
+    var backendUrl by mutableStateOf("")
+        private set
+    var tenantToken by mutableStateOf("")
+        private set
 
     init {
         if (store != null && scope != null) {
             scope.launch {
-                store.load()?.let { (dark, scale) ->
-                    theme = AppTheme(dark, scale.coerceIn(0.8f, 2.0f), if (dark) DarkPalette else LightPalette)
+                store.load()?.let { p ->
+                    theme = AppTheme(p.dark, p.fontScale.coerceIn(0.8f, 2.0f), if (p.dark) DarkPalette else LightPalette)
+                    backendUrl = p.backendUrl
+                    tenantToken = p.tenantToken
                 }
             }
         }
@@ -41,11 +48,20 @@ class SettingsViewModel(
         persist()
     }
 
+    fun setBackend(url: String, tenant: String) {
+        backendUrl = url.trim()
+        tenantToken = tenant.trim()
+        persist()
+    }
+
+    val backendConfigured: Boolean
+        get() = backendUrl.isNotBlank() && tenantToken.isNotBlank()
+
     private fun persist() {
         val s = store ?: return
         val sc = scope ?: return
-        val t = theme
-        sc.launch { s.save(t.dark, t.fontScale) }
+        val snap = PersistedSettings(theme.dark, theme.fontScale, backendUrl, tenantToken)
+        sc.launch { s.save(snap) }
     }
 }
 

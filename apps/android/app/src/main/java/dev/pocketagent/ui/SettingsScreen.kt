@@ -16,10 +16,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -28,20 +31,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import dev.pocketagent.android.App
 import dev.pocketagent.transport.TofuHostKeyStore
 import dev.pocketagent.ui.theme.TermBg
 import dev.pocketagent.ui.theme.TermBlue
 import dev.pocketagent.ui.theme.TermGreen
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys: TofuHostKeyStore) {
+fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys: TofuHostKeyStore, app: App) {
     var pinnedKeys by remember { mutableStateOf(hostKeys.all()) }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -79,6 +87,9 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
                 }
             }
         }
+
+        // Backend (self-hosted)
+        BackendCard(settings, app)
 
         // Kullanım
         Card(
@@ -152,7 +163,7 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Hakkında", style = MaterialTheme.typography.titleMedium)
-                Text("Pocket Agent 0.4.0 • GPL-3.0-or-later")
+                Text("Pocket Agent 0.5.0 • GPL-3.0-or-later")
                 Text(
                     "Terminal baytları, diff ve dosya içerikleri backend'den geçmez; yalnız kısa özetler (≤256 karakter, 24s TTL) tutulur.",
                     style = MaterialTheme.typography.bodySmall,
@@ -174,5 +185,75 @@ private fun PaletteSwatch(color: Color, label: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).background(color))
         Text(label, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun BackendCard(settings: SettingsViewModel, app: App) {
+    var url by remember { mutableStateOf(settings.backendUrl) }
+    var tenant by remember { mutableStateOf(settings.tenantToken) }
+    var testResult by remember { mutableStateOf<String?>(null) }
+    var saved by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val syncStatus by app.eventSync.status.collectAsState()
+
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Backend (self-hosted)", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it; saved = false },
+                label = { Text("Backend URL (https://agent.example.com)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = tenant,
+                onValueChange = { tenant = it; saved = false },
+                label = { Text("Tenant token") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    settings.setBackend(url, tenant)
+                    app.configureBackend(url.trim(), tenant.trim())
+                    saved = true
+                    testResult = null
+                }) { Text("Kaydet") }
+                OutlinedButton(
+                    onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            val ok = app.backendClient?.health() == true
+                            testResult = if (ok) "Backend erişilebilir" else "Ulaşılamadı"
+                        }
+                    },
+                    enabled = settings.backendConfigured,
+                ) { Text("Test et") }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Event sync: $syncStatus",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                testResult?.let {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (it == "Backend erişilebilir") TermGreen else MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+            Text(
+                "Backend yalnız kısa olay özetleri tutar (≤256 karakter, 24s TTL); terminal ve dosya içerikleri hiç gitmez.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
