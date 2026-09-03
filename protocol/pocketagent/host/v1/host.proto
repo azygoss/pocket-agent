@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Pocket Agent host protocol v1 — Android <-> host daemon/gateway.
+// Clean-room: independent schema, no Moshi protocol reuse.
+syntax = "proto3";
+
+package pocketagent.host.v1;
+
+option go_package = "github.com/pocket-agent/pocket-agent/gen/go/host/v1;hostv1";
+option java_package = "dev.pocketagent.protocol.host";
+option java_multiple_files = true;
+
+// Branded IDs are strings with prefixes (validated both sides):
+// host:<ulid> device:<ulid> profile:<ulid> session:<ulid>
+// event:<ulid> approval:<ulid> cmd:<ulid>
+message HostCapabilities {
+  bool ssh = 1;
+  bool mosh = 2;
+  bool et = 3;
+  bool tmux = 4;
+  bool zellij = 5;
+  bool herdr = 6;
+  bool gateway = 7;
+  bool chat = 8;
+  // Unknown fields must be ignored by receivers (P01 test).
+}
+
+enum TerminalTransport {
+  TERMINAL_TRANSPORT_UNSPECIFIED = 0;
+  TERMINAL_TRANSPORT_SSH = 1;
+  TERMINAL_TRANSPORT_MOSH = 2;
+  TERMINAL_TRANSPORT_ET = 3;
+}
+
+enum SessionProvider {
+  SESSION_PROVIDER_UNSPECIFIED = 0;
+  SESSION_PROVIDER_SHELL = 1;
+  SESSION_PROVIDER_TMUX = 2;
+  SESSION_PROVIDER_ZELLIJ = 3;
+  SESSION_PROVIDER_HERDR = 4;
+}
+
+message ProtocolVersion {
+  uint32 major = 1; // 1 for v1; mismatch => structured features off, SSH stays
+  uint32 minor = 2; // backward-compatible additions only
+}
+
+message NegotiateRequest {
+  ProtocolVersion client = 1;
+  HostCapabilities want = 2;
+}
+
+message NegotiateResponse {
+  ProtocolVersion host = 1;
+  HostCapabilities have = 2;
+  bool structured_enabled = 3; // false when major mismatch
+}
+
+// Chunked resource transfer (diff/file/preview via gateway only).
+message ResourceChunk {
+  uint64 offset = 1;
+  bytes data = 2;       // <= 1 MiB per chunk
+  bytes sha256 = 3;     // sha256 of full resource (repeated each chunk ok)
+  bool eof = 4;
+}
+
+message TerminalSize {
+  uint32 cols = 1;
+  uint32 rows = 2;
+}
