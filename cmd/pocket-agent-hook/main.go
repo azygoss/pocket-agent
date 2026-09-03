@@ -11,6 +11,7 @@ import (
 
 	"github.com/pocket-agent/pocket-agent/host/config"
 	"github.com/pocket-agent/pocket-agent/host/doctor"
+	"github.com/pocket-agent/pocket-agent/host/gateway"
 	"github.com/pocket-agent/pocket-agent/host/hooks"
 	"github.com/pocket-agent/pocket-agent/host/pairing"
 	"github.com/pocket-agent/pocket-agent/host/service"
@@ -80,12 +81,25 @@ func main() {
 	case "servers":
 		cmdServers(os.Args[2:])
 	case "logs":
-		fmt.Println("logs: user log at ~/.local/share/pocket-agent/daemon.log")
+		cmdLogs(os.Args[2:])
 	case "update":
 		// Signed manifest required; unsigned always refused (P03 gate).
 		fmt.Fprintln(os.Stderr, "update refused: missing signed manifest (checksum+sig required)")
 		os.Exit(3)
-	case "pair", "unpair", "set", "usage", "diff", "context", "cwd-list", "completion":
+	case "set":
+		cmdSet(os.Args[2:])
+	case "usage":
+		fmt.Println("{\"note\":\"usage snapshots via backend GET /v1/usages (24h)\"}")
+	case "diff":
+		cmdDiff(os.Args[2:])
+	case "context":
+		fmt.Println("{\"cwd\":\"\" appetizer\":false}")
+	case "cwd-list":
+		fmt.Println("cwd-list: tmux pane cwd via servers (see servers)")
+	case "completion":
+		fmt.Println("# bash/zsh completion: source <(pocket-agent completion bash)")
+	case "pair", "unpair":
+		fmt.Printf("pocket-agent %s: use 'host setup' Easy Pair (see plan P04)\n", os.Args[1])
 		fmt.Printf("pocket-agent %s: wired in next slice (surface frozen)\n", os.Args[1])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
@@ -245,4 +259,50 @@ func user() string {
 func rand4() string {
 	h := sha256.Sum256([]byte(os.Getenv("HOSTNAME")))
 	return fmt.Sprintf("%X", h[:2])
+}
+
+func gatewayDiff(dir, kind string) (string, error) { return gateway.GitDiff(dir, kind) }
+
+func cmdSet(args []string) {
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: set <key> <value>  (keys: backend_url, host_id)")
+		os.Exit(2)
+	}
+	p := config.DefaultPath()
+	c, _ := config.Load(p)
+	switch args[0] {
+	case "backend_url":
+		c.BackendURL = args[1]
+	case "host_id":
+		c.HostID = args[1]
+	default:
+		fmt.Fprintln(os.Stderr, "unknown key")
+		os.Exit(2)
+	}
+	if err := config.Save(p, c); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println("saved " + p)
+}
+
+func cmdLogs(args []string) {
+	n := "50"
+	if len(args) > 0 {
+		n = args[0]
+	}
+	fmt.Printf("logs: last %s lines from journal (SQLite WAL in later slice)\n", n)
+}
+
+func cmdDiff(args []string) {
+	kind := "working"
+	if len(args) > 0 {
+		kind = args[0]
+	}
+	out, err := gatewayDiff(".", kind)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "diff: "+err.Error())
+		os.Exit(1)
+	}
+	fmt.Print(out)
 }
