@@ -13,6 +13,7 @@ data class SavedConnection(
     val moshUdpRange: String? = null,
     val etPort: Int = 2022,
     val agentForward: Boolean = false,
+    val id: String = "",
 ) {
     fun validate(): List<String> {
         val errs = mutableListOf<String>()

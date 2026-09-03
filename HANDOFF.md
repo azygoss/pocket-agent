@@ -28,7 +28,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 | P02 backend | ✅ | tenant guard, TTL sweep (event+pairing+upload), pairing race 409, uploads 10MB cap, approvals CAS (401/202/409), canlı HTTP: healthz/202/400; `compose config` OK |
 | P03 CLI/daemon | ✅ | full komut yüzeyi, 0600 socket ping, idempotent service, imzasız update ret, `status --json` schema=1 |
 | P04 Easy Pair | ✅ | QR `pa1\|…`, aynı-claim idempotent, farklı-claim 409, marker-only revoke, TOFU hard-stop, `tests/e2e/p04-flow.sh` OK |
-| P05–P10 Android terminal | ✅ headless | Room entities/DAO, TerminalService (dataSync FGS), `SshTransport` arayüzü + `TransportManager`, `FakeSshTransport` yankı, 6-fallback matrisi, `SavedConnection` secretsiz validasyon |
+| P05–P10 Android terminal | ✅ headless | Room entities/DAO, TerminalService (dataSync FGS), `SshTransport` arayüzü + `TransportManager`, 6-fallback matrisi, **gerçek SSH: `SshjConnector` (SSHJ) + TOFU pin diyaloğu + `TerminalController` yaşam döngüsü** — Fake yalnız testlerde. UI sıfırdan: M3 tema + NavigationBar + 6 ekran (`ui/PocketApp.kt` + screens) |
 | P11 gateway | ✅ | strict jail, loopback-only, binary guard, dosya sunucusu 401/400/200, git diff 4 tür, preview fetch (1MB/5s), hepsi canlı testli |
 | P12 hook'lar | ✅ | 12 agent merge (tekrar kurulumda dubl yok), Claude/Codex JSONL parser + fixture, ANSI-ban, journal-first emit |
 | P13 inbox/onay | ✅ | session-merge + 24h, CAS ilk-kazanan, digest/rev bağlı, tenant gate |
@@ -41,9 +41,9 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 ## 4. Test raporu (son yeşil koşu)
 
 - Go: 18 paket `ok`, 0 FAIL (`go test ./... -count=1`), `go vet` + `go build ./...` temiz.
-- Android: 29/29 unit (0 fail) + `lintDebug` + `assembleDebug` yeşil. Robolectric `MainActivity` launch dahil.
-- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (26.3MB, debug imzalı).
-  İndirme: `https://tmpfiles.org/dl/wGw2hgRhrlhi/app-debug.apk` (yedek: `https://files.catbox.moe/mg2ik0.apk`).
+- Android: 37/37 unit (0 fail, SshjLiveTest env-gated) + `lintDebug` (0 hata) + `assembleDebug` yeşil. Robolectric `MainActivity` launch dahil.
+- Canlı SSH kanıtı: `PA_LIVE_SSH=1 PA_LIVE_USER=pa-dev PA_LIVE_PEM=/tmp/pa-dev-key ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SshjLiveTest` → localhost sshd'ye TOFU hard-stop → pin → ed25519 key auth → PTY → `echo PA_ALIVE_42` okundu (test user `pa-dev` bu makinede hazır).
+- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (66MB, debug imzalı; SSHJ+bcprov+icons dahil).
 - CLI: `dist/` git-dışı (tarballs + `SHA256SUMS` + `sbom-go.json`).
 
 ## 5. Derleme komutları
@@ -80,9 +80,9 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 
 ## 8. Sıradaki iş (önerilen sıra)
 
-1. `SshTransport` fake→cbssh takma + gerçek cihazda PTY/resize + tmux re-attach.
+1. ~~`SshTransport` fake→cbssh takma~~ → **yapıldı (SSHJ, D012)**; sırada: cihazda PTY/resize doğrulaması + tmux re-attach, ANSI render için termlib.
 2. Mosh bootstrap (SSH `mosh-server new`) + ET fallback + Wi-Fi/LTE resync ölçümü.
-3. Keystore sarmalama + biyometrik gate + host-key ekranı (TOFU pin UI).
+3. Keystore sarmalama + biyometrik gate + host-key ekranı (TOFU pin UI **yapıldı**: `pendingHostKey` diyaloğu); kalan: Keystore CryptoObject.
 4. FCM + 2-cihaz onay yarışı + 24h inbox senkron (FCM creds gerekli).
 5. Release: AAB + tarballs imza + SBOM + CCS + `REPRODUCING.md`.
 

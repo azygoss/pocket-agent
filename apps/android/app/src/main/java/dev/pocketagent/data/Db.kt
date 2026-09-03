@@ -12,6 +12,10 @@ data class ConnectionEntity(
     val port: Int,
     val user: String,
     val credentialRef: String,
+    val transportOrder: String = "SSH",
+    val jumpHost: String? = null,
+    val etPort: Int = 2022,
+    val agentForward: Boolean = false,
     val sortOrder: Int = 0,
 )
 
@@ -46,7 +50,7 @@ interface AgentEventDao {
     suspend fun sweepExpired(now: Long): Int
 }
 
-@Database(entities = [ConnectionEntity::class, AgentEventEntity::class], version = 1, exportSchema = false)
+@Database(entities = [ConnectionEntity::class, AgentEventEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun connections(): ConnectionDao
     abstract fun events(): AgentEventDao
