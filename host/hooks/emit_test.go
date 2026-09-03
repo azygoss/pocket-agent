@@ -10,7 +10,7 @@ import (
 // P12 emission: normalized event -> journal append (journal-first, retry later).
 func TestEmitToJournal(t *testing.T) {
 	b := New()
-	j, _ := Open(t.TempDir() + "/j.jsonl")
+	j, _ := journal.Open(t.TempDir() + "/j.jsonl")
 	msg, err := b.Normalize("claude", "approval_required", "src-1", "approve deploy?")
 	if err != nil {
 		t.Fatal(err)
