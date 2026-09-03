@@ -17,6 +17,7 @@ class EventSync(
     private val clientFor: () -> BackendClient?,
     private val onEvents: (List<BackendEvent>) -> Unit,
     private val intervalMs: Long = 15_000,
+    private val onUsages: ((org.json.JSONArray) -> Unit)? = null,
 ) {
     private var job: Job? = null
     private var cursor: String? = null
@@ -40,6 +41,9 @@ class EventSync(
                     if (events.isNotEmpty()) {
                         cursor = events.last().eventId
                         onEvents(events)
+                    }
+                    onUsages?.let { cb ->
+                        withContext(Dispatchers.IO) { runCatching { client.usages() }.getOrNull() }?.let(cb)
                     }
                     _status.value = "bağlı"
                     backoff = intervalMs

@@ -100,6 +100,19 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     fun setBadge(t: TerminalTransport) { badge = t.name }
     fun clear() { buffer.clear(); pendingBytes = ByteArray(0); _lines.value = emptyList(); _frames.value = emptyList() }
 
+    // Viewport ölçüsü değişti: buffer yeniden boyutlanır (üstten taşan satırlar
+    // scrollback'e gider); PTY resize'ı UI katmanında transport'a gönderilir.
+    fun setSize(newSize: TerminalSize) {
+        if (newSize == size) return
+        size = newSize
+        buffer.setScreenSize(newSize.cols, newSize.rows)
+        val snap = buffer.snapshot()
+        _lines.value = snap
+        _frames.value = snap.map { it.text }
+    }
+
+    val altScreenActive: Boolean get() = buffer.altScreenActive
+
     fun grow() { size = TerminalSize((size.cols + 10).coerceAtMost(200), size.rows) }
     fun shrink() { size = TerminalSize((size.cols - 10).coerceAtLeast(40), size.rows) }
 

@@ -10,10 +10,17 @@ import kotlinx.coroutines.launch
 // P10/P16 zirve: tema + font + terminal paleti + klavye kısayolları tek Settings state.
 // store verilirse tercihler kalıcıdır (DataStore); verilmezse in-memory (testler).
 data class TerminalPalette(val background: Long, val foreground: Long, val cursor: Long)
-data class AppTheme(val dark: Boolean, val fontScale: Float, val palette: TerminalPalette)
+data class AppTheme(val dark: Boolean, val fontScale: Float, val palette: TerminalPalette, val amoled: Boolean = false)
 
 val DarkPalette = TerminalPalette(0xFF0D1117, 0xFFC9D1D9, 0xFF58A6FF)
+val AmoledPalette = TerminalPalette(0xFF000000, 0xFFC9D1D9, 0xFF58A6FF)
 val LightPalette = TerminalPalette(0xFFFFFFFF, 0xFF1F2328, 0xFF0969DA)
+
+private fun paletteFor(dark: Boolean, amoled: Boolean): TerminalPalette = when {
+    !dark -> LightPalette
+    amoled -> AmoledPalette
+    else -> DarkPalette
+}
 
 class SettingsViewModel(
     private val store: SettingsStore? = null,
@@ -26,11 +33,15 @@ class SettingsViewModel(
     var tenantToken by mutableStateOf("")
         private set
 
+    var amoled by mutableStateOf(false)
+        private set
+
     init {
         if (store != null && scope != null) {
             scope.launch {
                 store.load()?.let { p ->
-                    theme = AppTheme(p.dark, p.fontScale.coerceIn(0.8f, 2.0f), if (p.dark) DarkPalette else LightPalette)
+                    amoled = p.amoled
+                    theme = AppTheme(p.dark, p.fontScale.coerceIn(0.8f, 2.0f), paletteFor(p.dark, p.amoled), p.amoled)
                     backendUrl = p.backendUrl
                     tenantToken = p.tenantToken
                 }
@@ -39,7 +50,13 @@ class SettingsViewModel(
     }
 
     fun toggleDark() {
-        theme = theme.copy(dark = !theme.dark, palette = if (theme.dark) LightPalette else DarkPalette)
+        theme = theme.copy(dark = !theme.dark, palette = paletteFor(!theme.dark, amoled))
+        persist()
+    }
+
+    fun toggleAmoled() {
+        amoled = !amoled
+        theme = theme.copy(amoled = amoled, palette = paletteFor(theme.dark, amoled))
         persist()
     }
 
@@ -60,7 +77,7 @@ class SettingsViewModel(
     private fun persist() {
         val s = store ?: return
         val sc = scope ?: return
-        val snap = PersistedSettings(theme.dark, theme.fontScale, backendUrl, tenantToken)
+        val snap = PersistedSettings(theme.dark, theme.fontScale, backendUrl, tenantToken, amoled)
         sc.launch { s.save(snap) }
     }
 }

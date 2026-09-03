@@ -73,6 +73,21 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
                     }
                     Switch(checked = settings.theme.dark, onCheckedChange = { settings.toggleDark() })
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("AMOLED siyah", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Saf siyah zemin — OLED ekranda pil tasarrufu",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = settings.amoled,
+                        onCheckedChange = { settings.toggleAmoled() },
+                        enabled = settings.theme.dark,
+                    )
+                }
                 Text("Yazı ölçeği: ${"%.1f".format(settings.theme.fontScale)}x")
                 Slider(
                     value = settings.theme.fontScale,
@@ -98,6 +113,13 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Kullanım", style = MaterialTheme.typography.titleMedium)
+                if (usage.rows.isEmpty()) {
+                    Text(
+                        "Henüz kullanım verisi yok — host raporlama bağlanınca burada görünür. Backend ayarlıysa her senkron turunda güncellenir.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 usage.rows.forEach { u ->
                     Column {
                         Row {
@@ -163,7 +185,7 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Hakkında", style = MaterialTheme.typography.titleMedium)
-                Text("Pocket Agent 0.5.0 • GPL-3.0-or-later")
+                Text("Pocket Agent 0.6.0 • GPL-3.0-or-later")
                 Text(
                     "Terminal baytları, diff ve dosya içerikleri backend'den geçmez; yalnız kısa özetler (≤256 karakter, 24s TTL) tutulur.",
                     style = MaterialTheme.typography.bodySmall,

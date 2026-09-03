@@ -156,10 +156,60 @@ class SshjTransport(
     private val shell: Session.Shell,
     private var size: TerminalSize,
     private val readScope: CoroutineScope,
-) : SshTransport {
+) : SshTransport, SftpSession {
     override val transport = TerminalTransport.SSH
     private val chan = Channel<TerminalFrame>(Channel.UNLIMITED)
     @Volatile private var closed = false
+    @Volatile private var sftpClient: net.schmizz.sshj.sftp.SFTPClient? = null
+
+    @Synchronized
+    private fun sftp(): net.schmizz.sshj.sftp.SFTPClient =
+        sftpClient ?: ssh.newSFTPClient().also { sftpClient = it }
+
+    override suspend fun home(): String = withContext(Dispatchers.IO) {
+        sftp().canonicalize(".")
+    }
+
+    override suspend fun list(path: String): List<RemoteFile> = withContext(Dispatchers.IO) {
+        sftp().ls(path).map {
+            RemoteFile(
+                name = it.name,
+                path = if (path.endsWith("/")) path + it.name else "$path/${it.name}",
+                isDir = it.isDirectory,
+                size = if (it.isDirectory) 0 else it.attributes.size,
+                mtime = it.attributes.mtime,
+            )
+        }.sortedWith(compareByDescending<RemoteFile> { it.isDir }.thenBy { it.name.lowercase() })
+    }
+
+    override suspend fun readBytes(path: String, maxBytes: Long): ByteArray = withContext(Dispatchers.IO) {
+        val f = sftp().open(path)
+        f.RemoteFileInputStream().use { input ->
+            // minSdk 29: readNBytes yerine elle sınırlı okuma
+            val out = java.io.ByteArrayOutputStream()
+            val buf = ByteArray(16384)
+            var left = maxBytes
+            while (left > 0) {
+                val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                if (n < 0) break
+                out.write(buf, 0, n)
+                left -= n
+            }
+            out.toByteArray()
+        }
+    }
+
+    override suspend fun writeBytes(path: String, data: ByteArray) = withContext(Dispatchers.IO) {
+        val f = sftp().open(
+            path,
+            java.util.EnumSet.of(
+                net.schmizz.sshj.sftp.OpenMode.WRITE,
+                net.schmizz.sshj.sftp.OpenMode.CREAT,
+                net.schmizz.sshj.sftp.OpenMode.TRUNC,
+            ),
+        )
+        f.RemoteFileOutputStream().use { it.write(data) }
+    }
 
     fun startReader() {
         readScope.launch(Dispatchers.IO) {
@@ -211,6 +261,7 @@ class SshjTransport(
 
     override fun close() {
         closed = true
+        runCatching { sftpClient?.close() }
         runCatching { session.close() }
         runCatching { ssh.disconnect() }
         chan.close()

@@ -61,8 +61,8 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
     val settings = remember { SettingsViewModel(app.settingsStore, app.appScope) }
     val inbox = app.inbox
     val approval = remember { ApprovalViewModel() }
-    val usage = remember { UsageViewModel() }
-    val files = remember { FilesViewModel() }
+    val usage = app.usage
+    val files = remember { FilesViewModel(app.sessions, app.appScope, app.cacheDir) }
     var tab by remember { mutableStateOf(AppTab.Home) }
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -100,7 +100,7 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
         }
     }
 
-    PocketAgentTheme(dark = settings.theme.dark) {
+    PocketAgentTheme(dark = settings.theme.dark, amoled = settings.theme.amoled) {
         Scaffold(
             topBar = {
                 TopAppBar(

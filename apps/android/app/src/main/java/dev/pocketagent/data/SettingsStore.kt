@@ -17,6 +17,7 @@ data class PersistedSettings(
     val fontScale: Float = 1f,
     val backendUrl: String = "",
     val tenantToken: String = "",
+    val amoled: Boolean = false,
 )
 
 interface SettingsStore {
@@ -31,6 +32,7 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
     private val fontKey = floatPreferencesKey("font_scale")
     private val urlKey = stringPreferencesKey("backend_url")
     private val tenantKey = stringPreferencesKey("tenant_token")
+    private val amoledKey = booleanPreferencesKey("amoled")
 
     override suspend fun load(): PersistedSettings? {
         val p = context.prefs.data.first()
@@ -40,6 +42,7 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
             fontScale = p[fontKey] ?: 1f,
             backendUrl = p[urlKey] ?: "",
             tenantToken = p[tenantKey] ?: "",
+            amoled = p[amoledKey] ?: false,
         )
     }
 
@@ -49,6 +52,7 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
             it[fontKey] = s.fontScale
             it[urlKey] = s.backendUrl
             it[tenantKey] = s.tenantToken
+            it[amoledKey] = s.amoled
         }
     }
 }
