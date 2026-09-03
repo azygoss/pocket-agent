@@ -90,5 +90,5 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 
 - Conventional commits (`feat(Pxx): …`), her P için test + kapı yeşili zorunlu.
 - `decisions.tsv` append-only (D001–D011 yazıldı).
-- `rg -i moshi` yalnızca izinli dosyalarda (`plan.md`, `decisions.tsv`, `docs/reference/**`, `README.md`); `secret-scan.sh` bunu zorlar.
+- Marka/kod taraması yalnızca izinli dosyalardaki referanslara izin verir (`secret-scan.sh` kuralı); ham kopya yasaktır.
 - `docs/reference/**` yayın paketine girmez (`check-packaging.sh`).
