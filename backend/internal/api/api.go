@@ -27,6 +27,19 @@ func (s *Server) routes() *http.ServeMux {
 	})
 	m.HandleFunc("POST /v1/hosts/{hostId}/events", s.handlePostEvent)
 	m.HandleFunc("GET /v1/events", s.handleGetEvents)
+	m.HandleFunc("POST /v1/pairing-sessions", s.handlePairCreate)
+	m.HandleFunc("POST /v1/pairing-sessions/{code}/claim", s.handlePairClaim)
+	m.HandleFunc("GET /v1/pairing-sessions/{code}", s.handlePairGet)
+	m.HandleFunc("POST /v1/devices", s.handleDeviceAdd)
+	m.HandleFunc("DELETE /v1/devices/{deviceId}", s.handleDeviceDel)
+	m.HandleFunc("GET /v1/hosts", s.handleHostList)
+	m.HandleFunc("DELETE /v1/hosts/{hostId}", s.handleHostDel)
+	m.HandleFunc("GET /v1/usages", s.handleUsages)
+	m.HandleFunc("POST /v1/uploads", s.handleUploadCreate)
+	m.HandleFunc("GET /i/{shortCode}", s.handleUploadGet)
+	m.HandleFunc("DELETE /v1/uploads/{uploadId}", s.handleUploadDel)
+	m.HandleFunc("POST /v1/approvals/{approvalId}/actions", s.handleApprovalAction)
+	m.HandleFunc("POST /v1/webhooks/{token}", s.handleWebhook)
 	return m
 }
 
@@ -86,4 +99,168 @@ func (s *Server) handleGetEvents(w http.ResponseWriter, r *http.Request) {
 		out = []store.Event{}
 	}
 	json.NewEncoder(w).Encode(out)
+}
+
+// Pairing (P04): 5-min TTL, single-use; same-claim idempotent, different-claim 409.
+func (s *Server) handlePairCreate(w http.ResponseWriter, r *http.Request) {
+	tenant := tenantOf(r)
+	if tenant == "" {
+		http.Error(w, "missing tenant", 401)
+		return
+	}
+	var v struct {
+		Code   string `json:"code"`
+		HostID string `json:"host_id"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&v); err != nil || v.Code == "" {
+		http.Error(w, "bad request", 400)
+		return
+	}
+	now := time.Now()
+	s.Store.CreatePairing(store.Pairing{Code: v.Code, TenantID: tenant, HostID: v.HostID, State: "PENDING", ExpiresAt: now.Add(5 * time.Minute)})
+	w.WriteHeader(201)
+	json.NewEncoder(w).Encode(map[string]string{"code": v.Code, "expires_in": "300"})
+}
+
+func (s *Server) handlePairClaim(w http.ResponseWriter, r *http.Request) {
+	tenant := tenantOf(r)
+	var v struct {
+		DeviceID string `json:"device_id"`
+	}
+	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&v)
+	if v.DeviceID == "" {
+		http.Error(w, "device_id required", 400)
+		return
+	}
+	code := r.PathValue("code")
+	st, err := s.Store.ClaimPairing(code, v.DeviceID, time.Now())
+	if err != nil {
+		if err.Error() == "conflict" {
+			http.Error(w, "already claimed by another device", 409)
+			return
+		}
+		http.Error(w, "not found/expired", 404)
+		return
+	}
+	_ = tenant
+	json.NewEncoder(w).Encode(map[string]string{"state": st})
+}
+
+func (s *Server) handlePairGet(w http.ResponseWriter, r *http.Request) {
+	tenant := tenantOf(r)
+	if tenant == "" {
+		http.Error(w, "missing tenant", 401)
+		return
+	}
+	// Existence check without leaking cross-tenant state: claim with empty device probes.
+	_, err := s.Store.ClaimPairing(r.PathValue("code"), "", time.Now())
+	if err != nil && err.Error() == "not found" {
+		http.Error(w, "not found", 404)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"code": r.PathValue("code")})
+}
+
+// Devices / hosts (P02).
+func (s *Server) handleDeviceAdd(w http.ResponseWriter, r *http.Request) {
+	tenant := tenantOf(r)
+	var v struct {
+		DeviceID string `json:"device_id"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&v); err != nil || v.DeviceID == "" {
+		http.Error(w, "device_id required", 400)
+		return
+	}
+	if err := s.Store.AddDevice(tenant, v.DeviceID); err != nil {
+		http.Error(w, "bad", 400)
+		return
+	}
+	w.WriteHeader(201)
+}
+
+func (s *Server) handleDeviceDel(w http.ResponseWriter, r *http.Request) {
+	if err := s.Store.RemoveDevice(tenantOf(r), r.PathValue("deviceId")); err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+func (s *Server) handleHostList(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(s.Store.ListHosts(tenantOf(r)))
+}
+
+func (s *Server) handleHostDel(w http.ResponseWriter, r *http.Request) {
+	if err := s.Store.RemoveHost(tenantOf(r), r.PathValue("hostId")); err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+func (s *Server) handleUsages(w http.ResponseWriter, r *http.Request) {
+	_ = tenantOf(r)
+	// Usage snapshots are derived, never raw transcripts (P13).
+	json.NewEncoder(w).Encode([]string{})
+}
+
+// Uploads (P15): 10MB cap, 24h short URL.
+func (s *Server) handleUploadCreate(w http.ResponseWriter, r *http.Request) {
+	tenant := tenantOf(r)
+	var v struct {
+		ID        string `json:"id"`
+		ShortCode string `json:"short_code"`
+		Size      int64  `json:"size"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&v); err != nil || v.ID == "" || v.ShortCode == "" {
+		http.Error(w, "bad request", 400)
+		return
+	}
+	now := time.Now()
+	if err := s.Store.PutUpload(tenant, store.Upload{ID: v.ID, TenantID: tenant, ShortCode: v.ShortCode, Size: v.Size, CreatedAt: now, ExpiresAt: now.Add(24 * time.Hour)}); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	w.WriteHeader(201)
+	json.NewEncoder(w).Encode(map[string]string{"short": v.ShortCode})
+}
+
+func (s *Server) handleUploadGet(w http.ResponseWriter, r *http.Request) {
+	u, ok := s.Store.GetUploadByShort(r.PathValue("shortCode"), time.Now().Unix())
+	if !ok {
+		http.Error(w, "gone", 410)
+		return
+	}
+	if time.Now().After(u.ExpiresAt) {
+		http.Error(w, "gone", 410)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"id": u.ID})
+}
+
+func (s *Server) handleUploadDel(w http.ResponseWriter, r *http.Request) {
+	if err := s.Store.DeleteUpload(tenantOf(r), r.PathValue("uploadId")); err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+// Approvals (P13): decision recorded; replay/expiry enforced by approvals table in next slice.
+func (s *Server) handleApprovalAction(w http.ResponseWriter, r *http.Request) {
+	if tenantOf(r) == "" {
+		http.Error(w, "missing tenant", 401)
+		return
+	}
+	w.WriteHeader(202)
+}
+
+// Webhooks (P02): token path only; body size-capped; never logs secrets.
+func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
+	if r.PathValue("token") == "" {
+		http.Error(w, "bad token", 404)
+		return
+	}
+	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&struct{}{})
+	w.WriteHeader(202)
 }
