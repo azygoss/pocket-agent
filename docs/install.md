@@ -14,4 +14,4 @@ tar xzf dist/pocket-agent-0.1.0-linux-amd64.tar.gz
 ```
 ## Android
 `apps/android`: `./gradlew :app:assembleDebug` (debug) veya upload keystore ile `:app:bundleRelease`.
-Temiz kurulum + QR Easy Pair; Moshi config otomatik taşınmaz.
+Temiz kurulum + QR Easy Pair; eski kurulum otomatik taşınmaz.
