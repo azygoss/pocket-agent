@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.app)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -13,7 +14,7 @@ android {
         minSdk = 29
         targetSdk = 34
         versionCode = 1
-        versionName = "0.1.0-p05"
+        versionName = "0.2.0"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
@@ -51,9 +52,13 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
     implementation(libs.datastore)
     implementation(libs.biometric)
-    annotationProcessor(libs.room.compiler)
+    implementation(libs.compose.icons)
+    implementation(libs.sshj)
+    implementation(libs.bcprov)
+    implementation(libs.slf4j.nop)
     testImplementation(libs.junit4)
     testImplementation(libs.robolectric)
     testImplementation(libs.test.core)

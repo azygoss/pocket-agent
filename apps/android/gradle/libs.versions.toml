@@ -12,6 +12,10 @@ coroutines = "1.8.1"
 junit = "4.13.2"
 robolectric = "4.13"
 test-core = "1.6.1"
+ksp = "2.0.20-1.0.24"
+sshj = "0.38.0"
+bcprov = "1.78.1"
+slf4j = "2.0.13"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
@@ -29,8 +33,13 @@ junit4 = { group = "junit", name = "junit", version.ref = "junit" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 test-core = { group = "androidx.test", name = "core", version.ref = "test-core" }
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+sshj = { group = "com.hierynomus", name = "sshj", version.ref = "sshj" }
+bcprov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bcprov" }
+slf4j-nop = { group = "org.slf4j", name = "slf4j-nop", version.ref = "slf4j" }
+compose-icons = { group = "androidx.compose.material", name = "material-icons-extended" }
 
 [plugins]
 android-app = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
