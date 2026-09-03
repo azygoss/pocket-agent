@@ -12,7 +12,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.pocketagent.transport.TerminalInput
+import dev.pocketagent.transport.TerminalViewModel
 import dev.pocketagent.ui.*
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,7 +48,7 @@ fun PocketAgentApp() {
                 when (tab) {
                     RouteTab.Home -> HomePane(inbox)
                     RouteTab.Connections -> ConnectionsPane(shortcuts)
-                    RouteTab.Sessions -> SessionsPane()
+                    RouteTab.Sessions -> SessionsPane(settings)
                     RouteTab.Agents -> AgentsPane(inbox, approval)
                     RouteTab.Files -> FilesPane(files)
                     RouteTab.Settings -> SettingsPane(settings, usage)
@@ -83,10 +86,20 @@ fun ConnectionsPane(sc: ShortcutModel) {
 }
 
 @Composable
-fun SessionsPane() {
-    Column {
-        Text("Active Sessions", style = MaterialTheme.typography.titleLarge)
-        Text("tmux • zellij • herdr (capability-gated) — kill sonrası resume")
+fun SessionsPane(settings: SettingsViewModel) {
+    val vm = remember { TerminalViewModel(dev.pocketagent.transport.SessionId("session:demo")) }
+    val scope = rememberCoroutineScope()
+    val fake = remember { dev.pocketagent.transport.FakeSshTransport() }
+    LaunchedEffect(Unit) {
+        fake.openPty("xterm-256color", defaultTerminalSize())
+        vm.onFrame(fake.read())
+    }
+    TerminalScreen(vm, settings) { input ->
+        scope.launch {
+            fake.send(input)
+            vm.onFrame(fake.read())
+            if (input is TerminalInput.Resize) { /* rozet/boyut vm içinde */ }
+        }
     }
 }
 
