@@ -7,8 +7,8 @@ import dev.pocketagent.data.AppDatabase
 import dev.pocketagent.data.ConnectionRepository
 import dev.pocketagent.data.DataStoreSettingsStore
 import dev.pocketagent.security.KeystoreSecretStore
+import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.SshjConnector
-import dev.pocketagent.transport.TerminalController
 import dev.pocketagent.transport.TofuHostKeyStore
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -35,11 +35,9 @@ class App : Application() {
 
     val hostKeys: TofuHostKeyStore by lazy { TofuHostKeyStore(File(filesDir, "known_hosts")) }
 
-    val terminal: TerminalController by lazy {
-        TerminalController(appScope, SshjConnector(hostKeys, appScope), hostKeys).apply {
-            onConnected = { conn ->
-                appScope.launch { connections.touch(conn.id) }
-            }
+    val sessions: SessionManager by lazy {
+        SessionManager(appScope, hostKeys) { SshjConnector(hostKeys, appScope) }.apply {
+            onConnected = { conn -> appScope.launch { connections.touch(conn.id) } }
         }
     }
 }

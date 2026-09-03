@@ -30,18 +30,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.pocketagent.data.ConnectionRepository
 import dev.pocketagent.transport.ConnectionState
-import dev.pocketagent.transport.TerminalController
+import dev.pocketagent.transport.SessionManager
 
 @Composable
 fun HomeScreen(
-    terminal: TerminalController,
+    sessions: SessionManager,
     connections: ConnectionRepository,
     inbox: InboxViewModel,
     onGoTo: (AppTab) -> Unit,
 ) {
-    val state by terminal.state.collectAsState()
-    val active by terminal.connectedTo.collectAsState()
+    val sessionList by sessions.sessions.collectAsState()
+    val activeId by sessions.activeId.collectAsState()
     val saved by connections.items.collectAsState()
+    val active = sessionList.firstOrNull { it.id == activeId }
+    val state = active?.controller?.state?.collectAsState()?.value ?: ConnectionState.CLOSED
+    val activeConn = active?.conn
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -59,18 +62,18 @@ fun HomeScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         when (state) {
-                            ConnectionState.ACTIVE -> "Bağlı — ${active?.user}@${active?.host}"
+                            ConnectionState.ACTIVE -> "Bağlı — ${activeConn?.user}@${activeConn?.host}"
                             ConnectionState.CONNECTING -> "Bağlanıyor…"
                             ConnectionState.RECONNECTING -> "Yeniden bağlanıyor…"
                             ConnectionState.FAILED -> "Bağlantı hatası"
-                            else -> "Bağlı oturum yok"
+                            else -> if (sessionList.isEmpty()) "Açık oturum yok" else "${sessionList.size} oturum askıda"
                         },
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
-                if (state == ConnectionState.ACTIVE) {
+                if (state == ConnectionState.ACTIVE && active != null) {
                     Text(
-                        "Transport: ${terminal.vm.badge} • pty ${terminal.vm.size.cols}x${terminal.vm.size.rows}",
+                        "Transport: ${active.controller.vm.badge} • pty ${active.controller.vm.size.cols}x${active.controller.vm.size.rows} • ${sessionList.size} oturum",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -88,8 +91,8 @@ fun HomeScreen(
                     Text("Terminale git")
                     Icon(Icons.Filled.ArrowForward, contentDescription = null, modifier = Modifier.padding(start = 4.dp))
                 }
-            } else if (terminal.canReconnect()) {
-                FilledTonalButton(onClick = { terminal.reconnect(); onGoTo(AppTab.Terminal) }, modifier = Modifier.weight(1f)) {
+            } else if (active?.controller?.canReconnect() == true) {
+                FilledTonalButton(onClick = { active.controller.reconnect(); onGoTo(AppTab.Terminal) }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.padding(end = 4.dp))
                     Text("Yeniden bağlan")
                 }

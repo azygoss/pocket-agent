@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package dev.pocketagent.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,10 +23,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -48,32 +51,128 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.pocketagent.transport.ConnectionState
+import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalController
+import dev.pocketagent.transport.TermLine
 import dev.pocketagent.transport.TerminalInput
 import dev.pocketagent.transport.TerminalSize
 import dev.pocketagent.transport.TransportFailure
+import dev.pocketagent.ui.theme.TermAmber
 import dev.pocketagent.ui.theme.TermBg
 import dev.pocketagent.ui.theme.TermGreen
 import dev.pocketagent.ui.theme.TermRed
 import dev.pocketagent.ui.theme.TermText
 import kotlinx.coroutines.launch
 
+fun TermLine.toAnnotatedString(): AnnotatedString = buildAnnotatedString {
+    spans.forEach { s ->
+        withStyle(
+            SpanStyle(
+                color = s.style.fg?.let { Color(it) } ?: Color.Unspecified,
+                fontWeight = if (s.style.bold) FontWeight.Bold else null,
+                textDecoration = if (s.style.underline) TextDecoration.Underline else null,
+            ),
+        ) { append(s.text) }
+    }
+}
+
 @Composable
-fun TerminalScreen(controller: TerminalController, settings: SettingsViewModel) {
+fun TerminalScreen(
+    manager: SessionManager,
+    settings: SettingsViewModel,
+    onNewConnection: () -> Unit,
+) {
+    val sessionList by manager.sessions.collectAsState()
+    val activeId by manager.activeId.collectAsState()
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        // Oturum çipleri
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            sessionList.forEach { h ->
+                val st by h.controller.state.collectAsState()
+                FilterChip(
+                    selected = h.id == activeId,
+                    onClick = { manager.setActive(h.id) },
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            StateDot(st)
+                            Spacer(Modifier.width(6.dp))
+                            Text(h.conn.name)
+                        }
+                    },
+                )
+            }
+            IconButton(onClick = onNewConnection) {
+                Icon(Icons.Filled.Add, contentDescription = "Yeni bağlantı")
+            }
+        }
+
+        val active = sessionList.firstOrNull { it.id == activeId }
+        if (active == null) {
+            EmptyTerminal()
+        } else {
+            ActiveTerminal(
+                controller = active.controller,
+                settings = settings,
+                onClose = { manager.close(active.id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyTerminal() {
+    Column(
+        Modifier.fillMaxSize().padding(20.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            "$ açık oturum yok",
+            color = TermGreen,
+            fontFamily = FontFamily.Monospace,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Bağlantılar sekmesinden bir host seç. Her host kendi oturumuyla açılır; çiplerle aralarında gezinebilirsin.",
+            color = TermText.copy(alpha = 0.6f),
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun ActiveTerminal(
+    controller: TerminalController,
+    settings: SettingsViewModel,
+    onClose: () -> Unit,
+) {
     val vm = controller.vm
-    val frames by vm.frames.collectAsState()
+    val lines by vm.lines.collectAsState()
     val state by controller.state.collectAsState()
     val failure by controller.failure.collectAsState()
     val active by controller.connectedTo.collectAsState()
     var text by remember { mutableStateOf("") }
     var ctrl by remember { mutableStateOf(false) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -85,9 +184,16 @@ fun TerminalScreen(controller: TerminalController, settings: SettingsViewModel) 
             last >= info.totalItemsCount - 1
         }
     }
-    LaunchedEffect(frames.size) {
-        if (frames.isNotEmpty() && atBottom) listState.scrollToItem(frames.size - 1)
+    LaunchedEffect(lines.size) {
+        if (lines.isNotEmpty() && atBottom) listState.scrollToItem(lines.size - 1)
     }
+
+    val matches = remember(lines, query) {
+        if (query.length < 2) emptyList()
+        else lines.mapIndexedNotNull { i, l -> if (l.text.contains(query, ignoreCase = true)) i else null }
+    }
+    var matchCursor by remember { mutableStateOf(0) }
+    val currentMatch = matches.getOrNull(matchCursor)
 
     fun sendText(s: String) {
         controller.send(TerminalInput.Text(s))
@@ -107,7 +213,7 @@ fun TerminalScreen(controller: TerminalController, settings: SettingsViewModel) 
         text = ""
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+    Column {
         // Durum çubuğu
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             StateDot(state)
@@ -126,15 +232,14 @@ fun TerminalScreen(controller: TerminalController, settings: SettingsViewModel) 
                 },
             )
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) query = "" }) {
+                Icon(Icons.Filled.Search, contentDescription = "Scrollback'te ara")
+            }
             when (state) {
                 ConnectionState.ACTIVE -> {
                     OutlinedButton(onClick = { vm.shrink(); controller.send(TerminalInput.Resize(vm.size)) }) { Text("A-") }
                     Spacer(Modifier.width(4.dp))
                     OutlinedButton(onClick = { vm.grow(); controller.send(TerminalInput.Resize(vm.size)) }) { Text("A+") }
-                    Spacer(Modifier.width(4.dp))
-                    IconButton(onClick = { controller.disconnect() }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Bağlantıyı kes", tint = MaterialTheme.colorScheme.error)
-                    }
                 }
                 ConnectionState.CLOSED, ConnectionState.FAILED -> {
                     if (controller.canReconnect()) {
@@ -146,6 +251,34 @@ fun TerminalScreen(controller: TerminalController, settings: SettingsViewModel) 
                     }
                 }
                 else -> {}
+            }
+            IconButton(onClick = onClose) {
+                Icon(Icons.Filled.Close, contentDescription = "Oturumu kapat", tint = MaterialTheme.colorScheme.error)
+            }
+        }
+
+        // Arama çubuğu
+        if (searchOpen) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it; matchCursor = 0 },
+                    placeholder = { Text("Scrollback'te ara…") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    if (matches.isEmpty()) "0" else "${matchCursor + 1}/${matches.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+                IconButton(
+                    enabled = matches.isNotEmpty(),
+                    onClick = {
+                        matchCursor = (matchCursor + 1) % matches.size
+                        scope.launch { listState.scrollToItem(matches[matchCursor]) }
+                    },
+                ) { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Sonraki eşleşme") }
             }
         }
 
@@ -173,44 +306,46 @@ fun TerminalScreen(controller: TerminalController, settings: SettingsViewModel) 
                 modifier = Modifier.fillMaxSize()
                     .semantics { contentDescription = "Terminal çıktısı" },
             ) {
-                if (frames.isEmpty()) {
+                if (lines.size <= 1 && lines.firstOrNull()?.text?.isBlank() != false) {
                     Column(
                         Modifier.fillMaxSize().padding(20.dp),
                         verticalArrangement = Arrangement.Center,
                     ) {
                         Text(
-                            "$ bağlantı bekleniyor",
-                            color = TermGreen,
+                            if (state == ConnectionState.CONNECTING) "$ bağlanıyor…" else "$ bekleniyor",
+                            color = if (state == ConnectionState.CONNECTING) TermAmber else TermGreen,
                             fontFamily = FontFamily.Monospace,
                             fontSize = (14 * settings.theme.fontScale).sp,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "Bağlantılar sekmesinden bir host seç. Oturum ölürse tmux re-attach yapılır, komut yeniden çalıştırılmaz.",
-                            color = TermText.copy(alpha = 0.6f),
-                            style = MaterialTheme.typography.bodySmall,
                         )
                     }
                 } else {
                     SelectionContainer {
                         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(8.dp)) {
-                            itemsIndexed(frames) { _, line ->
+                            itemsIndexed(lines) { idx, line ->
+                                val isMatch = currentMatch == idx
+                                val hasMatch = query.length >= 2 && matches.contains(idx)
                                 Text(
-                                    line.trimEnd('\n'),
+                                    line.toAnnotatedString(),
                                     color = TermText,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = (13 * settings.theme.fontScale).sp,
                                     lineHeight = (16 * settings.theme.fontScale).sp,
+                                    modifier = Modifier.fillMaxWidth().background(
+                                        when {
+                                            isMatch -> TermAmber.copy(alpha = 0.35f)
+                                            hasMatch -> TermAmber.copy(alpha = 0.12f)
+                                            else -> Color.Transparent
+                                        },
+                                    ),
                                 )
                             }
                         }
                     }
                 }
             }
-            // Sonda değilken "en alta in" düğmesi
-            if (!atBottom && frames.isNotEmpty()) {
+            if (!atBottom && lines.size > 1) {
                 SmallFloatingActionButton(
-                    onClick = { scope.launch { listState.scrollToItem(frames.size - 1) } },
+                    onClick = { scope.launch { listState.scrollToItem(lines.size - 1) } },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
                 ) {
                     Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "En alta in")

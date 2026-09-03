@@ -22,6 +22,8 @@ interface SshTransport : AutoCloseable {
     suspend fun openPty(term: String = "xterm-256color", size: TerminalSize)
     suspend fun send(input: TerminalInput)
     suspend fun read(): TerminalFrame
+    // Engellemesiz okuma (burst toplama için); veri yoksa null.
+    fun poll(): TerminalFrame? = null
     suspend fun resize(size: TerminalSize)
     val transport: TerminalTransport
 }
