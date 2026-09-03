@@ -1,0 +1,3 @@
+{"role":"assistant","content":"Checking files"}
+{"role":"tool","name":"shell","arguments":{"cmd":"go test ./..."}}
+{"role":"approval_request","cmd":"go test ./...","digest":"abc123"}
