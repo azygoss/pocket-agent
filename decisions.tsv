@@ -8,3 +8,5 @@ D006	2026-09-03	Protocol v1 frozen: host.proto + control.proto, major=1, whiteli
 D007	2026-09-03	Headless-first: emulator/connectedTest skipped on this box	No emulator on device; lint+unit+assembleDebug + Go suites are the gates	testDebugUnitTest 16/16 + app-debug.apk	P05-P16 headless depth done
 D008	2026-09-03	Backend routes frozen: pairing/devices/hosts/uploads/webhook/approvals	HTTP race 409, 10MB cap, tenant isolation tests	go test ./backend/...	P02/P13/P15 done
 D009	2026-09-03	CLI wired: host/hooks/service/update/doctor-json	QR payload, 12-file merge, idempotent service, unsigned update refused	go run CLI smoke	P03/P04 done
+D010	2026-09-03	Real transports live: SSH TOFU localhost + tmux socket + backend HTTP proof	x/crypto dial/run, tmux Ensure/List/Kill, healthz 202/400	go test ./host/ssh ./host/tmux + curl	P06/P09/P02 live
+D011	2026-09-03	Release train headless: CLI tarballs 4-arch + SHA256 + SBOM + compose config	package-cli.sh, sbom.sh, compose config OK	dist/* + sbom-go.json	P18 headless done
