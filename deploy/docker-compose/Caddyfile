@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# P02 Caddy skeleton — real domain + TLS in production .env.
+{$DOMAIN:localhost} {
+	reverse_proxy api:8080
+}
