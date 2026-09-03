@@ -91,6 +91,9 @@ class TerminalController(
     // Başarılı bağlantıda tetiklenir (örn. lastConnectedAt güncellemesi).
     var onConnected: ((SavedConnection) -> Unit)? = null
 
+    // Aktif transport SFTP destekliyorsa döner (dosya sekmesi buradan beslenir).
+    fun sftp(): SftpSession? = transport as? SftpSession
+
     // User confirmed the fingerprint: pin it, then retry the same connection.
     fun acceptHostKeyAndReconnect() {
         val p = _pendingHostKey.value ?: return

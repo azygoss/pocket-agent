@@ -64,9 +64,19 @@ private val LightColors = lightColorScheme(
 )
 
 @Composable
-fun PocketAgentTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun PocketAgentTheme(dark: Boolean = isSystemInDarkTheme(), amoled: Boolean = false, content: @Composable () -> Unit) {
+    val colors = when {
+        !dark -> LightColors
+        amoled -> DarkColors.copy(
+            background = Color.Black,
+            surface = Color.Black,
+            surfaceContainer = Color(0xFF0A0A0A),
+            surfaceVariant = Color(0xFF161616),
+        )
+        else -> DarkColors
+    }
     MaterialTheme(
-        colorScheme = if (dark) DarkColors else LightColors,
+        colorScheme = colors,
         content = content,
     )
 }

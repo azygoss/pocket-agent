@@ -5,6 +5,15 @@ import dev.pocketagent.ui.*
 import org.junit.Assert.*
 import org.junit.Test
 
+private class PanelsFakeConnector : dev.pocketagent.transport.SshConnector {
+    override suspend fun open(
+        conn: dev.pocketagent.transport.SavedConnection,
+        secret: dev.pocketagent.transport.Secret?,
+        size: dev.pocketagent.transport.TerminalSize,
+    ): dev.pocketagent.transport.SshTransport =
+        dev.pocketagent.transport.FakeSshTransport().also { it.openPty("xterm-256color", size) }
+}
+
 class PanelsTest {
     @Test fun inboxMergesPerSession() {
         val vm = InboxViewModel()
@@ -21,11 +30,17 @@ class PanelsTest {
         assertTrue(vm.decide("d", "3", true))
         assertEquals("approve", vm.lastDecision)
     }
-    @Test fun filesJail() {
-        val vm = FilesViewModel()
-        assertTrue(vm.canOpen("docs/a.md"))
-        assertFalse(vm.canOpen("../../etc/passwd"))
-        assertFalse(vm.canOpen("/etc/passwd"))
+    @Test fun filesRequiresActiveSession() {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
+        val mgr = dev.pocketagent.transport.SessionManager(
+            scope,
+            dev.pocketagent.transport.TofuHostKeyStore(java.io.File.createTempFile("hostkeys", ".db")),
+        ) { PanelsFakeConnector() }
+        val vm = FilesViewModel(mgr, scope, java.io.File.createTempFile("cache", "dir"))
+        assertFalse(vm.hasActiveSftp())
+        vm.open() // oturum yok: no-op, crash yok
+        assertNull(vm.path)
+        assertTrue(vm.entries.isEmpty())
     }
     @Test fun themeAndShortcuts() {
         val s = SettingsViewModel()

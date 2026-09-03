@@ -26,6 +26,8 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
@@ -42,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -53,7 +56,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -66,6 +72,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalController
@@ -85,6 +94,7 @@ fun TermLine.toAnnotatedString(): AnnotatedString = buildAnnotatedString {
         withStyle(
             SpanStyle(
                 color = s.style.fg?.let { Color(it) } ?: Color.Unspecified,
+                background = s.style.bg?.let { Color(it) } ?: Color.Unspecified,
                 fontWeight = if (s.style.bold) FontWeight.Bold else null,
                 textDecoration = if (s.style.underline) TextDecoration.Underline else null,
             ),
@@ -175,8 +185,23 @@ private fun ActiveTerminal(
     var ctrl by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
+    var fullscreen by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+
+    // Tam ekran: sistem çubuklarını gizle (vim/htop için maksimum alan).
+    val view = LocalView.current
+    DisposableEffect(fullscreen) {
+        val window = (view.context as? android.app.Activity)?.window
+        val ic = window?.let { WindowCompat.getInsetsController(it, view) }
+        if (fullscreen && ic != null) {
+            ic.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            ic.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            ic?.show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose { ic?.show(WindowInsetsCompat.Type.systemBars()) }
+    }
 
     // Kullanıcı sondaysa otomatik kaydır; yukarıdaysa rahatsız etme.
     val atBottom by remember {
@@ -194,6 +219,8 @@ private fun ActiveTerminal(
         if (query.length < 2) emptyList()
         else lines.mapIndexedNotNull { i, l -> if (l.text.contains(query, ignoreCase = true)) i else null }
     }
+    // itemsIndexed içinde O(n·m) contains yerine set sorgusu
+    val matchSet = remember(matches) { matches.toSet() }
     var matchCursor by remember { mutableStateOf(0) }
     val currentMatch = matches.getOrNull(matchCursor)
 
@@ -216,7 +243,8 @@ private fun ActiveTerminal(
     }
 
     Column {
-        // Durum çubuğu
+        // Durum çubuğu (tam ekranda gizli)
+        if (!fullscreen) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             StateDot(state)
             Spacer(Modifier.width(8.dp))
@@ -237,12 +265,10 @@ private fun ActiveTerminal(
             IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) query = "" }) {
                 Icon(Icons.Filled.Search, contentDescription = "Scrollback'te ara")
             }
+            IconButton(onClick = { fullscreen = true }) {
+                Icon(Icons.Filled.Fullscreen, contentDescription = "Tam ekran")
+            }
             when (state) {
-                ConnectionState.ACTIVE -> {
-                    OutlinedButton(onClick = { vm.shrink(); controller.send(TerminalInput.Resize(vm.size)) }) { Text("A-") }
-                    Spacer(Modifier.width(4.dp))
-                    OutlinedButton(onClick = { vm.grow(); controller.send(TerminalInput.Resize(vm.size)) }) { Text("A+") }
-                }
                 ConnectionState.CLOSED, ConnectionState.FAILED -> {
                     if (controller.canReconnect()) {
                         TextButton(onClick = { controller.reconnect() }) {
@@ -257,6 +283,7 @@ private fun ActiveTerminal(
             IconButton(onClick = onClose) {
                 Icon(Icons.Filled.Close, contentDescription = "Oturumu kapat", tint = MaterialTheme.colorScheme.error)
             }
+        }
         }
 
         // Arama çubuğu
@@ -300,13 +327,27 @@ private fun ActiveTerminal(
             }
         }
 
-        // Terminal yüzeyi
+        // Terminal yüzeyi — ölçülen boyut PTY'ye resize olarak gider.
+        val termBg = Color(settings.theme.palette.background)
+        val density = LocalDensity.current
+        val charW = with(density) { (13 * settings.theme.fontScale).sp.toPx() } * 0.6f
+        val lineH = with(density) { (16 * settings.theme.fontScale).sp.toPx() }
         Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 6.dp)) {
             Surface(
-                color = TermBg,
-                shape = RoundedCornerShape(10.dp),
+                color = termBg,
+                shape = if (fullscreen) RoundedCornerShape(0.dp) else RoundedCornerShape(10.dp),
                 modifier = Modifier.fillMaxSize()
-                    .semantics { contentDescription = "Terminal çıktısı" },
+                    .semantics { contentDescription = "Terminal çıktısı" }
+                    .onSizeChanged { sz ->
+                        val pad = with(density) { 16.dp.toPx() }
+                        val cols = ((sz.width - pad) / charW).toInt().coerceIn(20, 500)
+                        val rows = (sz.height / lineH).toInt().coerceIn(4, 200)
+                        val newSize = TerminalSize(cols, rows)
+                        if (newSize != vm.size) {
+                            vm.setSize(newSize)
+                            if (state == ConnectionState.ACTIVE) controller.send(TerminalInput.Resize(newSize))
+                        }
+                    },
             ) {
                 if (lines.size <= 1 && lines.firstOrNull()?.text?.isBlank() != false) {
                     Column(
@@ -325,7 +366,7 @@ private fun ActiveTerminal(
                         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(8.dp)) {
                             itemsIndexed(lines) { idx, line ->
                                 val isMatch = currentMatch == idx
-                                val hasMatch = query.length >= 2 && matches.contains(idx)
+                                val hasMatch = matchSet.contains(idx)
                                 Text(
                                     line.toAnnotatedString(),
                                     color = TermText,
@@ -353,9 +394,18 @@ private fun ActiveTerminal(
                     Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "En alta in")
                 }
             }
+            if (fullscreen) {
+                SmallFloatingActionButton(
+                    onClick = { fullscreen = false },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+                ) {
+                    Icon(Icons.Filled.FullscreenExit, contentDescription = "Tam ekrandan çık")
+                }
+            }
         }
 
-        // Ekstra tuşlar
+        // Ekstra tuşlar (tam ekranda gizli)
+        if (!fullscreen) {
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -376,11 +426,16 @@ private fun ActiveTerminal(
             ExtraKey("↓") { sendText("\u001B[B") }
             ExtraKey("→") { sendText("\u001B[C") }
             ExtraKey("←") { sendText("\u001B[D") }
+            ExtraKey("Home") { sendText("\u001B[H") }
+            ExtraKey("End") { sendText("\u001B[F") }
+            ExtraKey("PgUp") { sendText("\u001B[5~") }
+            ExtraKey("PgDn") { sendText("\u001B[6~") }
             ExtraKey("|") { sendText("|") }
             ExtraKey("~") { sendText("~") }
             ExtraKey("/") { sendText("/") }
             ExtraKey("-") { sendText("-") }
             ExtraKey("_") { sendText("_") }
+        }
         }
 
         // Giriş satırı: geçmiş ↑↓ + metin + gönder

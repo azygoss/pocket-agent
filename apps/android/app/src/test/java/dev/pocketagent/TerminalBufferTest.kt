@@ -5,18 +5,26 @@ import dev.pocketagent.transport.TerminalBuffer
 import org.junit.Assert.*
 import org.junit.Test
 
+// TerminalBuffer v2 (ekran modeli). Not: PTY çıktısı gerçekte CRLF'dir
+// (ONLCR); LF tek başına yalnız aşağı iner, sütunu sıfırlamaz.
 class TerminalBufferTest {
     @Test fun plainLinesAndPartialLine() {
         val b = TerminalBuffer()
         b.feed("hello")
         assertEquals("hello", b.snapshot().single().text)
-        b.feed(" world\nnext\n")
+        b.feed(" world\r\nnext\r\n")
         assertEquals(listOf("hello world", "next"), b.snapshot().map { it.text })
+    }
+
+    @Test fun lfOnlyMovesDownKeepsColumn() {
+        val b = TerminalBuffer()
+        b.feed("ab\ncd") // CR yok: ikinci satır sütun 2'den başlar (gerçek PTY davranışı)
+        assertEquals(listOf("ab", "  cd"), b.snapshot().map { it.text })
     }
 
     @Test fun carriageReturnOverwrites() {
         val b = TerminalBuffer()
-        b.feed("progress 10%\rprogress 90%\n")
+        b.feed("progress 10%\rprogress 90%\r\n")
         assertEquals("progress 90%", b.snapshot().single().text)
     }
 
@@ -28,7 +36,7 @@ class TerminalBufferTest {
 
     @Test fun sgrColorsBecomeSpans() {
         val b = TerminalBuffer()
-        b.feed("\u001B[31mred\u001B[0m plain\n")
+        b.feed("\u001B[31mred\u001B[0m plain\r\n")
         val line = b.snapshot().single()
         assertEquals("red plain", line.text)
         assertEquals(2, line.spans.size)
@@ -38,13 +46,32 @@ class TerminalBufferTest {
 
     @Test fun boldAndBrightAnd256() {
         val b = TerminalBuffer()
-        b.feed("\u001B[1;96mhi\u001B[0m\n")
+        b.feed("\u001B[1;96mhi\u001B[0m\r\n")
         val s = b.snapshot().single().spans.single().style
         assertTrue(s.bold)
         assertEquals(0xFF56D4DD, s.fg) // bright cyan
         val b2 = TerminalBuffer()
-        b2.feed("\u001B[38;5;196mx\n")
+        b2.feed("\u001B[38;5;196mx\r\n")
         assertEquals(0xFFFF0000, b2.snapshot().single().spans.single().style.fg) // kırmızı küp
+    }
+
+    @Test fun backgroundColors() {
+        val b = TerminalBuffer()
+        b.feed("\u001B[41;97mhi\u001B[0m\r\n")
+        val s = b.snapshot().single().spans.single().style
+        assertEquals(0xFFF85149, s.bg) // kırmızı zemin
+        assertEquals(0xFFFFFFFF, s.fg) // parlak beyaz
+        val b2 = TerminalBuffer()
+        b2.feed("\u001B[48;2;10;20;30mx\r\n")
+        assertEquals(0xFF0A141E, b2.snapshot().single().spans.single().style.bg)
+    }
+
+    @Test fun inverseVideoSwapsColors() {
+        val b = TerminalBuffer()
+        b.feed("\u001B[7mhi\u001B[27m\r\n")
+        val s = b.snapshot().single().spans.single().style
+        assertNotNull(s.bg) // fg ↔ bg takas edildi
+        assertNotNull(s.fg)
     }
 
     @Test fun eraseLineAndCursorMoves() {
@@ -52,24 +79,103 @@ class TerminalBufferTest {
         b.feed("abcdef\u001B[3DZZ") // 3 geri, üstüne yaz
         assertEquals("abcZZf", b.snapshot().single().text)
         val b2 = TerminalBuffer()
-        b2.feed("junk\r\u001B[Kclean\n")
+        b2.feed("junk\r\u001B[Kclean\r\n")
         assertEquals("clean", b2.snapshot().single().text)
+    }
+
+    @Test fun cursorPositioningAndClamp() {
+        val b = TerminalBuffer(cols = 40, rows = 6)
+        b.feed("\u001B[3;10Hhi") // 3. satır 10. sütun (1-based)
+        val lines = b.snapshot().map { it.text }
+        assertEquals(3, lines.size)
+        assertEquals("", lines[0])
+        assertEquals("", lines[1])
+        assertEquals("         hi", lines[2])
+        b.feed("\u001B[999;999HZ") // ekran dışı → clamp, tek karakter
+        val last = b.snapshot().last().text
+        assertTrue("son satır Z ile bitmeli: '$last'", last.endsWith("Z"))
+    }
+
+    @Test fun altScreenSwapsAndRestores() {
+        val b = TerminalBuffer(cols = 40, rows = 4)
+        b.feed("main line\r\n")
+        b.feed("\u001B[?1049h")
+        assertTrue(b.altScreenActive)
+        b.feed("\u001B[1;1HALT MODE")
+        assertEquals(listOf("ALT MODE"), b.snapshot().map { it.text })
+        b.feed("\u001B[?1049l")
+        assertFalse(b.altScreenActive)
+        assertEquals(listOf("main line"), b.snapshot().map { it.text })
+    }
+
+    @Test fun decGraphicsCharset() {
+        val b = TerminalBuffer()
+        b.feed("\u001B[?1049h\u001B[1;1H\u001B(0lqqk\u001B(B") // DEC graphics: ┌──┐
+        assertEquals("┌──┐", b.snapshot().first().text)
+    }
+
+    @Test fun insertAndDeleteLines() {
+        val b = TerminalBuffer(cols = 20, rows = 5)
+        b.feed("r0\r\nr1\r\nr2\r\nr3")
+        b.feed("\u001B[2;1H\u001B[L") // 2. satıra boş satır ekle → r1..r3 aşağı kayar
+        assertEquals(listOf("r0", "", "r1", "r2", "r3"), b.snapshot().map { it.text })
+        b.feed("\u001B[2;1H\u001B[M") // geri sil
+        assertEquals(listOf("r0", "r1", "r2", "r3"), b.snapshot().map { it.text })
+    }
+
+    @Test fun scrollRegionConfinesScrolling() {
+        val b = TerminalBuffer(cols = 20, rows = 4)
+        b.feed("a\r\nb\r\nc\r\nd")
+        b.feed("\u001B[2;3r") // bölge: satır 2-3 (1-based)
+        b.feed("\u001B[3;1H") // bölge dibine git (row idx 2)
+        b.feed("\n\n") // bölge içinde 2 kez kaydır
+        val lines = b.snapshot().map { it.text }
+        assertEquals("a", lines[0]) // bölge dışı sabit
+        assertEquals("d", lines[3]) // bölge dışı sabit
+        assertEquals(0, b.scrollbackSize) // bölge içi kaydırma scrollback üretmez
+    }
+
+    @Test fun scrollbackOnlyFromMainScreenTop() {
+        val b = TerminalBuffer(cols = 20, rows = 4)
+        b.feed("l\r\n".repeat(10))
+        assertTrue(b.scrollbackSize > 0)
+        val before = b.scrollbackSize
+        b.feed("\u001B[?1049h" + "x\r\n".repeat(10)) // alt ekranda kaydır
+        assertEquals(before, b.scrollbackSize)
+    }
+
+    @Test fun eraseDisplayModes() {
+        val b = TerminalBuffer(cols = 20, rows = 4)
+        b.feed("a\r\nb\r\nc\r\nd")
+        b.feed("\u001B[2;1H\u001B[1J") // baştan imlece sil
+        assertEquals(listOf("", "", "c", "d"), b.snapshot().map { it.text })
+        b.feed("\u001B[3J") // scrollback temizle
+        assertEquals(0, b.scrollbackSize)
+    }
+
+    @Test fun resizeShrinkMovesTopToScrollback() {
+        val b = TerminalBuffer(cols = 20, rows = 4)
+        b.feed("r0\r\nr1\r\nr2\r\nr3")
+        b.setScreenSize(20, 2)
+        // snapshot = scrollback (r0,r1) + ekran (r2,r3)
+        assertEquals(listOf("r0", "r1", "r2", "r3"), b.snapshot().map { it.text })
+        assertEquals(2, b.scrollbackSize)
     }
 
     @Test fun escapeSplitAcrossChunks() {
         val b = TerminalBuffer()
         b.feed("a\u001B[3") // yarım CSI
-        b.feed("2mgreen\n") // tamamlanıyor
+        b.feed("2mgreen\r\n") // tamamlanıyor
         val line = b.snapshot().single()
         assertEquals("agreen", line.text)
         assertEquals(0xFF3FB950, line.spans[1].style.fg)
     }
 
     @Test fun boundsAndCount() {
-        val b = TerminalBuffer(maxLines = 10)
-        b.feed("line\n".repeat(100))
-        assertEquals(10, b.lineCount)
-        assertEquals(10, b.snapshot().size)
+        val b = TerminalBuffer(maxLines = 10, rows = 4)
+        b.feed("line\r\n".repeat(100))
+        assertEquals(10, b.scrollbackSize) // scrollback tavanı
+        assertEquals(10 + 3, b.snapshot().size) // + görünen ekran (3 dolu satır)
         b.clear()
         assertEquals(0, b.lineCount)
     }
@@ -77,7 +183,7 @@ class TerminalBufferTest {
     @Test fun burst10MbPerformance() {
         val b = TerminalBuffer()
         val chunk = buildString {
-            repeat(1000) { append("\u001B[32mok\u001B[0m log satırı $it \u001B[31muyarı\u001B[0m\n") }
+            repeat(1000) { append("\u001B[32mok\u001B[0m log satırı $it \u001B[31muyarı\u001B[0m\r\n") }
         }
         val t0 = System.nanoTime()
         while (b.totalFed < 10_000_000) b.feed(chunk)

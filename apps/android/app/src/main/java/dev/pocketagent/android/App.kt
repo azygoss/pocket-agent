@@ -52,11 +52,19 @@ class App : Application() {
     // P13: agent inbox app-seviyesinde — EventSync poller'ı besler.
     val inbox by lazy { InboxViewModel() }
 
+    // P13 kullanım snapshot'ları (backend /v1/usages).
+    val usage by lazy { dev.pocketagent.ui.UsageViewModel() }
+
     @Volatile var backendClient: BackendClient? = null
         private set
 
     val eventSync: EventSync by lazy {
-        EventSync(appScope, { backendClient }, onEvents = { events -> inbox.mergeRemote(events) })
+        EventSync(
+            appScope,
+            { backendClient },
+            onEvents = { events -> inbox.mergeRemote(events) },
+            onUsages = { arr -> usage.updateFrom(arr) },
+        )
     }
 
     fun configureBackend(url: String, tenant: String) {

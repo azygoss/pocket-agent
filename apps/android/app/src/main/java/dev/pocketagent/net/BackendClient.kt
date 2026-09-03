@@ -65,6 +65,15 @@ class BackendClient(
         return c.responseCode
     }
 
+    // Kullanım snapshot'ları (P13: türetilmiş, ham transcript asla). Şimdilik
+    // backend boş dizi döndürür — host raporlama bağlanınca dolar.
+    fun usages(): JSONArray {
+        val c = conn("/v1/usages")
+        require(c.responseCode == 200) { "usages ${c.responseCode}" }
+        val body = BufferedReader(InputStreamReader(c.inputStream)).readText()
+        return JSONArray(body)
+    }
+
     companion object {
         fun parseEvents(body: String): List<BackendEvent> {
             val arr = JSONArray(body)
