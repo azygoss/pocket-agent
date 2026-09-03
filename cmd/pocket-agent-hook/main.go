@@ -14,6 +14,7 @@ import (
 	"github.com/pocket-agent/pocket-agent/host/hooks"
 	"github.com/pocket-agent/pocket-agent/host/pairing"
 	"github.com/pocket-agent/pocket-agent/host/service"
+	hosttmux "github.com/pocket-agent/pocket-agent/host/tmux"
 )
 
 const version = "0.1.0-p03"
@@ -57,18 +58,34 @@ func main() {
 		}
 		os.Exit(doctor.ExitCode(checks))
 	case "probe":
-		fmt.Println("probe: ssh/mosh/et/tmux checks via doctor (see: pocket-agent doctor)")
+		checks := doctor.Run()
+		bad := 0
+		for _, c := range checks {
+			st := "ok"
+			if !c.OK {
+				st = "FAIL"
+				bad++
+			}
+			fmt.Printf("%-12s %s %s\n", c.Name, st, c.Info)
+		}
+		if bad > 0 {
+			os.Exit(1)
+		}
 	case "host":
 		cmdHost(os.Args[2:])
 	case "hooks":
 		cmdHooks(os.Args[2:])
 	case "service":
 		cmdService(os.Args[2:])
+	case "servers":
+		cmdServers(os.Args[2:])
+	case "logs":
+		fmt.Println("logs: user log at ~/.local/share/pocket-agent/daemon.log")
 	case "update":
 		// Signed manifest required; unsigned always refused (P03 gate).
 		fmt.Fprintln(os.Stderr, "update refused: missing signed manifest (checksum+sig required)")
 		os.Exit(3)
-	case "pair", "unpair", "servers", "set", "logs", "usage", "diff", "context", "cwd-list", "completion":
+	case "pair", "unpair", "set", "usage", "diff", "context", "cwd-list", "completion":
 		fmt.Printf("pocket-agent %s: wired in next slice (surface frozen)\n", os.Args[1])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
@@ -185,6 +202,25 @@ func cmdService(args []string) {
 	default:
 		fmt.Fprintln(os.Stderr, "unknown service subcommand")
 		os.Exit(2)
+	}
+}
+
+func cmdServers(args []string) {
+	if len(args) > 0 && args[0] == "kill" {
+		fmt.Println("servers kill: pass a session name (never kill-server)")
+		return
+	}
+	names, err := hosttmux.List("")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "tmux: "+err.Error())
+		os.Exit(1)
+	}
+	if len(names) == 0 {
+		fmt.Println("no sessions")
+		return
+	}
+	for _, n := range names {
+		fmt.Println(n)
 	}
 }
 
