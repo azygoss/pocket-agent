@@ -1,0 +1,8 @@
+version: v2
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: gen/go
+    opt:
+      - paths=source_relative
+  # Kotlin / Java codegen P05'te Android Gradle üzerinden (protobuf-gradle-plugin);
+  # Buf remote kotlin plugin'i sabitleme P05 ADR'inde yapılacak.

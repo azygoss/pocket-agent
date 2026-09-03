@@ -4,3 +4,4 @@ D002	2026-09-03	License GPL-3.0-or-later for whole monorepo; CCS published per r
 D003	2026-09-03	Monorepo layout: apps/android, host, backend, protocol, native, deploy, docs, scripts, tests	Single source of truth, atomic proto changes	plan.md §2.1	Created in P00; Buf breaking-check from P01
 D004	2026-09-03	minSdk 29 (Android 10), ABIs arm64-v8a + armeabi-v7a + x86_64	Matches product scope; covers 95%+ devices without 32-bit x86 burden	plan.md §2.3	P05 Gradle config must enforce
 D005	2026-09-03	Backend single Go service + PostgreSQL, no Redis, single replica v1	Ops simplicity for self-host; Redis unjustified at this scale	plan.md §2.5	P02 docker-compose + backup/restore proves it
+D006	2026-09-03	Protocol v1 frozen: host.proto + control.proto, major=1, whitelist AgentEventSummary	Buf lint green + Go golden tests + privacy-schema gate; Kotlin reuses same JSON fixtures in P05	protocol/fixtures/golden-v1.json + go test ./protocol/...	P01 done, P02/P03 unblocked
