@@ -41,7 +41,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 ## 4. Test raporu (son yeşil koşu)
 
 - Go: 18 paket `ok`, 0 FAIL (`go test ./... -count=1`), `go vet` + `go build ./...` temiz.
-- Android: 37/37 unit (0 fail, SshjLiveTest env-gated) + `lintDebug` (0 hata) + `assembleDebug` yeşil. Robolectric `MainActivity` launch dahil.
+- Android: 44/44 unit (0 fail, SshjLiveTest env-gated) + `lintDebug` (0 hata) + `assembleDebug` yeşil. Robolectric `MainActivity` launch + Room repo testi dahil.
 - Canlı SSH kanıtı: `PA_LIVE_SSH=1 PA_LIVE_USER=pa-dev PA_LIVE_PEM=/tmp/pa-dev-key ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SshjLiveTest` → localhost sshd'ye TOFU hard-stop → pin → ed25519 key auth → PTY → `echo PA_ALIVE_42` okundu (test user `pa-dev` bu makinede hazır).
 - Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (66MB, debug imzalı; SSHJ+bcprov+icons dahil).
 - CLI: `dist/` git-dışı (tarballs + `SHA256SUMS` + `sbom-go.json`).
@@ -71,12 +71,21 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 
 ## 7. Bilinen eksikler (cihaz/ağ/kimlik bilgisi ister)
 
-1. Mosh/ET `.so` + roaming kanıtı; termlib render + IME/CJK/OSC52 + gesture.
-2. Keystore StrongBox + Biometric CryptoObject; cbssh/SSHJ `SshTransport` takma.
+1. Mosh/ET `.so` + roaming kanıtı; termlib render (tam VT100, renk) + IME/CJK/OSC52 + gesture.
+2. Keystore StrongBox + Biometric CryptoObject; biyometrik app-kilit.
 3. FCM service-account push; Passkey/OIDC turu; whisper model; S3 adapter.
 4. AAB + Play kanalı + upload-keystore imza; cosign/SLSA/syft-CycloneDX; CCS paketi.
 5. pcap privacy kanıtı; perf SLO ölçümleri; 10 canlı yol videosu; 2-cihaz race.
 6. WSL/macOS/Windows doğrulama; Homebrew tap; prod Postgres backup/restore + Caddy TLS.
+7. Çoklu eşzamanlı oturum (sekme/bölünmüş terminal); port-forward yönetici UI'ı; tmux/Zellij seçim UI'ı (capability probe cihazda).
+
+## 7b. Günlük kullanım katmanı (0.3.0'da eklendi)
+
+- Ayarlar DataStore'da kalıcı (tema + font ölçeği); `SettingsViewModel(store, scope)`.
+- Secret'lar: RAM-only varsayılan, "Keystore ile sakla" opt-in → AES-256-GCM (`KeystoreSecretStore`); plaintext diskte yok.
+- Bağlantı düzenleme diyaloğu, `lastConnectedAt` sıralaması, eksik secret'ta bağlan → düzenleme diyaloğu.
+- Terminal: komut geçmişi (↑↓, dedupe, 100 cap), Ctrl toggle, reconnect, sonda-otomatik kaydırma + alta-in FAB, 30s SSH keepalive.
+- Snackbar (bağlandı/kapandı), Agents tab okunmamış rozeti, FGS bağlantıyla start/stop.
 
 ## 8. Sıradaki iş (önerilen sıra)
 
