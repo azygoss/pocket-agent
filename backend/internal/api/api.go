@@ -18,6 +18,12 @@ type Server struct {
 	Store *store.Store
 }
 
+// New builds the handler with shared store.
+func New(st *store.Store) *Server { return &Server{Store: st} }
+
+// Handler exposes routes for cmd/server.
+func (s *Server) Handler() http.Handler { return s.routes() }
+
 func tenantOf(r *http.Request) string { return r.Header.Get("X-Tenant") }
 
 func (s *Server) routes() *http.ServeMux {

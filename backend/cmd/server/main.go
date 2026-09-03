@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+// Command pocket-agent-backend: stdlib HTTP + 1m TTL sweeper (P02/P13/P15).
 package main
 
 import (
@@ -6,14 +7,26 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/pocket-agent/pocket-agent/backend/internal/api"
 	"github.com/pocket-agent/pocket-agent/backend/internal/store"
 )
 
 func main() {
-	_ = store.New()
-	_ = time.Now()
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
-	log.Println("pocket-agent backend skeleton listening on :8080 (full API in P02 slices)")
-	_ = http.ListenAndServe(":8080", mux)
+	st := store.New()
+	srv := api.New(st)
+	go func() {
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for now := range t.C {
+			ev, pr := st.SweepTTL(now)
+			if ev+pr > 0 {
+				log.Printf("ttl sweep: events=%d pairings=%d", ev, pr)
+			}
+		}
+	}()
+	addr := ":8080"
+	log.Printf("pocket-agent backend listening on %s", addr)
+	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
+		log.Fatal(err)
+	}
 }
