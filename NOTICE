@@ -1,0 +1,15 @@
+Pocket Agent — Third-party notices
+
+This file tracks third-party components. Full license texts live with
+their sources; SPDX identifiers are enforced by scripts/license-check.sh.
+
+| Component | Upstream | License | Notes |
+|---|---|---|---|
+| Mosh (mobile shell) | https://github.com/mobile-shell/mosh | GPL-3.0-only | Source + Android patches bundled in CCS (P18). No prebuilt binary in repo. |
+| mosh4android base (ConnectBot) | connectbot/mosh4android | GPL-3.0-or-later (verify at pin) | P07 pins source revision in decisions.tsv |
+| ConnectBot cbssh / termlib | https://github.com/connectbot/ | Apache-2.0 / GPL (verify at pin) | P05/P06 pins exact revision; license screen required |
+| EternalTerminal | https://github.com/MisterTea/EternalTerminal | GPL-3.0-or-later (verify) | Source build only; protocol doc governs tests |
+| whisper.cpp | https://github.com/ggerganov/whisper.cpp | MIT (verify) | On-device dictation (P16) |
+| PostgreSQL / Caddy / Go modules | various | BSD/MIT/Apache-2.0 | Pinned in go.mod + image SBOM (P18) |
+
+In-app license screen (P05) must surface the above. `docs/security/licenses.md` is the detailed inventory.
