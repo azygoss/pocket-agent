@@ -1,0 +1,52 @@
+openapi: 3.0.3
+info:
+  title: Pocket Agent Backend
+  version: 1.0.0
+  description: P01 frozen skeleton — full routes in P02.
+paths:
+  /v1/healthz:
+    get:
+      summary: Liveness
+      responses:
+        '200':
+          description: OK
+  /v1/hosts/{hostId}/events:
+    post:
+      summary: Ingest short AgentEventSummary only (whitelist enforced)
+      parameters:
+        - name: hostId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentEventSummary'
+      responses:
+        '202': { description: Accepted }
+        '400': { description: Forbidden field or oversize }
+components:
+  schemas:
+    AgentEventSummary:
+      type: object
+      required: [event_id, opaque_host_id, opaque_session_id, source, category, message, request_digest, revision, created_at, expires_at]
+      properties:
+        event_id: { type: string, example: 'event:01J0000000000000000000001' }
+        opaque_host_id: { type: string }
+        opaque_session_id: { type: string }
+        source: { type: string, enum: [claude, codex, opencode, cursor, kimi, grok, pi, omp, hermes, gemini, antigravity, qwen] }
+        category: { type: string, enum: [APPROVAL_REQUIRED, TASK_COMPLETE, SESSION_STARTED, SESSION_ENDED, TOOL_RUNNING, TOOL_FINISHED, ERROR] }
+        title: { type: string }
+        message: { type: string, maxLength: 256 }
+        truncated: { type: boolean }
+        project_label: { type: string }
+        model_label: { type: string }
+        tool_label: { type: string }
+        context_percent: { type: integer, minimum: 0, maximum: 100 }
+        request_digest: { type: string }
+        revision: { type: string }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+      additionalProperties: false
