@@ -5,31 +5,133 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import dev.pocketagent.ui.Route
+import androidx.compose.ui.unit.sp
+import dev.pocketagent.ui.*
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme {
-                var current by remember { mutableStateOf(Route.Home) }
-                Column(Modifier.fillMaxSize().padding(16.dp)) {
-                    Text("Pocket Agent", style = MaterialTheme.typography.headlineMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Route.entries.forEach { r ->
-                        Button(
-                            onClick = { current = r },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                        ) { Text(r.label) }
+        setContent { PocketAgentApp() }
+    }
+}
+
+@Composable
+fun PocketAgentApp() {
+    val settings = remember { SettingsViewModel() }
+    val inbox = remember { InboxViewModel() }
+    val approval = remember { ApprovalViewModel() }
+    val usage = remember { UsageViewModel() }
+    val files = remember { FilesViewModel() }
+    val shortcuts = remember { ShortcutModel() }
+    var tab by remember { mutableStateOf(RouteTab.Home) }
+    val th = settings.theme
+    MaterialTheme(colorScheme = if (th.dark) darkColorScheme() else lightColorScheme()) {
+        Scaffold(bottomBar = {
+            Row(Modifier.fillMaxWidth().padding(4.dp)) {
+                    RouteTab.entries.forEach { r ->
+                        TextButton(onClick = { tab = r }, modifier = Modifier.weight(1f)) {
+                            Text(r.label)
+                        }
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text("Active: ${current.label}", style = MaterialTheme.typography.bodyLarge)
+            }
+        }) { pad ->
+            Box(Modifier.padding(pad).fillMaxSize().padding(16.dp)) {
+                when (tab) {
+                    RouteTab.Home -> HomePane(inbox)
+                    RouteTab.Connections -> ConnectionsPane(shortcuts)
+                    RouteTab.Sessions -> SessionsPane()
+                    RouteTab.Agents -> AgentsPane(inbox, approval)
+                    RouteTab.Files -> FilesPane(files)
+                    RouteTab.Settings -> SettingsPane(settings, usage)
                 }
             }
         }
+    }
+}
+
+enum class RouteTab(val label: String) {
+    Home("Home"),
+    Connections("Connections"),
+    Sessions("Sessions"),
+    Agents("Agents"),
+    Files("Files"),
+    Settings("Settings")
+}
+
+@Composable
+fun HomePane(inbox: InboxViewModel) {
+    Column {
+        Text("Pocket Agent", style = MaterialTheme.typography.headlineMedium)
+        Text("Unread: ${inbox.rows.count { it.unread }} sessions: ${inbox.rows.size}")
+        Button(onClick = { inbox.add("s1", "e${System.currentTimeMillis()}", "Approve deploy?") }) { Text("Simulate event") }
+    }
+}
+
+@Composable
+fun ConnectionsPane(sc: ShortcutModel) {
+    Column {
+        Text("Connections", style = MaterialTheme.typography.titleLarge)
+        Text("tmux prefix: ${sc.tmuxPrefix()} • custom: ${sc.custom.size}")
+        Button(onClick = { sc.add("Run ${sc.custom.size}", "Ctrl-${sc.custom.size}") }) { Text("Add shortcut") }
+    }
+}
+
+@Composable
+fun SessionsPane() {
+    Column {
+        Text("Active Sessions", style = MaterialTheme.typography.titleLarge)
+        Text("tmux • zellij • herdr (capability-gated) — kill sonrası resume")
+    }
+}
+
+@Composable
+fun AgentsPane(inbox: InboxViewModel, approval: ApprovalViewModel) {
+    Column {
+        Text("Agents", style = MaterialTheme.typography.titleLarge)
+        LazyColumn {
+            items(inbox.rows) { r ->
+                ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(r.title, fontSize = 16.sp)
+                        Row {
+                            Button(onClick = { approval.decide("digest-${r.eventId}", "3", true) }) { Text("Approve") }
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedButton(onClick = { inbox.markRead(r.eventId) }) { Text("Read") }
+                        }
+                        Text("decision: ${approval.lastDecision ?: "-"}")
+                    }
+                }
+            }
+        }
+        if (inbox.rows.isEmpty()) Text("No active rows — session başına birleşir, 24h TTL")
+    }
+}
+
+@Composable
+fun FilesPane(files: FilesViewModel) {
+    Column {
+        Text("Files", style = MaterialTheme.typography.titleLarge)
+        Text("canOpen docs/a.md = ${files.canOpen("docs/a.md")}")
+        Text("Binary listelenir, render edilmez • 10MB/24h paylaşım")
+    }
+}
+
+@Composable
+fun SettingsPane(s: SettingsViewModel, usage: UsageViewModel) {
+    Column {
+        Text("Settings", style = MaterialTheme.typography.titleLarge)
+        Row {
+            Button(onClick = { s.toggleDark() }) { Text(if (s.theme.dark) "Light" else "Dark") }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = { s.setFontScale(s.theme.fontScale + 0.1f) }) { Text("A+ ${(s.theme.fontScale)}") }
+        }
+        usage.rows.forEach { Text("${it.agent}: %${it.percent} (reset ${it.resetIn})") }
+        Text("Dikte: cihaz-içi varsayılan • BYOK opt-in • pocketagent://tmux|herdr")
     }
 }
