@@ -5,3 +5,6 @@ D003	2026-09-03	Monorepo layout: apps/android, host, backend, protocol, native, 
 D004	2026-09-03	minSdk 29 (Android 10), ABIs arm64-v8a + armeabi-v7a + x86_64	Matches product scope; covers 95%+ devices without 32-bit x86 burden	plan.md §2.3	P05 Gradle config must enforce
 D005	2026-09-03	Backend single Go service + PostgreSQL, no Redis, single replica v1	Ops simplicity for self-host; Redis unjustified at this scale	plan.md §2.5	P02 docker-compose + backup/restore proves it
 D006	2026-09-03	Protocol v1 frozen: host.proto + control.proto, major=1, whitelist AgentEventSummary	Buf lint green + Go golden tests + privacy-schema gate; Kotlin reuses same JSON fixtures in P05	protocol/fixtures/golden-v1.json + go test ./protocol/...	P01 done, P02/P03 unblocked
+D007	2026-09-03	Headless-first: emulator/connectedTest skipped on this box	No emulator on device; lint+unit+assembleDebug + Go suites are the gates	testDebugUnitTest 16/16 + app-debug.apk	P05-P16 headless depth done
+D008	2026-09-03	Backend routes frozen: pairing/devices/hosts/uploads/webhook/approvals	HTTP race 409, 10MB cap, tenant isolation tests	go test ./backend/...	P02/P13/P15 done
+D009	2026-09-03	CLI wired: host/hooks/service/update/doctor-json	QR payload, 12-file merge, idempotent service, unsigned update refused	go run CLI smoke	P03/P04 done
