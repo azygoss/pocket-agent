@@ -89,6 +89,8 @@ class SshjConnector(
             val session = ssh.startSession()
             session.allocatePTY("xterm-256color", size.cols, size.rows, 0, 0, emptyMap())
             val shell = session.startShell()
+            // 30s heartbeat: NAT/boşta kesilmelere karşı bağlantı canlı kalır.
+            runCatching { ssh.connection.keepAlive.keepAliveInterval = 30 }
             SshjTransport(ssh, session, shell, size, readScope).also { it.startReader() }
         }
 

@@ -4,6 +4,7 @@ package dev.pocketagent.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,12 +18,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -41,6 +46,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.pocketagent.data.ConnectionRepository
@@ -60,6 +66,7 @@ fun ConnectionsScreen(
     val items by repo.items.collectAsState()
     val active by terminal.connectedTo.collectAsState()
     val state by terminal.state.collectAsState()
+    var editing by remember { mutableStateOf<SavedConnection?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -79,10 +86,15 @@ fun ConnectionsScreen(
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+                    Icon(
+                        Icons.Filled.Dns, contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
                     Text("Kayıtlı host yok", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
-                        "SSH erişimi olan bir host ekle. Parola ve anahtarlar yalnızca RAM'de tutulur, veritabanına yazılmaz.",
+                        "SSH erişimi olan bir host ekle. Secret'lar ya RAM'de tutulur ya da Keystore ile şifrelenir — asla plaintext diske yazılmaz.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -91,18 +103,24 @@ fun ConnectionsScreen(
                 LazyColumn(
                     Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
+                    contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),
                 ) {
                     items(items, key = { it.id }) { c ->
                         ConnectionCard(
                             conn = c,
                             isActive = active?.id == c.id && state == ConnectionState.ACTIVE,
+                            isConnecting = state == ConnectionState.CONNECTING,
+                            hasSecret = repo.hasSavedSecret(c.id),
                             onConnect = {
-                                scope.launch {
-                                    terminal.connect(c, repo.secret(c.id))
+                                val secret = repo.secret(c.id)
+                                if (secret == null && state != ConnectionState.ACTIVE) {
+                                    editing = c // secret sor: diyalog düzenleme modunda açılır
+                                } else {
+                                    terminal.connect(c, secret)
                                     onConnected()
                                 }
                             },
+                            onEdit = { editing = c },
                             onDelete = { scope.launch { repo.delete(c.id) } },
                         )
                     }
@@ -111,13 +129,15 @@ fun ConnectionsScreen(
         }
     }
 
-    if (showAdd) {
-        AddConnectionDialog(
-            onDismiss = { showAdd = false },
-            onSave = { conn, secret ->
+    if (showAdd || editing != null) {
+        ConnectionDialog(
+            initial = editing,
+            onDismiss = { showAdd = false; editing = null },
+            onSave = { conn, secret, remember ->
                 scope.launch {
-                    repo.upsert(conn, secret)
+                    repo.upsert(conn, secret, remember)
                     showAdd = false
+                    editing = null
                 }
             },
         )
@@ -128,9 +148,13 @@ fun ConnectionsScreen(
 private fun ConnectionCard(
     conn: SavedConnection,
     isActive: Boolean,
+    isConnecting: Boolean,
+    hasSecret: Boolean,
     onConnect: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    var menu by remember { mutableStateOf(false) }
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -141,14 +165,35 @@ private fun ConnectionCard(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(conn.name, style = MaterialTheme.typography.titleMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(conn.name, style = MaterialTheme.typography.titleMedium)
+                        if (isActive) {
+                            Spacer(Modifier.width(8.dp))
+                            StateDot(ConnectionState.ACTIVE)
+                        }
+                    }
                     Text(
                         "${conn.user}@${conn.host}:${conn.port}",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (isActive) StateDot(ConnectionState.ACTIVE)
+                Box {
+                    IconButton(onClick = { menu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Menü")
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Düzenle") },
+                            leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                            onClick = { menu = false; onEdit() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Sil", color = MaterialTheme.colorScheme.error) },
+                            onClick = { menu = false; onDelete() },
+                        )
+                    }
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 conn.transportOrder.forEach { t ->
@@ -156,14 +201,14 @@ private fun ConnectionCard(
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = onConnect) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(4.dp))
-                    Text(if (isActive) "Aç" else "Bağlan")
-                }
+                Text(
+                    "Son: ${relativeTime(conn.lastConnectedAt)}" + if (hasSecret) " • secret kayıtlı" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Sil", tint = MaterialTheme.colorScheme.error)
+                Button(onClick = onConnect, enabled = !isConnecting) {
+                    Text(if (isActive) "Terminale git" else "Bağlan")
                 }
             }
         }
@@ -171,21 +216,23 @@ private fun ConnectionCard(
 }
 
 @Composable
-private fun AddConnectionDialog(
+private fun ConnectionDialog(
+    initial: SavedConnection?,
     onDismiss: () -> Unit,
-    onSave: (SavedConnection, Secret?) -> Unit,
+    onSave: (SavedConnection, Secret?, Boolean) -> Unit,
 ) {
-    var name by remember { mutableStateOf("") }
-    var host by remember { mutableStateOf("") }
-    var port by remember { mutableStateOf("22") }
-    var user by remember { mutableStateOf("") }
-    var authKind by remember { mutableStateOf("password") }
+    var name by remember { mutableStateOf(initial?.name ?: "") }
+    var host by remember { mutableStateOf(initial?.host ?: "") }
+    var port by remember { mutableStateOf(initial?.port?.toString() ?: "22") }
+    var user by remember { mutableStateOf(initial?.user ?: "") }
+    var authKind by remember { mutableStateOf(if (initial?.credentialRef == "ram:pem") "pem" else "password") }
     var secretText by remember { mutableStateOf("") }
+    var remember by remember { mutableStateOf(false) }
     var errors by remember { mutableStateOf<List<String>>(emptyList()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Yeni host") },
+        title = { Text(if (initial == null) "Yeni host" else "Hostu düzenle") },
         text = {
             Column(
                 Modifier.verticalScroll(rememberScrollState()),
@@ -218,15 +265,20 @@ private fun AddConnectionDialog(
                 if (authKind == "password") {
                     OutlinedTextField(
                         secretText, { secretText = it },
-                        label = { Text("Parola (yalnız RAM)") }, singleLine = true,
+                        label = { Text(if (initial == null) "Parola" else "Parola (boş = değişme)") },
+                        singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                     )
                 } else {
                     OutlinedTextField(
                         secretText, { secretText = it },
-                        label = { Text("PEM içeriği (yalnız RAM)") },
+                        label = { Text(if (initial == null) "PEM içeriği" else "PEM (boş = değişme)") },
                         minLines = 3, maxLines = 5,
                     )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = remember, onCheckedChange = { remember = it })
+                    Text("Keystore ile şifreli sakla")
                 }
                 if (errors.isNotEmpty()) {
                     Text(
@@ -252,13 +304,17 @@ private fun AddConnectionDialog(
                     user = user.trim(),
                     credentialRef = cred,
                     transportOrder = listOf(TerminalTransport.SSH),
+                    id = initial?.id ?: "",
+                    lastConnectedAt = initial?.lastConnectedAt ?: 0L,
                 )
                 val errs = conn.validate().toMutableList()
-                if (secretText.isBlank()) errs += "secret"
+                val secretBlank = secretText.isBlank()
+                if (initial == null && secretBlank) errs += "secret"
                 if (errs.isEmpty()) {
-                    val secret = if (authKind == "password") Secret.Password(secretText)
+                    val secret = if (secretBlank) null
+                    else if (authKind == "password") Secret.Password(secretText)
                     else Secret.PemKey(secretText)
-                    onSave(conn, secret)
+                    onSave(conn, secret, remember)
                 } else {
                     errors = errs
                 }

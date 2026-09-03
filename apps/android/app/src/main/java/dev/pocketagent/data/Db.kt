@@ -16,6 +16,7 @@ data class ConnectionEntity(
     val jumpHost: String? = null,
     val etPort: Int = 2022,
     val agentForward: Boolean = false,
+    val lastConnectedAt: Long = 0L,
     val sortOrder: Int = 0,
 )
 
@@ -32,12 +33,14 @@ data class AgentEventEntity(
 
 @Dao
 interface ConnectionDao {
-    @Query("SELECT * FROM connections ORDER BY sortOrder, name")
+    @Query("SELECT * FROM connections ORDER BY lastConnectedAt DESC, sortOrder, name")
     suspend fun all(): List<ConnectionEntity>
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(e: ConnectionEntity)
     @Query("DELETE FROM connections WHERE id = :id")
     suspend fun delete(id: String)
+    @Query("UPDATE connections SET lastConnectedAt = :at WHERE id = :id")
+    suspend fun touch(id: String, at: Long)
 }
 
 @Dao
@@ -50,7 +53,7 @@ interface AgentEventDao {
     suspend fun sweepExpired(now: Long): Int
 }
 
-@Database(entities = [ConnectionEntity::class, AgentEventEntity::class], version = 2, exportSchema = false)
+@Database(entities = [ConnectionEntity::class, AgentEventEntity::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun connections(): ConnectionDao
     abstract fun events(): AgentEventDao

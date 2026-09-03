@@ -45,14 +45,19 @@ class FakeSshTransport : SshTransport {
     override fun close() { closed = true; outbox.close() }
 }
 
-// Ekran ViewModel'i: scrollback (sınırlı), giriş, boyut, transport rozeti.
-// Frame'ler ANSI'dan arındırılarak saklanır; her frame bir liste elemanı.
+// Ekran ViewModel'i: scrollback (sınırlı), giriş, boyut, transport rozeti,
+// komut geçmişi (yukarı/aşağı gezinme). Frame'ler ANSI'dan arındırılır.
 class TerminalViewModel(val session: SessionId) {
     private val _frames = MutableStateFlow<List<String>>(emptyList())
     val frames: StateFlow<List<String>> = _frames
     var size = TerminalSize(80, 24)
         private set
     var badge = "SSH"
+        private set
+
+    private val history = ArrayDeque<String>()
+    private var historyCursor = -1
+    var historyCount = 0
         private set
 
     fun onFrame(f: TerminalFrame) {
@@ -67,4 +72,29 @@ class TerminalViewModel(val session: SessionId) {
 
     fun grow() { size = TerminalSize((size.cols + 10).coerceAtMost(200), size.rows) }
     fun shrink() { size = TerminalSize((size.cols - 10).coerceAtLeast(40), size.rows) }
+
+    // Komut geçmişi: en yeni başta, dublikat ardışık giriş yok, 100 kayıt tavan.
+    fun pushHistory(cmd: String) {
+        val c = cmd.trimEnd('\n')
+        if (c.isBlank()) return
+        history.remove(c)
+        history.addFirst(c)
+        while (history.size > 100) history.removeLast()
+        historyCount = history.size
+        historyCursor = -1
+    }
+
+    // Geçmişte gezinme: yukarı = daha eski (null = zaten en eski),
+    // aşağı = daha yeni (geçmiş dışına çıkınca boş string).
+    fun historyOlder(): String? {
+        if (history.isEmpty() || historyCursor >= history.size - 1) return null
+        historyCursor++
+        return history.elementAt(historyCursor)
+    }
+
+    fun historyNewer(): String {
+        if (historyCursor < 0) return ""
+        historyCursor--
+        return if (historyCursor < 0) "" else history.elementAt(historyCursor)
+    }
 }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -82,13 +83,16 @@ fun HomeScreen(
             FilledTonalButton(onClick = { onGoTo(AppTab.Connections) }, modifier = Modifier.weight(1f)) {
                 Text(if (saved.isEmpty()) "İlk hostu ekle" else "Hostlar (${saved.size})")
             }
-            FilledTonalButton(
-                onClick = { onGoTo(AppTab.Terminal) },
-                modifier = Modifier.weight(1f),
-                enabled = state == ConnectionState.ACTIVE,
-            ) {
-                Text("Terminale git")
-                Icon(Icons.Filled.ArrowForward, contentDescription = null, modifier = Modifier.padding(start = 4.dp))
+            if (state == ConnectionState.ACTIVE) {
+                FilledTonalButton(onClick = { onGoTo(AppTab.Terminal) }, modifier = Modifier.weight(1f)) {
+                    Text("Terminale git")
+                    Icon(Icons.Filled.ArrowForward, contentDescription = null, modifier = Modifier.padding(start = 4.dp))
+                }
+            } else if (terminal.canReconnect()) {
+                FilledTonalButton(onClick = { terminal.reconnect(); onGoTo(AppTab.Terminal) }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.padding(end = 4.dp))
+                    Text("Yeniden bağlan")
+                }
             }
         }
 
