@@ -62,9 +62,40 @@ class App : Application() {
         EventSync(
             appScope,
             { backendClient },
-            onEvents = { events -> inbox.mergeRemote(events) },
+            onEvents = { events ->
+                inbox.mergeRemote(events)
+                notifyApprovals(events)
+            },
             onUsages = { arr -> usage.updateFrom(arr) },
         )
+    }
+
+    // Yeni onay isteği geldiğinde (uygulama arka plandayken) bildirim düşür.
+    private fun notifyApprovals(events: List<dev.pocketagent.net.BackendEvent>) {
+        val approvals = events.filter { it.category.contains("APPROVAL", ignoreCase = true) }
+        if (approvals.isEmpty()) return
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+        nm.createNotificationChannel(
+            android.app.NotificationChannel("agents", "Agent onayları", android.app.NotificationManager.IMPORTANCE_HIGH),
+        )
+        val openApp = android.app.PendingIntent.getActivity(
+            this, 0, packageManager.getLaunchIntentForPackage(packageName),
+            android.app.PendingIntent.FLAG_IMMUTABLE,
+        )
+        val n = android.app.Notification.Builder(this, "agents")
+            .setContentTitle("Agent onayı bekliyor")
+            .setContentText(approvals.last().message.ifBlank { approvals.last().category })
+            .setSmallIcon(android.R.drawable.stat_notify_more)
+            .setContentIntent(openApp)
+            .setAutoCancel(true)
+            .build()
+        nm.notify(1001, n)
     }
 
     fun configureBackend(url: String, tenant: String) {

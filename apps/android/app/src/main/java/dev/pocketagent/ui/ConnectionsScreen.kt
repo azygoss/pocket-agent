@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -67,7 +68,15 @@ fun ConnectionsScreen(
     val sessionList by sessions.sessions.collectAsState()
     var editing by remember { mutableStateOf<SavedConnection?>(null) }
     var showAdd by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    // Arama: ad/host/kullanıcı içinde süz (büyük-küçük harf duyarsız)
+    val filtered = remember(items, query) {
+        if (query.isBlank()) items
+        else items.filter {
+            it.name.contains(query, true) || it.host.contains(query, true) || it.user.contains(query, true)
+        }
+    }
 
     Scaffold(
         floatingActionButton = {
@@ -99,12 +108,23 @@ fun ConnectionsScreen(
                     )
                 }
             } else {
+                Column(Modifier.fillMaxSize()) {
+                    if (items.size > 3) {
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            placeholder = { Text("Host ara…") },
+                            singleLine = true,
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        )
+                    }
                 LazyColumn(
                     Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),
                 ) {
-                    items(items, key = { it.id }) { c ->
+                    items(filtered, key = { it.id }) { c ->
                         val openSession = sessionList.firstOrNull { it.conn.id == c.id }
                         val sessionState = openSession?.controller?.state?.collectAsState()?.value
                         ConnectionCard(
@@ -124,6 +144,7 @@ fun ConnectionsScreen(
                             onDelete = { scope.launch { repo.delete(c.id) } },
                         )
                     }
+                }
                 }
             }
         }
