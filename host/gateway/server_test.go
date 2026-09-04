@@ -89,3 +89,25 @@ func TestServerDiffEndpoint(t *testing.T) {
 		t.Fatalf("non-repo want 500, got %d", w.Code)
 	}
 }
+
+func TestServerPreviewLoopbackOnly(t *testing.T) {
+	s := &Server{Token: "t", Root: t.TempDir()}
+	// SSRF: loopback olmayan hedef reddedilir
+	req := httptest.NewRequest("GET", "/preview?h=169.254.169.254&p=80&path=/", nil)
+	req.Host = "127.0.0.1:24543"
+	req.Header.Set("Authorization", "Bearer t")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != 400 {
+		t.Fatalf("SSRF must be rejected, got %d", w.Code)
+	}
+	// loopback ama kapalı port → fetch hatası 400
+	req2 := httptest.NewRequest("GET", "/preview?h=127.0.0.1&p=1&path=/", nil)
+	req2.Host = "127.0.0.1:24543"
+	req2.Header.Set("Authorization", "Bearer t")
+	w2 := httptest.NewRecorder()
+	s.ServeHTTP(w2, req2)
+	if w2.Code != 400 {
+		t.Fatalf("closed port want 400, got %d", w2.Code)
+	}
+}

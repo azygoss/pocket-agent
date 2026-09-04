@@ -367,4 +367,19 @@ class FilesViewModel(
             }
         }
     }
+
+    // Loopback dev-server önizlemesi (P11: yalnız 127.0.0.0/8 + ::1).
+    fun gwPreview(port: Int, path: String) {
+        val c = gatewayClient ?: return
+        scope.launch {
+            loading = true; error = null
+            try {
+                preview = "127.0.0.1:$port$path" to c.preview("127.0.0.1", port, path)
+            } catch (e: Exception) {
+                error = "önizleme alınamadı: ${e.message ?: "kapalı?"}"
+            } finally {
+                loading = false
+            }
+        }
+    }
 }

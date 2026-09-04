@@ -70,4 +70,23 @@ class App : Application() {
     fun configureBackend(url: String, tenant: String) {
         backendClient = if (url.isNotBlank() && tenant.isNotBlank()) BackendClient(url, tenant) else null
     }
+
+    // Bildirimdeki "Tümünü kapat" aksiyonu burada biter.
+    private val closeAllReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            if (intent?.action == dev.pocketagent.service.TerminalService.ACTION_CLOSE_ALL) {
+                sessions.closeAll()
+            }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            closeAllReceiver,
+            android.content.IntentFilter(dev.pocketagent.service.TerminalService.ACTION_CLOSE_ALL),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
 }

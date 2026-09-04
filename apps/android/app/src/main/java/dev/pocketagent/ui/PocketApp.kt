@@ -71,11 +71,25 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
     ) { }
 
     val sessions = app.sessions
+    val connections2 = app.connections.items.collectAsState()
     val hostKeyPrompt by sessions.hostKeyPrompt.collectAsState()
     val anyActive by sessions.anyActive.collectAsState()
     val unread = inbox.rows.count { it.unread }
 
     LaunchedEffect(Unit) { app.connections.refresh() }
+
+    // Açılışta otomatik reconnect (opt-in): yalnız Keystore'da secret saklıysa.
+    var autoReconnectTried by remember { mutableStateOf(false) }
+    LaunchedEffect(settings.autoReconnect, connections2.value) {
+        if (!settings.autoReconnect || autoReconnectTried) return@LaunchedEffect
+        val conns = connections2.value
+        if (conns.isEmpty() || sessions.sessions.value.isNotEmpty()) return@LaunchedEffect
+        autoReconnectTried = true
+        val last = conns.maxByOrNull { it.lastConnectedAt } ?: return@LaunchedEffect
+        val secret = app.connections.secret(last.id) ?: return@LaunchedEffect // RAM/Keystore'da yoksa elle bağlan
+        sessions.open(last, secret)
+        tab = AppTab.Terminal
+    }
 
     // pocketagent://tmux|herdr → Terminal sekmesine düş.
     LaunchedEffect(Unit) {

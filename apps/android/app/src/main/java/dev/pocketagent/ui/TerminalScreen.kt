@@ -64,12 +64,14 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,14 +95,13 @@ import kotlinx.coroutines.launch
 fun TermLine.toAnnotatedString(cursorCol: Int = -1, cursorBg: Color = Color.Unspecified): AnnotatedString = buildAnnotatedString {
     var pos = 0
     spans.forEach { s ->
-        withStyle(
-            SpanStyle(
-                color = s.style.fg?.let { Color(it) } ?: Color.Unspecified,
-                background = s.style.bg?.let { Color(it) } ?: Color.Unspecified,
-                fontWeight = if (s.style.bold) FontWeight.Bold else null,
-                textDecoration = if (s.style.underline) TextDecoration.Underline else null,
-            ),
-        ) {
+        val spanStyle = SpanStyle(
+            color = s.style.fg?.let { Color(it) } ?: if (s.style.link != null) Color(0xFF58A6FF) else Color.Unspecified,
+            background = s.style.bg?.let { Color(it) } ?: Color.Unspecified,
+            fontWeight = if (s.style.bold) FontWeight.Bold else null,
+            textDecoration = if (s.style.underline || s.style.link != null) TextDecoration.Underline else null,
+        )
+        val block: AnnotatedString.Builder.() -> Unit = {
             val start = pos
             pos += s.text.length
             if (cursorCol in start until pos && cursorBg != Color.Unspecified) {
@@ -113,6 +114,15 @@ fun TermLine.toAnnotatedString(cursorCol: Int = -1, cursorBg: Color = Color.Unsp
             } else {
                 append(s.text)
             }
+        }
+        val link = s.style.link
+        if (link != null) {
+            // Tıklanabilir link (compose LinkAnnotation → UriHandler)
+            withLink(LinkAnnotation.Url(link)) {
+                withStyle(spanStyle) { block() }
+            }
+        } else {
+            withStyle(spanStyle) { block() }
         }
     }
     // İmleç satır sonundaysa boş blok çiz

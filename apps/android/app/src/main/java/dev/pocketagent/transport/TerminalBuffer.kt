@@ -14,6 +14,7 @@ data class TermStyle(
     val bg: Long? = null,
     val bold: Boolean = false,
     val underline: Boolean = false,
+    val link: String? = null, // OSC 8 hyperlink
 )
 
 data class TermLine(val spans: List<Span>) {
@@ -139,6 +140,7 @@ class TerminalBuffer(
     private var inverse = false
     private var decGraphics = false
     private var autowrap = true
+    private var link: String? = null // OSC 8 açık link
     var bracketedPaste = false
         private set
     private var wrapPending = false
@@ -263,10 +265,11 @@ class TerminalBuffer(
             wrapPending = false
         }
         val c = if (decGraphics) DEC_GRAPHICS[c0] ?: c0 else c0
+        val withLink = if (link != null) style.copy(link = link) else style
         val eff = if (inverse) {
-            TermStyle(fg = style.bg ?: INVERSE_BG, bg = style.fg ?: INVERSE_FG, bold = style.bold, underline = style.underline)
+            withLink.copy(fg = style.bg ?: INVERSE_BG, bg = style.fg ?: INVERSE_FG)
         } else {
-            style
+            withLink
         }
         s.grid[s.crow].chars[s.ccol] = c
         s.grid[s.crow].styles[s.ccol] = eff
@@ -347,6 +350,7 @@ class TerminalBuffer(
         s.crow = 0; s.ccol = 0; s.scrollTop = 0; s.scrollBottom = rows - 1
         style = TermStyle()
         inverse = false
+        link = null
         decGraphics = false
         wrapPending = false
     }
@@ -368,6 +372,11 @@ class TerminalBuffer(
         val code = content.substring(0, semi)
         when (code) {
             "0", "2" -> onTitle?.invoke(content.substring(semi + 1))
+            "8" -> {
+                // OSC 8 ; params ; URI — boş URI linki kapatır.
+                val uri = content.substring(semi + 1).substringAfter(';', "")
+                link = uri.ifBlank { null }
+            }
             "52" -> {
                 val rest = content.substring(semi + 1) // "c;<base64>"
                 val payload = rest.substringAfter(';', "")

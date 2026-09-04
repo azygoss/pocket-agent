@@ -4,6 +4,7 @@ package gateway
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"sort"
@@ -37,6 +38,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// /diff?kind=staged|unstaged|untracked|working|last — workspace kökünde git.
 	if strings.HasPrefix(r.URL.Path, "/diff") {
 		s.serveDiff(w, r)
+		return
+	}
+	// /preview?h=127.0.0.1&p=3000&path=/ — loopback dev-server önizlemesi (SSRF gate).
+	if strings.HasPrefix(r.URL.Path, "/preview") {
+		s.servePreview(w, r)
 		return
 	}
 	rel := strings.TrimPrefix(r.URL.Path, "/file/")
@@ -116,4 +122,26 @@ func (s *Server) serveDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write([]byte(out))
+}
+
+func (s *Server) servePreview(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	host := q.Get("h")
+	port := 0
+	fmt.Sscanf(q.Get("p"), "%d", &port)
+	path := q.Get("path")
+	if path == "" {
+		path = "/"
+	}
+	body, ct, err := PreviewFetch(host, port, path)
+	if err != nil {
+		http.Error(w, "preview: "+err.Error(), 400)
+		return
+	}
+	if ct != "" {
+		w.Header().Set("Content-Type", ct)
+	} else {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	}
+	w.Write([]byte(body))
 }
