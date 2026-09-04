@@ -139,8 +139,14 @@ class TerminalBuffer(
     private var inverse = false
     private var decGraphics = false
     private var autowrap = true
+    var bracketedPaste = false
+        private set
     private var wrapPending = false
     private var pending = "" // chunk sınırında bölünen escape dizisi
+
+    // OSC 52 (cihaz panosuna kopyala) ve OSC 0/2 (pencere başlığı) geri çağrıları.
+    var onClipboard: ((String) -> Unit)? = null
+    var onTitle: ((String) -> Unit)? = null
 
     var totalFed: Long = 0L
         private set
@@ -348,11 +354,31 @@ class TerminalBuffer(
     private fun osc(s: String, i: Int): Int {
         var j = i
         while (j < s.length) {
-            if (s[j] == '\u0007') return j + 1
-            if (s[j] == '\u001B' && j + 1 < s.length && s[j + 1] == '\\') return j + 2
+            if (s[j] == '\u0007') { handleOsc(s.substring(i, j)); return j + 1 }
+            if (s[j] == '\u001B' && j + 1 < s.length && s[j + 1] == '\\') { handleOsc(s.substring(i, j)); return j + 2 }
             j++
         }
         return -1
+    }
+
+    // OSC içeriği: "52;c;<base64>" (kopyala) veya "0;title"/"2;title" (başlık).
+    private fun handleOsc(content: String) {
+        val semi = content.indexOf(';')
+        if (semi < 0) return
+        val code = content.substring(0, semi)
+        when (code) {
+            "0", "2" -> onTitle?.invoke(content.substring(semi + 1))
+            "52" -> {
+                val rest = content.substring(semi + 1) // "c;<base64>"
+                val payload = rest.substringAfter(';', "")
+                if (payload.isEmpty() || payload == "?") return // sorgu: cevap vermiyoruz
+                runCatching {
+                    val text = String(java.util.Base64.getDecoder().decode(payload), Charsets.UTF_8)
+                    if (text.isNotEmpty()) onClipboard?.invoke(text)
+                }
+            }
+            else -> {} // renk sorguları vb: yoksay
+        }
     }
 
     private fun csi(s: String, start: Int): Int {
@@ -423,7 +449,8 @@ class TerminalBuffer(
             47 -> if (final == 'h') enterAlt(saveCursor = false, clear = false) else exitAlt(restoreCursor = false)
             25 -> cursorVisible = final == 'h'
             7 -> autowrap = final == 'h'
-            else -> {} // 1 (app cursor), 2004 (bracketed paste) vb: yoksay
+            2004 -> bracketedPaste = final == 'h'
+            else -> {} // 1 (app cursor) vb: yoksay
         }
     }
 

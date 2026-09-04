@@ -191,4 +191,45 @@ class TerminalBufferTest {
         assertTrue("10MB burst ${b.totalFed}B işlendi (${ms}ms)", ms < 10_000)
         assertTrue(b.totalFed >= 10_000_000)
     }
+
+    @Test fun osc52CopiesToClipboard() {
+        val b = TerminalBuffer()
+        var got: String? = null
+        b.onClipboard = { got = it }
+        b.feed("\u001B]52;c;aGVsbG8\u0007") // "hello" base64, BEL sonlandırma
+        assertEquals("hello", got)
+        got = null
+        b.feed("\u001B]52;c;d29ybGQ=\u001B\\") // ST sonlandırma
+        assertEquals("world", got)
+        got = null
+        b.feed("\u001B]52;c;?\u0007") // sorgu → callback yok
+        assertNull(got)
+    }
+
+    @Test fun oscTitleReported() {
+        val b = TerminalBuffer()
+        var title = ""
+        b.onTitle = { title = it }
+        b.feed("\u001B]2;tmux: main\u0007")
+        assertEquals("tmux: main", title)
+        b.feed("\u001B]0;vim\u001B\\")
+        assertEquals("vim", title)
+    }
+
+    @Test fun bracketedPasteModeTracked() {
+        val b = TerminalBuffer()
+        assertFalse(b.bracketedPaste)
+        b.feed("\u001B[?2004h")
+        assertTrue(b.bracketedPaste)
+        b.feed("\u001B[?2004l")
+        assertFalse(b.bracketedPaste)
+    }
+
+    @Test fun cursorPositionTracksScreen() {
+        val b = TerminalBuffer(cols = 20, rows = 4)
+        b.feed("ab\r\ncd")
+        assertEquals(1 to 2, b.cursorPosition())
+        b.feed("\u001B[?25l") // imleç gizle
+        assertNull(b.cursorPosition())
+    }
 }

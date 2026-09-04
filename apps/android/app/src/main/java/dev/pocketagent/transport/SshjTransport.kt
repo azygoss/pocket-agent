@@ -156,7 +156,7 @@ class SshjTransport(
     private val shell: Session.Shell,
     private var size: TerminalSize,
     private val readScope: CoroutineScope,
-) : SshTransport, SftpSession, GatewayTunnel {
+) : SshTransport, SftpSession, GatewayTunnel, ExecCapable {
     override val transport = TerminalTransport.SSH
     private val chan = Channel<TerminalFrame>(Channel.UNLIMITED)
     @Volatile private var closed = false
@@ -165,6 +165,22 @@ class SshjTransport(
     @Synchronized
     private fun sftp(): net.schmizz.sshj.sftp.SFTPClient =
         sftpClient ?: ssh.newSFTPClient().also { sftpClient = it }
+
+    // SSH exec kanalı: mosh bootstrap, capability probe vb. kısa komutlar.
+    override suspend fun exec(cmd: String, timeoutMs: Int): Pair<Int, String> =
+        withContext(Dispatchers.IO) {
+            check(!closed) { "transport closed" }
+            val ch = ssh.startSession()
+            try {
+                val c = ch.exec(cmd)
+                c.join(timeoutMs.toLong(), java.util.concurrent.TimeUnit.MILLISECONDS)
+                val out = c.inputStream.readBytes().decodeToString() +
+                    c.errorStream.readBytes().decodeToString()
+                (c.exitStatus ?: -1) to out
+            } finally {
+                runCatching { ch.close() }
+            }
+        }
 
     override suspend fun gatewayGet(path: String, token: String, maxBytes: Int): Pair<Int, ByteArray> =
         withContext(Dispatchers.IO) {

@@ -57,6 +57,23 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     val lines: StateFlow<List<TermLine>> = _lines
     private val _cursor = MutableStateFlow<Pair<Int, Int>?>(null)
     val cursor: StateFlow<Pair<Int, Int>?> = _cursor
+    // OSC 0/2 pencere başlığı (tmux/vim başlığı burada görünür)
+    private val _windowTitle = MutableStateFlow("")
+    val windowTitle: StateFlow<String> = _windowTitle
+    // OSC 52: uzaktan kopyalama — UI sisteme panosuna yazar
+    private val _pendingClipboard = MutableStateFlow<String?>(null)
+    val pendingClipboard: StateFlow<String?> = _pendingClipboard
+
+    init {
+        buffer.onTitle = { _windowTitle.value = it }
+        buffer.onClipboard = { _pendingClipboard.value = it }
+    }
+
+    fun consumeClipboard() { _pendingClipboard.value = null }
+
+    // Bracketed paste: uzak taraf 2004 açtıysa çok satırlı yapıştırma
+    // ESC[200~ ... ESC[201~ arasına sarılır (yanlışlıkla çalıştırma yok).
+    val bracketedPaste: Boolean get() = buffer.bracketedPaste
     private val _frames = MutableStateFlow<List<String>>(emptyList())
     val frames: StateFlow<List<String>> = _frames
     var size = TerminalSize(80, 24)

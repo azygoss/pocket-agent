@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -196,7 +197,7 @@ fun FilesScreen(files: FilesViewModel) {
         )
     }
 
-    // Önizleme diyaloğu
+    // Önizleme diyaloğu (diff içeriği renklendirilir)
     files.preview?.let { (name, content) ->
         AlertDialog(
             onDismissRequest = { files.dismissPreview() },
@@ -204,17 +205,54 @@ fun FilesScreen(files: FilesViewModel) {
             title = { Text(name, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text(
-                        content,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        lineHeight = 15.sp,
-                    )
+                    if (name.startsWith("git diff")) {
+                        Text(
+                            diffAnnotated(content),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            lineHeight = 15.sp,
+                        )
+                    } else {
+                        Text(
+                            content,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            lineHeight = 15.sp,
+                        )
+                    }
                 }
             },
         )
     }
 }
+
+// Basit diff renklendirme: + yeşil, - kırmızı, @@ mor, başlıklar kalın.
+private fun diffAnnotated(content: String): androidx.compose.ui.text.AnnotatedString =
+    androidx.compose.ui.text.buildAnnotatedString {
+        content.lines().forEach { line ->
+            val style = when {
+                line.startsWith("+++") || line.startsWith("---") ->
+                    androidx.compose.ui.text.SpanStyle(color = dev.pocketagent.ui.theme.TermText.copy(alpha = 0.7f))
+                line.startsWith("+") ->
+                    androidx.compose.ui.text.SpanStyle(color = dev.pocketagent.ui.theme.TermGreen)
+                line.startsWith("-") ->
+                    androidx.compose.ui.text.SpanStyle(color = TermRed)
+                line.startsWith("@@") ->
+                    androidx.compose.ui.text.SpanStyle(color = dev.pocketagent.ui.theme.TermPurple)
+                line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("commit ") ->
+                    androidx.compose.ui.text.SpanStyle(
+                        color = dev.pocketagent.ui.theme.TermAmber,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    )
+                else -> null
+            }
+            if (style != null) {
+                withStyle(style) { append(line); append('\n') }
+            } else {
+                append(line); append('\n')
+            }
+        }
+    }
 
 @Composable
 private fun RemoteFileRow(f: RemoteFile, onClick: () -> Unit) {
