@@ -1,6 +1,6 @@
 # HANDOFF — Pocket Agent
 
-Tarih: 2026-09-03 (v0.7.1). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
+Tarih: 2026-09-03 (v0.7.2). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
 Hedef tamamlama: ~%90 (headless tavan: ekran-modeli terminal + SFTP + gateway tüneli + mosh bootstrap + backend sync). Emülatör/cihaz gerektiren işler açıkta (bkz. §7).
 
 ## 1. Proje özeti
@@ -50,7 +50,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 - Canlı backend kanıtı: `/tmp/pa-backend` ayaktayken `PA_LIVE_BACKEND=http://127.0.0.1:8080 ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.BackendLiveTest` → event post → özet çekme → cursor → CAS 202/409 → tenant izolasyonu.
 - Canlı SFTP kanıtı: `PA_LIVE_SSH=1 … ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SftpLiveTest` → list `/` + write/read `/tmp` + kota kesme + dizin-önce sıralama.
 - Canlı gateway tüneli: gateway çalışırken (`POCKET_GATEWAY_TOKEN=tok123 pocket-agent gateway serve --root /tmp/pa-workspace`) `PA_LIVE_GW=1 PA_LIVE_SSH=1 … --tests dev.pocketagent.GatewayTunnelLiveTest` → SSH direct-tcpip → ls/file/401/traversal.
-- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (72MB v0.7.1, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI dahil).
+- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (72MB v0.7.2, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI dahil).
 - CLI: `dist/` git-dışı (tarballs + `SHA256SUMS` + `sbom-go.json`).
 
 ## 5. Derleme komutları
@@ -88,7 +88,7 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 6. WSL/macOS/Windows doğrulama; Homebrew tap; prod Postgres backup/restore + Caddy TLS.
 7. Port-forward yönetici UI'ı; tmux/Zellij seçim UI'ı (capability probe cihazda); backend gerçek auth (X-Tenant iskeleti → passkey).
 
-## 7b. Günlük kullanım katmanı (0.7.1'e kadar eklendi)
+## 7b. Günlük kullanım katmanı (0.7.2'ye kadar eklendi)
 
 - Ayarlar DataStore'da kalıcı (tema + font ölçeği + backend URL/tenant); `SettingsViewModel(store, scope)`.
 - Secret'lar: RAM-only varsayılan, "Keystore ile sakla" opt-in → AES-256-GCM (`KeystoreSecretStore`); plaintext diskte yok.
@@ -101,7 +101,8 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 - **Dosyalar (0.6.0–0.7.0)**: SFTP gezgini (dizin gezinme, önizleme <64KB, indirme→paylaşım FileProvider, upload, 10MB cap) + **Workspace modu**: gateway jail'i içinde ls/dosya/git-diff (staged/unstaged/working/son-commit), token 0600 dosyadan SFTP ile RAM'e; gateway yoksa kurulum talimatı kartı.
 - **Bağlantılar (0.7.0)**: host başına "tmux'a otomatik bağlan" (`tmux new-session -A -s main`, kopmaya dayanıklı oturum); Room DB v4 (destructive fallback — debug aşamasında).
 - **İmleç (0.7.0)**: terminalde imleç bloğu render'ı (palette.cursor), ?25h/l görünürlüğü saygılanır.
-- **Terminal (0.7.1)**: OSC 52 uzaktan kopyalama → cihaz panosu, OSC 0/2 pencere başlığı durum çipinde, bracketed paste (?2004) — çok satırlı yapıştırma korunur, imleç bloğu, tam ekran, viewport→PTY resize.
+- **Terminal (0.7.1-0.7.2)**: OSC 52 uzaktan kopyalama → cihaz panosu, OSC 0/2 pencere başlığı durum çipinde, bracketed paste (?2004) — çok satırlı yapıştırma korunur, imleç bloğu, tam ekran, viewport→PTY resize, scrollback paylaşımı (FileProvider).
+- **FGS (0.7.2)**: bildirimde aktif oturum sayısı, dokununca uygulamaya döner; POST_NOTIFICATIONS runtime izni (API 33+).
 - **Tema (0.6.0)**: AMOLED saf-siyah seçeneği (kalıcı), koyu/aydınlık palet.
 - Terminal: komut geçmişi (↑↓, dedupe, 100 cap), Ctrl toggle, reconnect, sonda-otomatik kaydırma + alta-in FAB, scrollback arama (eşleşme vurgusu), clipboard yapıştır, 30s SSH keepalive, bilinen-hosts yönetimi (Ayarlar).
 - Snackbar (bağlandı/kapandı), Agents tab okunmamış rozeti, sekmeye göre TopAppBar başlığı, deep-link yönlendirme.
