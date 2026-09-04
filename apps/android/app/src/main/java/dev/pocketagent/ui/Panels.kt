@@ -106,11 +106,14 @@ class UsageViewModel {
     }
 }
 
+enum class FilesMode { SFTP, WORKSPACE }
+
 class FilesViewModel(
     private val manager: dev.pocketagent.transport.SessionManager,
     private val scope: kotlinx.coroutines.CoroutineScope,
     private val cacheDir: java.io.File,
 ) {
+    var mode by mutableStateOf(FilesMode.SFTP)
     var path by mutableStateOf<String?>(null)
         private set
     val entries = androidx.compose.runtime.mutableStateListOf<dev.pocketagent.transport.RemoteFile>()
@@ -125,6 +128,13 @@ class FilesViewModel(
         private set
     // İndirilen dosya (paylaşım intent'i ekranda tetiklenir)
     var downloaded by mutableStateOf<java.io.File?>(null)
+
+    // P11 workspace (gateway tüneli): null = henüz sondalanmadı
+    var gatewayAvailable by mutableStateOf<Boolean?>(null)
+        private set
+    var gwPath by mutableStateOf("")
+        private set // workspace-göreli, "/"sız
+    private var gatewayClient: dev.pocketagent.net.GatewayClient? = null
 
     fun hasActiveSftp(): Boolean = sftp() != null
 
@@ -147,13 +157,22 @@ class FilesViewModel(
     }
 
     fun refresh() {
+        if (mode == FilesMode.WORKSPACE) { gwRefresh(); return }
         val p = path ?: return open()
         load(p)
     }
 
-    fun cd(dir: String) = load(dir)
+    fun cd(dir: String) {
+        if (mode == FilesMode.WORKSPACE) { gwLoad(dir); return }
+        load(dir)
+    }
 
     fun up() {
+        if (mode == FilesMode.WORKSPACE) {
+            if (gwPath.isEmpty()) return
+            gwLoad(gwPath.substringBeforeLast('/', ""))
+            return
+        }
         val p = path ?: return
         if (p == "/") return
         load(p.substringBeforeLast('/').ifEmpty { "/" })
@@ -178,6 +197,7 @@ class FilesViewModel(
     // Dosyaya dokunma: küçükse önizle, değilse indir.
     fun onFile(f: dev.pocketagent.transport.RemoteFile) {
         if (f.isDir) { cd(f.path); return }
+        if (mode == FilesMode.WORKSPACE) { gwPreview(f); return }
         if (f.size <= 64 * 1024) loadPreview(f) else download(f)
     }
 
@@ -228,6 +248,121 @@ class FilesViewModel(
                 load(p)
             } catch (e: Exception) {
                 error = e.message ?: "Yüklenemedi"
+                loading = false
+            }
+        }
+    }
+
+    // ---- P11 workspace (gateway) ----
+
+    fun selectMode(m: FilesMode) {
+        if (m == mode) return
+        mode = m
+        error = null
+        if (m == FilesMode.WORKSPACE) {
+            if (gatewayAvailable == null) probeGateway() else if (gatewayAvailable == true) gwRefresh()
+        } else if (path != null) {
+            refresh()
+        }
+    }
+
+    // Gateway token'ı host'un 0600 dosyasından SFTP ile okunur (SSH oturumu
+    // zaten doğrulanmış; ayrı kimlik yok). Token RAM'de kalır.
+    fun probeGateway() {
+        val s = sftp()
+        val tunnel = manager.active()?.gateway()
+        if (s == null || tunnel == null) { gatewayAvailable = false; return }
+        scope.launch {
+            loading = true; error = null
+            try {
+                val tokenPath = s.home().trimEnd('/') + "/.config/pocket-agent/gateway.token"
+                val token = s.readBytes(tokenPath, 256).decodeToString().trim()
+                if (token.isEmpty()) throw IllegalStateException("gateway token boş")
+                val client = dev.pocketagent.net.GatewayClient(tunnel, token)
+                val probe = client.ls("") // 200 gelmezse exception
+                gatewayClient = client
+                gatewayAvailable = true
+                gwEntries(probe)
+                gwPath = ""
+            } catch (e: Exception) {
+                gatewayAvailable = false
+                gatewayClient = null
+                error = null // gateway kurulu değil — sessizce SFTP modunda kal
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    fun gwRefresh() {
+        val c = gatewayClient ?: return probeGateway()
+        scope.launch {
+            loading = true; error = null
+            try {
+                gwEntries(c.ls(gwPath))
+            } catch (e: Exception) {
+                error = e.message ?: "workspace listesi okunamadı"
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    private fun gwLoad(rel: String) {
+        val c = gatewayClient ?: return probeGateway()
+        scope.launch {
+            loading = true; error = null
+            try {
+                gwEntries(c.ls(rel))
+                gwPath = rel
+            } catch (e: Exception) {
+                error = e.message ?: "dizin okunamadı"
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    private fun gwEntries(list: List<dev.pocketagent.net.GatewayEntry>) {
+        entries.clear()
+        entries.addAll(
+            list.map {
+                dev.pocketagent.transport.RemoteFile(
+                    name = it.name,
+                    path = if (gwPath.isEmpty()) it.name else "$gwPath/${it.name}",
+                    isDir = it.isDir,
+                    size = it.size,
+                    mtime = it.mtime,
+                )
+            },
+        )
+    }
+
+    private fun gwPreview(f: dev.pocketagent.transport.RemoteFile) {
+        val c = gatewayClient ?: return
+        scope.launch {
+            loading = true; error = null
+            try {
+                preview = f.name to c.readFile(f.path)
+            } catch (e: Exception) {
+                error = e.message ?: "okunamadı"
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    // Git diff görünümü (staged/unstaged/working/last) — önizleme diyaloğuna düşer.
+    fun gwDiff(kind: String, label: String) {
+        val c = gatewayClient ?: return
+        scope.launch {
+            loading = true; error = null
+            try {
+                val d = c.diff(kind)
+                preview = label to d.ifBlank { "(değişiklik yok)" }
+            } catch (e: Exception) {
+                error = "diff alınamadı (workspace git repo mu?)"
+            } finally {
                 loading = false
             }
         }

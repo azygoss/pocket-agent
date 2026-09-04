@@ -147,6 +147,13 @@ class TerminalBuffer(
     var cursorVisible = true
         private set
 
+    // Snapshot koordinatında imleç (satır, sütun); gizliyse null.
+    fun cursorPosition(): Pair<Int, Int>? {
+        if (!cursorVisible) return null
+        val s = active()
+        return (if (useAlt) s.crow else scrollback.size + s.crow) to s.ccol
+    }
+
     val scrollbackSize: Int get() = scrollback.size
     val lineCount: Int get() = (if (useAlt) 0 else scrollback.size) + if (activeIsBlank()) 0 else active().usedRows()
 

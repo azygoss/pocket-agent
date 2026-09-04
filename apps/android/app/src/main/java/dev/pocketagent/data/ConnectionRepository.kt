@@ -76,6 +76,7 @@ fun ConnectionEntity.toModel() = SavedConnection(
     jumpHost = jumpHost,
     etPort = etPort,
     agentForward = agentForward,
+    autoTmux = autoTmux,
     id = id,
     lastConnectedAt = lastConnectedAt,
 )
@@ -91,5 +92,6 @@ fun SavedConnection.toEntity() = ConnectionEntity(
     jumpHost = jumpHost,
     etPort = etPort,
     agentForward = agentForward,
+    autoTmux = autoTmux,
     lastConnectedAt = lastConnectedAt,
 )

@@ -16,6 +16,7 @@ data class ConnectionEntity(
     val jumpHost: String? = null,
     val etPort: Int = 2022,
     val agentForward: Boolean = false,
+    val autoTmux: Boolean = false,
     val lastConnectedAt: Long = 0L,
     val sortOrder: Int = 0,
 )
@@ -53,7 +54,7 @@ interface AgentEventDao {
     suspend fun sweepExpired(now: Long): Int
 }
 
-@Database(entities = [ConnectionEntity::class, AgentEventEntity::class], version = 3, exportSchema = false)
+@Database(entities = [ConnectionEntity::class, AgentEventEntity::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun connections(): ConnectionDao
     abstract fun events(): AgentEventDao

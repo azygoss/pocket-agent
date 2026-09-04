@@ -13,6 +13,7 @@ class FakeSshTransport : SshTransport {
     private var opened = false
     private val outbox = Channel<TerminalFrame>(Channel.UNLIMITED)
     val resizes = mutableListOf<TerminalSize>()
+    val sent = mutableListOf<TerminalInput>()
     override val transport = TerminalTransport.SSH
     private var closed = false
 
@@ -25,6 +26,7 @@ class FakeSshTransport : SshTransport {
 
     override suspend fun send(input: TerminalInput) {
         check(opened && !closed)
+        sent.add(input)
         when (input) {
             is TerminalInput.Text -> outbox.trySend(TerminalFrame(("> " + input.s).toByteArray(), transport))
             is TerminalInput.Key -> outbox.trySend(TerminalFrame(("[key:${input.code}]").toByteArray(), transport))
@@ -53,6 +55,8 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     private val buffer = TerminalBuffer(maxLines)
     private val _lines = MutableStateFlow<List<TermLine>>(emptyList())
     val lines: StateFlow<List<TermLine>> = _lines
+    private val _cursor = MutableStateFlow<Pair<Int, Int>?>(null)
+    val cursor: StateFlow<Pair<Int, Int>?> = _cursor
     private val _frames = MutableStateFlow<List<String>>(emptyList())
     val frames: StateFlow<List<String>> = _frames
     var size = TerminalSize(80, 24)
@@ -77,6 +81,7 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
         val snap = buffer.snapshot()
         _lines.value = snap
         _frames.value = snap.map { it.text }
+        _cursor.value = buffer.cursorPosition()
         badge = f.transport.name
     }
 
@@ -98,7 +103,7 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     }
 
     fun setBadge(t: TerminalTransport) { badge = t.name }
-    fun clear() { buffer.clear(); pendingBytes = ByteArray(0); _lines.value = emptyList(); _frames.value = emptyList() }
+    fun clear() { buffer.clear(); pendingBytes = ByteArray(0); _lines.value = emptyList(); _frames.value = emptyList(); _cursor.value = null }
 
     // Viewport ölçüsü değişti: buffer yeniden boyutlanır (üstten taşan satırlar
     // scrollback'e gider); PTY resize'ı UI katmanında transport'a gönderilir.
@@ -109,6 +114,7 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
         val snap = buffer.snapshot()
         _lines.value = snap
         _frames.value = snap.map { it.text }
+        _cursor.value = buffer.cursorPosition()
     }
 
     val altScreenActive: Boolean get() = buffer.altScreenActive

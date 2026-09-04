@@ -13,6 +13,7 @@ data class SavedConnection(
     val moshUdpRange: String? = null,
     val etPort: Int = 2022,
     val agentForward: Boolean = false,
+    val autoTmux: Boolean = false, // bağlanınca `tmux new-session -A -s main`
     val id: String = "",
     val lastConnectedAt: Long = 0L,
 ) {

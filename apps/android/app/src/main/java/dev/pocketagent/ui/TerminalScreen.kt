@@ -89,7 +89,8 @@ import dev.pocketagent.ui.theme.TermRed
 import dev.pocketagent.ui.theme.TermText
 import kotlinx.coroutines.launch
 
-fun TermLine.toAnnotatedString(): AnnotatedString = buildAnnotatedString {
+fun TermLine.toAnnotatedString(cursorCol: Int = -1, cursorBg: Color = Color.Unspecified): AnnotatedString = buildAnnotatedString {
+    var pos = 0
     spans.forEach { s ->
         withStyle(
             SpanStyle(
@@ -98,7 +99,24 @@ fun TermLine.toAnnotatedString(): AnnotatedString = buildAnnotatedString {
                 fontWeight = if (s.style.bold) FontWeight.Bold else null,
                 textDecoration = if (s.style.underline) TextDecoration.Underline else null,
             ),
-        ) { append(s.text) }
+        ) {
+            val start = pos
+            pos += s.text.length
+            if (cursorCol in start until pos && cursorBg != Color.Unspecified) {
+                val off = cursorCol - start
+                append(s.text.substring(0, off))
+                withStyle(SpanStyle(background = cursorBg, color = Color.Black)) {
+                    append(s.text.substring(off, off + 1))
+                }
+                append(s.text.substring(off + 1))
+            } else {
+                append(s.text)
+            }
+        }
+    }
+    // İmleç satır sonundaysa boş blok çiz
+    if (cursorCol >= pos && cursorCol >= 0 && cursorBg != Color.Unspecified) {
+        withStyle(SpanStyle(background = cursorBg)) { append(' ') }
     }
 }
 
@@ -178,6 +196,7 @@ private fun ActiveTerminal(
 ) {
     val vm = controller.vm
     val lines by vm.lines.collectAsState()
+    val cursor by vm.cursor.collectAsState()
     val state by controller.state.collectAsState()
     val failure by controller.failure.collectAsState()
     val active by controller.connectedTo.collectAsState()
@@ -367,8 +386,10 @@ private fun ActiveTerminal(
                             itemsIndexed(lines) { idx, line ->
                                 val isMatch = currentMatch == idx
                                 val hasMatch = matchSet.contains(idx)
+                                val cur = cursor
+                                val cursorCol = if (cur != null && cur.first == idx) cur.second else -1
                                 Text(
-                                    line.toAnnotatedString(),
+                                    line.toAnnotatedString(cursorCol, Color(settings.theme.palette.cursor)),
                                     color = TermText,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = (13 * settings.theme.fontScale).sp,

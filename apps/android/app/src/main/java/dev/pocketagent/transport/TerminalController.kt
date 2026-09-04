@@ -69,6 +69,13 @@ class TerminalController(
                 _connectedTo.value = conn
                 _state.value = ConnectionState.ACTIVE
                 onConnected?.invoke(conn)
+                // tmux otomatik bağlanma: kabuk hazır olsun diye kısa gecikme.
+                if (conn.autoTmux) {
+                    scope.launch {
+                        kotlinx.coroutines.delay(600)
+                        runCatching { t.send(TerminalInput.Text("tmux new-session -A -s main\n")) }
+                    }
+                }
                 readLoop(t)
             } catch (e: UnknownHostKeyException) {
                 _pendingHostKey.value = e.presented
@@ -93,6 +100,9 @@ class TerminalController(
 
     // Aktif transport SFTP destekliyorsa döner (dosya sekmesi buradan beslenir).
     fun sftp(): SftpSession? = transport as? SftpSession
+
+    // Aktif transport gateway tüneli açabiliyorsa döner (P11 workspace erişimi).
+    fun gateway(): GatewayTunnel? = transport as? GatewayTunnel
 
     // User confirmed the fingerprint: pin it, then retry the same connection.
     fun acceptHostKeyAndReconnect() {

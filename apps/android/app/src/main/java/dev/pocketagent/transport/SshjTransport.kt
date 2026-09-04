@@ -156,7 +156,7 @@ class SshjTransport(
     private val shell: Session.Shell,
     private var size: TerminalSize,
     private val readScope: CoroutineScope,
-) : SshTransport, SftpSession {
+) : SshTransport, SftpSession, GatewayTunnel {
     override val transport = TerminalTransport.SSH
     private val chan = Channel<TerminalFrame>(Channel.UNLIMITED)
     @Volatile private var closed = false
@@ -165,6 +165,47 @@ class SshjTransport(
     @Synchronized
     private fun sftp(): net.schmizz.sshj.sftp.SFTPClient =
         sftpClient ?: ssh.newSFTPClient().also { sftpClient = it }
+
+    override suspend fun gatewayGet(path: String, token: String, maxBytes: Int): Pair<Int, ByteArray> =
+        withContext(Dispatchers.IO) {
+            check(!closed) { "transport closed" }
+            require(path.startsWith("/") && !path.contains("\r") && !path.contains("\n")) { "bad gateway path" }
+            val dc = ssh.newDirectConnection("127.0.0.1", 24543)
+            try {
+                dc.open()
+                val req = buildString {
+                    append("GET ").append(path).append(" HTTP/1.0\r\n")
+                    append("Host: 127.0.0.1:24543\r\n")
+                    append("Authorization: Bearer ").append(token).append("\r\n")
+                    append("\r\n")
+                }
+                dc.outputStream.write(req.toByteArray(Charsets.US_ASCII))
+                dc.outputStream.flush()
+                // HTTP/1.0: sunucu gövde sonunda kapatır — EOF'a kadar oku.
+                val raw = java.io.ByteArrayOutputStream()
+                val buf = ByteArray(16384)
+                while (raw.size() <= maxBytes + 65536) {
+                    val n = dc.inputStream.read(buf)
+                    if (n < 0) break
+                    raw.write(buf, 0, n)
+                }
+                parseHttpResponse(raw.toByteArray(), maxBytes)
+            } finally {
+                runCatching { dc.close() }
+            }
+        }
+
+    private fun parseHttpResponse(raw: ByteArray, maxBytes: Int): Pair<Int, ByteArray> {
+        val bytes = raw.decodeToString()
+        val headEnd = bytes.indexOf("\r\n\r\n")
+        require(headEnd > 0) { "bad gateway response" }
+        val statusLine = bytes.substring(0, bytes.indexOf("\r\n"))
+        val status = statusLine.split(" ").getOrNull(1)?.toIntOrNull()
+            ?: throw IllegalStateException("bad status line: $statusLine")
+        val headerBytes = bytes.substring(0, headEnd + 4).toByteArray(Charsets.UTF_8).size
+        val body = raw.copyOfRange(headerBytes, minOf(raw.size, headerBytes + maxBytes))
+        return status to body
+    }
 
     override suspend fun home(): String = withContext(Dispatchers.IO) {
         sftp().canonicalize(".")
