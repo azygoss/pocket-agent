@@ -37,6 +37,9 @@ class SettingsViewModel(
         private set
     var autoReconnect by mutableStateOf(false)
         private set
+    // Kopmada otomatik yeniden bağlan (varsayılan açık)
+    var autoReconnectOnDrop by mutableStateOf(true)
+        private set
 
     init {
         if (store != null && scope != null) {
@@ -44,6 +47,7 @@ class SettingsViewModel(
                 store.load()?.let { p ->
                     amoled = p.amoled
                     autoReconnect = p.autoReconnect
+                    autoReconnectOnDrop = p.autoReconnectOnDrop
                     theme = AppTheme(p.dark, p.fontScale.coerceIn(0.8f, 2.0f), paletteFor(p.dark, p.amoled), p.amoled)
                     backendUrl = p.backendUrl
                     tenantToken = p.tenantToken
@@ -59,6 +63,11 @@ class SettingsViewModel(
 
     fun toggleAutoReconnect() {
         autoReconnect = !autoReconnect
+        persist()
+    }
+
+    fun toggleAutoReconnectOnDrop() {
+        autoReconnectOnDrop = !autoReconnectOnDrop
         persist()
     }
 
@@ -85,7 +94,7 @@ class SettingsViewModel(
     private fun persist() {
         val s = store ?: return
         val sc = scope ?: return
-        val snap = PersistedSettings(theme.dark, theme.fontScale, backendUrl, tenantToken, amoled, autoReconnect)
+        val snap = PersistedSettings(theme.dark, theme.fontScale, backendUrl, tenantToken, amoled, autoReconnect, autoReconnectOnDrop)
         sc.launch { s.save(snap) }
     }
 }

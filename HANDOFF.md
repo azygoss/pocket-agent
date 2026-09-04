@@ -1,6 +1,6 @@
 # HANDOFF — Pocket Agent
 
-Tarih: 2026-09-03 (v0.9.0). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
+Tarih: 2026-09-03 (v0.9.1). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
 Hedef tamamlama: ~%92 (headless tavan: ekran-modeli terminal + SFTP + gateway tüneli + mosh bootstrap + backend sync). Emülatör/cihaz gerektiren işler açıkta (bkz. §7).
 
 ## 1. Proje özeti
@@ -47,13 +47,13 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 ## 4. Test raporu (son yeşil koşu)
 
 - Go: 18 paket `ok`, 0 FAIL (`go test ./... -count=1`), `go vet` + `go build ./...` temiz.
-- Android: 87/87 unit (5 canlı env-gated: SSH + backend + SFTP + gateway + mosh bootstrap — hepsi bu makinede kanıtlı; + 2 Robolectric Compose UI süiti) + `lintDebug` (0 hata) + `assembleDebug` yeşil.
+- Android: 90/90 unit (5 canlı env-gated: SSH + backend + SFTP + gateway + mosh bootstrap — hepsi bu makinede kanıtlı; + 2 Robolectric Compose UI süiti) + `lintDebug` (0 hata) + `assembleDebug` yeşil.
 - Canlı SSH kanıtı: `PA_LIVE_SSH=1 PA_LIVE_USER=pa-dev PA_LIVE_PEM=/tmp/pa-dev-key ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SshjLiveTest` → localhost sshd'ye TOFU hard-stop → pin → ed25519 key auth → PTY → `echo PA_ALIVE_42` okundu (test user `pa-dev` bu makinede hazır).
 - Canlı backend kanıtı: `/tmp/pa-backend` ayaktayken `PA_LIVE_BACKEND=http://127.0.0.1:8080 ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.BackendLiveTest` → event post → özet çekme → cursor → CAS 202/409 → tenant izolasyonu.
 - Canlı SFTP kanıtı: `PA_LIVE_SSH=1 … ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SftpLiveTest` → list `/` + write/read `/tmp` + kota kesme + dizin-önce sıralama.
 - Canlı gateway tüneli: gateway çalışırken (`POCKET_GATEWAY_TOKEN=tok123 pocket-agent gateway serve --root /tmp/pa-workspace`) `PA_LIVE_GW=1 PA_LIVE_SSH=1 … --tests dev.pocketagent.GatewayTunnelLiveTest` → SSH direct-tcpip → ls/file/401/traversal + preview (127.0.0.1:8899 marker).
 - Canlı mosh bootstrap: `PA_LIVE_SSH=1 … --tests dev.pocketagent.MoshBootstrapTest` → SSH exec → `mosh-server new` → MOSH CONNECT port+key parse (anahtar yalnız RAM).
-- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (73MB v0.9.0, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI dahil).
+- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (73MB v0.9.1, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI dahil).
 - CLI: `dist/` git-dışı (tarballs + `SHA256SUMS` + `sbom-go.json`).
 
 ## 5. Derleme komutları
@@ -91,7 +91,7 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 6. WSL/macOS/Windows doğrulama; Homebrew tap; prod Postgres backup/restore + Caddy TLS.
 7. Port-forward yönetici UI'ı; tmux/Zellij seçim UI'ı (capability probe cihazda); backend gerçek auth (X-Tenant iskeleti → passkey).
 
-## 7b. Günlük kullanım katmanı (0.9.0'a kadar eklendi)
+## 7b. Günlük kullanım katmanı (0.9.1'e kadar eklendi)
 
 - Ayarlar DataStore'da kalıcı (tema + font ölçeği + backend URL/tenant); `SettingsViewModel(store, scope)`.
 - Secret'lar: RAM-only varsayılan, "Keystore ile sakla" opt-in → AES-256-GCM (`KeystoreSecretStore`); plaintext diskte yok.
@@ -106,6 +106,7 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 - **İmleç (0.7.0)**: terminalde imleç bloğu render'ı (palette.cursor), ?25h/l görünürlüğü saygılanır.
 - **Terminal (0.7.1-0.7.2)**: OSC 52 uzaktan kopyalama → cihaz panosu, OSC 0/2 pencere başlığı durum çipinde, bracketed paste (?2004) — çok satırlı yapıştırma korunur, imleç bloğu, tam ekran, viewport→PTY resize, scrollback paylaşımı (FileProvider), **OSC 8 tıklanabilir linkler**.
 - **FGS (0.7.2-0.8.0)**: bildirimde aktif oturum sayısı + "Tümünü kapat" aksiyonu, dokununca uygulamaya döner; POST_NOTIFICATIONS runtime izni (API 33+).
+- **Kopmada reconnect (0.9.1, varsayılan açık)**: beklenmedik kopmada üstel backoff (2s→32s, maks 5) ile otomatik yeniden bağlanma; çipte "Yeniden bağlanıyor n/5" rozeti; auth/host-key hatasında P08 hard-stop; kullanıcı kapatması tetiklemez.
 - **Açılışta reconnect (0.8.0, opt-in)**: secret Keystore'da saklıysa son oturum otomatik bağlanır; değilse sessizce atlanır.
 - **Klavye (0.8.2)**: donanım klavye desteği (Ctrl+harf→kontrol kodu, ok/Home/End/PgUp/PgDn/Esc doğrudan terminal yüzeyine); Agents'ta "Şimdi senkronla" (EventSync syncNow); ET spike: upstream repo 404, resmi Android yolu yok → ET ertelendi (D021).
 - **Preview (0.8.0)**: gateway /preview ucu + Workspace "Dev server…" diyaloğu (loopback-only, SSRF korumalı, 1MB/5s).
@@ -125,6 +126,6 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 ## 9. Kurallar
 
 - Conventional commits (`feat(Pxx): …`), her P için test + kapı yeşili zorunlu.
-- `decisions.tsv` append-only (D001–D022 yazıldı).
+- `decisions.tsv` append-only (D001–D023 yazıldı).
 - Marka/kod taraması yalnızca izinli dosyalardaki referanslara izin verir (`secret-scan.sh` kuralı); ham kopya yasaktır.
 - `docs/reference/**` yayın paketine girmez (`check-packaging.sh`).
