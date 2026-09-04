@@ -7,6 +7,20 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import dev.pocketagent.android.R
+
+// Terminal tipografisi: JetBrains Mono 2.304 (OFL-1.1, lisans res/font/OFL-JetBrainsMono.txt).
+// Sistem monospace yerine gerçek terminal fontu — kutucuk çizim ve ikonlar tutarlı.
+val TerminalFont = FontFamily(
+    Font(R.font.jetbrains_mono_regular, FontWeight.Normal),
+    Font(R.font.jetbrains_mono_bold, FontWeight.Bold),
+    Font(R.font.jetbrains_mono_italic, FontWeight.Normal, FontStyle.Italic),
+    Font(R.font.jetbrains_mono_bold_italic, FontWeight.Bold, FontStyle.Italic),
+)
 
 // Terminal estetiği: koyu tarafta koyu lacivert zemin + mavi/yeşil vurgu.
 val TermBg = Color(0xFF0D1117)

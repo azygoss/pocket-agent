@@ -73,7 +73,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
+import dev.pocketagent.ui.theme.TerminalFont
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
@@ -194,7 +194,7 @@ private fun EmptyTerminal() {
         Text(
             "$ açık oturum yok",
             color = TermGreen,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFont,
         )
         Spacer(Modifier.height(6.dp))
         Text(
@@ -454,7 +454,7 @@ private fun ActiveTerminal(
                         Text(
                             if (state == ConnectionState.CONNECTING) "$ bağlanıyor…" else "$ bekleniyor",
                             color = if (state == ConnectionState.CONNECTING) TermAmber else TermGreen,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = TerminalFont,
                             fontSize = (14 * settings.theme.fontScale).sp,
                         )
                     }
@@ -469,7 +469,7 @@ private fun ActiveTerminal(
                                 Text(
                                     line.toAnnotatedString(cursorCol, Color(settings.theme.palette.cursor)),
                                     color = TermText,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = TerminalFont,
                                     fontSize = (13 * settings.theme.fontScale).sp,
                                     lineHeight = (16 * settings.theme.fontScale).sp,
                                     modifier = Modifier.fillMaxWidth().background(
@@ -513,7 +513,7 @@ private fun ActiveTerminal(
             FilterChip(
                 selected = ctrl,
                 onClick = { ctrl = !ctrl },
-                label = { Text("Ctrl", fontFamily = FontFamily.Monospace, fontSize = 13.sp) },
+                label = { Text("Ctrl", fontFamily = TerminalFont, fontSize = 13.sp) },
             )
             ExtraKey("Esc") { sendText("\u001B") }
             ExtraKey("Tab") { sendText("\t") }
@@ -553,13 +553,13 @@ private fun ActiveTerminal(
                 placeholder = {
                     Text(
                         if (ctrl) "Ctrl aktif: harf yaz" else "Komut yaz…",
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFont,
                     )
                 },
                 modifier = Modifier.weight(1f).semantics { contentDescription = "Terminal girişi" },
                 singleLine = true,
                 enabled = state == ConnectionState.ACTIVE,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = TerminalFont),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { sendInput() }),
             )
@@ -608,7 +608,7 @@ private fun ExtraKey(label: String, onTap: () -> Unit) {
         onClick = onTap,
         shape = RoundedCornerShape(8.dp),
     ) {
-        Text(label, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+        Text(label, fontFamily = TerminalFont, fontSize = 13.sp)
     }
 }
 
