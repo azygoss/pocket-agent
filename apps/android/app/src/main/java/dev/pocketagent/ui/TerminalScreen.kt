@@ -197,6 +197,8 @@ private fun ActiveTerminal(
     val vm = controller.vm
     val lines by vm.lines.collectAsState()
     val cursor by vm.cursor.collectAsState()
+    val windowTitle by vm.windowTitle.collectAsState()
+    val pendingClip by vm.pendingClipboard.collectAsState()
     val state by controller.state.collectAsState()
     val failure by controller.failure.collectAsState()
     val active by controller.connectedTo.collectAsState()
@@ -207,6 +209,15 @@ private fun ActiveTerminal(
     var fullscreen by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+
+    // OSC 52: uzak taraf (tmux/vim) panoya yazdı → cihaz panosuna aktar.
+    val clipboard = LocalClipboardManager.current
+    LaunchedEffect(pendingClip) {
+        pendingClip?.let {
+            clipboard.setText(androidx.compose.ui.text.AnnotatedString(it))
+            vm.consumeClipboard()
+        }
+    }
 
     // Tam ekran: sistem çubuklarını gizle (vim/htop için maksimum alan).
     val view = LocalView.current
@@ -272,11 +283,13 @@ private fun ActiveTerminal(
                 label = {
                     Text(
                         when (state) {
-                            ConnectionState.ACTIVE -> "${vm.badge} • ${active?.host}"
+                            ConnectionState.ACTIVE -> "${vm.badge} • ${active?.host}" +
+                                (if (windowTitle.isNotBlank()) " • $windowTitle" else "")
                             ConnectionState.CONNECTING -> "Bağlanıyor…"
                             ConnectionState.FAILED -> "Hata"
                             else -> "Bağlı değil"
                         },
+                        maxLines = 1,
                     )
                 },
             )
@@ -461,7 +474,6 @@ private fun ActiveTerminal(
 
         // Giriş satırı: geçmiş ↑↓ + metin + gönder
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            val clipboard = LocalClipboardManager.current
             IconButton(
                 onClick = { vm.historyOlder()?.let { text = it } },
                 enabled = state == ConnectionState.ACTIVE,
@@ -488,7 +500,17 @@ private fun ActiveTerminal(
             )
             Spacer(Modifier.width(8.dp))
             IconButton(
-                onClick = { clipboard.getText()?.text?.let { text += it } },
+                onClick = {
+                    val clip = clipboard.getText()?.text ?: return@IconButton
+                    if (clip.contains('\n')) {
+                        // Çok satırlı yapıştırma: alan tek satır — doğrudan gönder.
+                        // Bracketed paste açıksa kabuk/editör bunu komut gibi ÇALIŞTIRMAZ.
+                        val wrapped = if (vm.bracketedPaste) "\u001B[200~$clip\u001B[201~" else clip
+                        sendText(wrapped)
+                    } else {
+                        text += clip
+                    }
+                },
                 enabled = state == ConnectionState.ACTIVE,
                 modifier = Modifier.semantics { contentDescription = "Yapıştır" },
             ) {
