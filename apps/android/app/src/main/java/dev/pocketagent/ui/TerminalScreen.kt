@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -209,6 +210,7 @@ private fun ActiveTerminal(
     var fullscreen by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     // OSC 52: uzak taraf (tmux/vim) panoya yazdı → cihaz panosuna aktar.
     val clipboard = LocalClipboardManager.current
@@ -296,6 +298,28 @@ private fun ActiveTerminal(
             Spacer(Modifier.weight(1f))
             IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) query = "" }) {
                 Icon(Icons.Filled.Search, contentDescription = "Scrollback'te ara")
+            }
+            IconButton(onClick = {
+                // Scrollback'i dosyaya döküp paylaş (P15 paylaşım yüzeyi)
+                val dump = lines.joinToString("\n") { it.text }
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
+                    val f = java.io.File(dir, "scrollback.txt")
+                    f.writeText(dump)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                            context, context.packageName + ".fileprovider", f,
+                        )
+                        val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(share, "Scrollback"))
+                    }
+                }
+            }) {
+                Icon(Icons.Filled.Share, contentDescription = "Scrollback'i paylaş")
             }
             IconButton(onClick = { fullscreen = true }) {
                 Icon(Icons.Filled.Fullscreen, contentDescription = "Tam ekran")

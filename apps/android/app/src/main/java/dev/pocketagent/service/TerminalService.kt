@@ -4,24 +4,65 @@ package dev.pocketagent.service
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 
-// P06/P09: active transports live in a foreground service; process death only
-// re-attaches to multiplexer sessions, never re-runs commands.
+// P06/P09: aktif transport'lar foreground service'te yaşar; process death
+// yalnız multiplexer (tmux) oturumlarına re-attach demektir, komutlar asla
+// yeniden çalıştırılmaz. Bildirim aktif oturum sayısını gösterir.
 class TerminalService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        val ch = NotificationChannel("terminal", "Terminals", NotificationManager.IMPORTANCE_LOW)
-        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
-        val n = Notification.Builder(this, "terminal")
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        nm.createNotificationChannel(
+            NotificationChannel("terminal", "Terminal oturumları", NotificationManager.IMPORTANCE_LOW),
+        )
+        startForeground(NOTIF_ID, buildNotification(1))
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val count = intent?.getIntExtra(EXTRA_COUNT, -1) ?: -1
+        if (count >= 0) {
+            // Android 13+: izin yoksa bildirim güncellemesini sessizce atla
+            // (FGS bildirimi onCreate'teki startForeground ile zaten zorunlu).
+            val granted = android.os.Build.VERSION.SDK_INT < 33 ||
+                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                nm.notify(NOTIF_ID, buildNotification(count))
+            }
+        }
+        return START_STICKY
+    }
+
+    private fun buildNotification(count: Int): Notification {
+        val openApp = PendingIntent.getActivity(
+            this, 0,
+            packageManager.getLaunchIntentForPackage(packageName),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        return Notification.Builder(this, "terminal")
             .setContentTitle("Pocket Agent")
-            .setContentText("Terminal sessions active")
+            .setContentText(if (count == 1) "1 aktif oturum" else "$count aktif oturum")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+            .setContentIntent(openApp)
+            .setOngoing(true)
             .build()
-        startForeground(1, n)
+    }
+
+    companion object {
+        const val NOTIF_ID = 1
+        const val EXTRA_COUNT = "count"
+
+        fun updateCount(context: Context, count: Int) {
+            val i = Intent(context, TerminalService::class.java).putExtra(EXTRA_COUNT, count)
+            context.startService(i)
+        }
     }
 }
