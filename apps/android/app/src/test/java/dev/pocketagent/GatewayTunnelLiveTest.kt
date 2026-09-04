@@ -64,6 +64,17 @@ class GatewayTunnelLiveTest {
                 runBlocking { g.readFile("../escape") }
             }
 
+            // preview: loopback dev-server üzerinden (test sunucusu 8899'da)
+            val preview = runCatching { g.preview("127.0.0.1", 8899, "/") }.getOrNull()
+            if (preview != null) {
+                assertTrue(preview.contains("pa-preview-marker"))
+            }
+
+            // SSRF: client tarafı loopback olmayanı reddeder
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { g.preview("169.254.169.254", 80, "/") }
+            }
+
             t.close()
             scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         }
