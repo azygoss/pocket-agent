@@ -50,7 +50,7 @@ class App : Application() {
     }
 
     // P13: agent inbox app-seviyesinde — EventSync poller'ı besler.
-    val inbox by lazy { InboxViewModel() }
+    val inbox by lazy { InboxViewModel(db.events(), appScope) }
 
     // P13 kullanım snapshot'ları (backend /v1/usages).
     val usage by lazy { dev.pocketagent.ui.UsageViewModel() }

@@ -30,6 +30,10 @@ data class AgentEventEntity(
     val title: String,
     val createdAt: Long,
     val expiresAt: Long,
+    // CAS onayı için gerekli; okundu bayrağı yeniden açılışta korunur.
+    val digest: String = "",
+    val revision: String = "",
+    val unread: Boolean = true,
 )
 
 @Dao
@@ -52,9 +56,13 @@ interface AgentEventDao {
     suspend fun insert(e: AgentEventEntity)
     @Query("DELETE FROM agent_events WHERE expiresAt <= :now")
     suspend fun sweepExpired(now: Long): Int
+    @Query("DELETE FROM agent_events WHERE eventId = :id")
+    suspend fun deleteById(id: String)
+    @Query("UPDATE agent_events SET unread = 0 WHERE eventId = :id")
+    suspend fun markRead(id: String)
 }
 
-@Database(entities = [ConnectionEntity::class, AgentEventEntity::class], version = 4, exportSchema = false)
+@Database(entities = [ConnectionEntity::class, AgentEventEntity::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun connections(): ConnectionDao
     abstract fun events(): AgentEventDao

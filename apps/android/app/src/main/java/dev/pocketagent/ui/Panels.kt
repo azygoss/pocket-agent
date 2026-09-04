@@ -2,7 +2,10 @@
 package dev.pocketagent.ui
 
 import androidx.compose.runtime.*
+import dev.pocketagent.data.AgentEventDao
+import dev.pocketagent.data.AgentEventEntity
 import dev.pocketagent.net.BackendEvent
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 // P13/P15 zirve: inbox (oturum-bazlı birleştirme + 24h geri sayım), onay (digest
@@ -19,9 +22,65 @@ data class InboxRow(
     val revision: String = "",
 )
 
-class InboxViewModel {
+// Inbox: in-memory satırlar + isteğe bağlı Room kalıcılığı (dao/scope verilirse).
+// Uygulama yeniden başlasa bile 24s TTL içindeki olaylar geri yüklenir;
+// resolve/markRead veritabanına da yansır.
+class InboxViewModel(
+    private val dao: AgentEventDao? = null,
+    private val scope: CoroutineScope? = null,
+) {
+    // Kalıcı yazma tamamlanma sayacı: testler DB'yi yoklamak yerine bunu bekler
+    // (Room in-memory tek bağlantı — eşzamanlı SELECT yoklaması yazıcıyı aç bırakır).
+    private val _persistVersion = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val persistVersion: kotlinx.coroutines.flow.StateFlow<Long> = _persistVersion
+    @Volatile var persistError: String? = null
+        private set
     private val _rows = mutableStateListOf<InboxRow>()
     val rows: List<InboxRow> get() = _rows
+    // resolve edilen eventId'ler: init yüklemesi geç tamamlanırsa silinmiş
+    // olayın dirilmesini önler (init race koruması).
+    private val resolvedIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    init {
+        val d = dao; val sc = scope
+        if (d != null && sc != null) {
+            sc.launch {
+                val now = System.currentTimeMillis()
+                d.sweepExpired(now)
+                val persisted = d.active(now).map { e ->
+                    InboxRow(
+                        sessionId = e.sessionId, eventId = e.eventId, title = e.title,
+                        unread = e.unread, source = e.source, category = e.category,
+                        createdAt = java.time.Instant.ofEpochMilli(e.createdAt).toString(),
+                        digest = e.digest, revision = e.revision,
+                    )
+                }
+                for (row in persisted) {
+                    if (row.eventId in resolvedIds) continue
+                    if (_rows.none { it.eventId == row.eventId }) _rows.add(row)
+                }
+            }
+        }
+    }
+
+    private fun persist(row: InboxRow) {
+        val d = dao ?: return; val sc = scope ?: return
+        val createdMs = runCatching { java.time.Instant.parse(row.createdAt).toEpochMilli() }
+            .getOrDefault(System.currentTimeMillis())
+        sc.launch {
+            runCatching {
+            d.insert(
+                AgentEventEntity(
+                    eventId = row.eventId, sessionId = row.sessionId, source = row.source,
+                    category = row.category, title = row.title, createdAt = createdMs,
+                    expiresAt = createdMs + 24 * 3600_000L,
+                    digest = row.digest, revision = row.revision, unread = row.unread,
+                ),
+            )
+            }.onFailure { persistError = it.message ?: it.javaClass.simpleName }
+            _persistVersion.value++
+        }
+    }
 
     // Aynı oturumdan yeni olay: eski okunmamışı birleştir (backend inbox.Box ile aynı kural).
     fun add(sessionId: String, eventId: String, title: String) {
@@ -48,6 +107,7 @@ class InboxViewModel {
                     revision = e.revision,
                 ),
             )
+            persist(_rows.first { it.eventId == e.eventId })
             added++
         }
         _rows.sortByDescending { it.createdAt }
@@ -57,11 +117,16 @@ class InboxViewModel {
     fun markRead(eventId: String) {
         val i = _rows.indexOfFirst { it.eventId == eventId }
         if (i >= 0) _rows[i] = _rows[i].copy(unread = false)
+        val d = dao; val sc = scope
+        if (d != null && sc != null) sc.launch { d.markRead(eventId); _persistVersion.value++ }
     }
 
     // Onaylanan/reddedilen event listeden düşer (CAS sonucu ne olursa olsun).
     fun resolve(eventId: String) {
+        resolvedIds.add(eventId)
         _rows.removeAll { it.eventId == eventId }
+        val d = dao; val sc = scope
+        if (d != null && sc != null) sc.launch { d.deleteById(eventId); _persistVersion.value++ }
     }
 }
 
