@@ -74,6 +74,8 @@ func main() {
 		}
 	case "host":
 		cmdHost(os.Args[2:])
+	case "gateway":
+		cmdGateway(os.Args[2:])
 	case "hooks":
 		cmdHooks(os.Args[2:])
 	case "service":

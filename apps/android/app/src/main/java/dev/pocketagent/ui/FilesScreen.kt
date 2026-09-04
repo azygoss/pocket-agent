@@ -32,10 +32,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -90,13 +92,55 @@ fun FilesScreen(files: FilesViewModel) {
             return@Column
         }
 
+        // Kaynak seçimi: SFTP (tüm FS) veya Workspace (gateway jail'i)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = files.mode == FilesMode.SFTP,
+                onClick = { files.selectMode(FilesMode.SFTP) },
+                label = { Text("SFTP") },
+            )
+            FilterChip(
+                selected = files.mode == FilesMode.WORKSPACE,
+                onClick = { files.selectMode(FilesMode.WORKSPACE) },
+                label = {
+                    Text(
+                        when (files.gatewayAvailable) {
+                            false -> "Workspace (kurulu değil)"
+                            else -> "Workspace"
+                        },
+                    )
+                },
+            )
+        }
+
+        if (files.mode == FilesMode.WORKSPACE && files.gatewayAvailable == false) {
+            WorkspaceMissingCard()
+            return@Column
+        }
+
+        // Workspace modunda diff kısayolları
+        if (files.mode == FilesMode.WORKSPACE) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                listOf("staged" to "Staged", "unstaged" to "Unstaged", "working" to "Working", "last" to "Son commit").forEach { (kind, label) ->
+                    OutlinedButton(onClick = { files.gwDiff(kind, "git diff ($label)") }) { Text(label, fontSize = 12.sp) }
+                }
+            }
+        }
+
         // Yol çubuğu
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { files.up() }, enabled = files.path != null && files.path != "/") {
+            val curPath = if (files.mode == FilesMode.WORKSPACE) "/" + files.gwPath else files.path
+            IconButton(
+                onClick = { files.up() },
+                enabled = if (files.mode == FilesMode.WORKSPACE) files.gwPath.isNotEmpty() else files.path != null && files.path != "/",
+            ) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Üst dizin")
             }
             Text(
-                files.path ?: "…",
+                curPath ?: "…",
                 style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -105,8 +149,10 @@ fun FilesScreen(files: FilesViewModel) {
             IconButton(onClick = { files.refresh() }, enabled = !files.loading) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Yenile")
             }
-            IconButton(onClick = { uploadLauncher.launch("*/*") }, enabled = !files.loading) {
-                Icon(Icons.Filled.Upload, contentDescription = "Dosya yükle")
+            if (files.mode == FilesMode.SFTP) {
+                IconButton(onClick = { uploadLauncher.launch("*/*") }, enabled = !files.loading) {
+                    Icon(Icons.Filled.Upload, contentDescription = "Dosya yükle")
+                }
             }
         }
 
@@ -142,7 +188,8 @@ fun FilesScreen(files: FilesViewModel) {
         }
 
         Text(
-            "SFTP • SSH oturumu içinde • indirme ≤10MB",
+            if (files.mode == FilesMode.WORKSPACE) "Gateway • SSH tüneli içinde • workspace jail"
+            else "SFTP • SSH oturumu içinde • indirme ≤10MB",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 4.dp),
@@ -209,6 +256,25 @@ private fun humanSize(bytes: Long): String = when {
     bytes < 1024 * 1024 -> "${bytes / 1024} KB"
     bytes < 1024 * 1024 * 1024 -> "${"%.1f".format(bytes / 1024.0 / 1024.0)} MB"
     else -> "${"%.2f".format(bytes / 1024.0 / 1024.0 / 1024.0)} GB"
+}
+
+@Composable
+private fun WorkspaceMissingCard() {
+    Card(
+        Modifier.fillMaxWidth().padding(top = 12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Workspace gateway kurulu değil", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Host'ta çalıştır:\n  pocket-agent gateway serve\n\n" +
+                    "Token ~/.config/pocket-agent/gateway.token altında üretilir; " +
+                    "uygulama onu SSH oturumu içinden okur. Gateway yalnız 127.0.0.1:24543 dinler.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 @Composable

@@ -118,3 +118,44 @@ class TerminalControllerTest {
         assertFalse(c.canReconnect() && c.state.value == ConnectionState.ACTIVE)
     }
 }
+
+class AutoTmuxTest {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Test fun autoTmuxSendsAttachAfterConnect() = runBlocking {
+        val f = File.createTempFile("khst", null).apply { delete() }
+        val store = TofuHostKeyStore(f)
+        val conn = SavedConnection("t", "h", 22, "u", "ram:password", id = "c1", autoTmux = true)
+        // FakeConnector'a değil, doğrudan transport dönen bir connector gerek — basit inline:
+        val transport = FakeSshTransport()
+        val connector = object : SshConnector {
+            override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport {
+                transport.openPty("xterm-256color", size)
+                return transport
+            }
+        }
+        val c = TerminalController(scope, connector, store)
+        c.connect(conn, Secret.Password("pw"))
+        withTimeout(5000) {
+            while (transport.sent.none { it is TerminalInput.Text && it.s.contains("tmux new-session -A -s main") }) delay(20)
+        }
+        assertEquals(ConnectionState.ACTIVE, c.state.value)
+        c.disconnect()
+    }
+
+    @Test fun noAutoTmuxByDefault() = runBlocking {
+        val transport = FakeSshTransport()
+        val connector = object : SshConnector {
+            override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport {
+                transport.openPty("xterm-256color", size)
+                return transport
+            }
+        }
+        val store = TofuHostKeyStore(File.createTempFile("khst", null).apply { delete() })
+        val c = TerminalController(scope, connector, store)
+        c.connect(SavedConnection("t", "h", 22, "u", "ram:password", id = "c2"), Secret.Password("pw"))
+        delay(900)
+        assertTrue(transport.sent.none { it is TerminalInput.Text })
+        c.disconnect()
+    }
+}
