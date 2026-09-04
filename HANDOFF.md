@@ -47,7 +47,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 ## 4. Test raporu (son yeşil koşu)
 
 - Go: 18 paket `ok`, 0 FAIL (`go test ./... -count=1`), `go vet` + `go build ./...` temiz.
-- Android: 90/90 unit (5 canlı env-gated: SSH + backend + SFTP + gateway + mosh bootstrap — hepsi bu makinede kanıtlı; + 2 Robolectric Compose UI süiti) + `lintDebug` (0 hata) + `assembleDebug` yeşil.
+- Android: 92/92 unit (5 canlı env-gated: SSH + backend + SFTP + gateway + mosh bootstrap — hepsi bu makinede kanıtlı; + 2 Robolectric Compose UI süiti) + `lintDebug` (0 hata) + `assembleDebug` yeşil.
 - Canlı SSH kanıtı: `PA_LIVE_SSH=1 PA_LIVE_USER=pa-dev PA_LIVE_PEM=/tmp/pa-dev-key ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SshjLiveTest` → localhost sshd'ye TOFU hard-stop → pin → ed25519 key auth → PTY → `echo PA_ALIVE_42` okundu (test user `pa-dev` bu makinede hazır).
 - Canlı backend kanıtı: `/tmp/pa-backend` ayaktayken `PA_LIVE_BACKEND=http://127.0.0.1:8080 ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.BackendLiveTest` → event post → özet çekme → cursor → CAS 202/409 → tenant izolasyonu.
 - Canlı SFTP kanıtı: `PA_LIVE_SSH=1 … ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SftpLiveTest` → list `/` + write/read `/tmp` + kota kesme + dizin-önce sıralama.
@@ -121,7 +121,7 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 3. ~~Gateway wiring~~ → **tamam (D017/D019: direct-tcpip + /ls + /diff + /preview + Workspace UI + systemd unit)**.
 4. FCM + 2-cihaz onay yarışı + 24h inbox senkron (FCM creds gerekli); backend X-Tenant iskeleti → passkey auth.
 5. Release: AAB + tarballs imza + SBOM + CCS + `REPRODUCING.md`.
-6. ~~Compose UI testleri~~ → **4 ekran smoke yeşil (Terminal/Agents/Connections/Files)**; sırada: Ayarlar + derin akışlar (diyaloglar, paylaşım intent).
+6. ~~Compose UI testleri~~ → **5 ekran smoke yeşil (Terminal/Agents/Connections/Files/Settings)**; sırada: derin akışlar (diyaloglar, paylaşım intent).
 
 ## 9. Kurallar
 
