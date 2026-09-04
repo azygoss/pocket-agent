@@ -232,4 +232,13 @@ class TerminalBufferTest {
         b.feed("\u001B[?25l") // imleç gizle
         assertNull(b.cursorPosition())
     }
+
+    @Test fun osc8Hyperlinks() {
+        val b = TerminalBuffer()
+        b.feed("\u001B]8;;https://example.com\u0007tıkla\u001B]8;;\u0007 düz\r\n")
+        val line = b.snapshot().single()
+        assertEquals("tıkla düz", line.text)
+        assertEquals("https://example.com", line.spans[0].style.link)
+        assertNull(line.spans[1].style.link)
+    }
 }

@@ -3,6 +3,7 @@ package dev.pocketagent.net
 
 import dev.pocketagent.transport.GatewayTunnel
 import dev.pocketagent.transport.jailOk
+import dev.pocketagent.transport.loopbackOk
 import org.json.JSONArray
 
 // P11: host gateway istemcisi. Trafik yalnız SSH oturumunun direct-tcpip
@@ -32,6 +33,16 @@ class GatewayClient(private val tunnel: GatewayTunnel, private val token: String
         require(kind in setOf("staged", "unstaged", "untracked", "working", "last")) { "bad diff kind" }
         val (status, body) = tunnel.gatewayGet("/diff?kind=$kind", token, 1 shl 20)
         require(status == 200) { "gateway diff $status" }
+        return body.decodeToString()
+    }
+
+    // Loopback dev-server önizlemesi (SSRF gate client'ta da — defense in depth).
+    suspend fun preview(host: String, port: Int, path: String): String {
+        require(loopbackOk(host)) { "SSRF rejected" }
+        require(port in 1..65535) { "bad port" }
+        val p = if (path.startsWith("/")) path else "/$path"
+        val (status, body) = tunnel.gatewayGet("/preview?h=$host&p=$port&path=$p", token, 1 shl 20)
+        require(status == 200) { "gateway preview $status" }
         return body.decodeToString()
     }
 

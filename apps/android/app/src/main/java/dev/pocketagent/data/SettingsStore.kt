@@ -18,6 +18,7 @@ data class PersistedSettings(
     val backendUrl: String = "",
     val tenantToken: String = "",
     val amoled: Boolean = false,
+    val autoReconnect: Boolean = false,
 )
 
 interface SettingsStore {
@@ -33,6 +34,7 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
     private val urlKey = stringPreferencesKey("backend_url")
     private val tenantKey = stringPreferencesKey("tenant_token")
     private val amoledKey = booleanPreferencesKey("amoled")
+    private val autoReconnectKey = booleanPreferencesKey("auto_reconnect")
 
     override suspend fun load(): PersistedSettings? {
         val p = context.prefs.data.first()
@@ -43,6 +45,7 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
             backendUrl = p[urlKey] ?: "",
             tenantToken = p[tenantKey] ?: "",
             amoled = p[amoledKey] ?: false,
+            autoReconnect = p[autoReconnectKey] ?: false,
         )
     }
 
@@ -53,6 +56,7 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
             it[urlKey] = s.backendUrl
             it[tenantKey] = s.tenantToken
             it[amoledKey] = s.amoled
+            it[autoReconnectKey] = s.autoReconnect
         }
     }
 }

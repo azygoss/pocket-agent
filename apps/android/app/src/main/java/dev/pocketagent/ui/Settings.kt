@@ -35,12 +35,15 @@ class SettingsViewModel(
 
     var amoled by mutableStateOf(false)
         private set
+    var autoReconnect by mutableStateOf(false)
+        private set
 
     init {
         if (store != null && scope != null) {
             scope.launch {
                 store.load()?.let { p ->
                     amoled = p.amoled
+                    autoReconnect = p.autoReconnect
                     theme = AppTheme(p.dark, p.fontScale.coerceIn(0.8f, 2.0f), paletteFor(p.dark, p.amoled), p.amoled)
                     backendUrl = p.backendUrl
                     tenantToken = p.tenantToken
@@ -51,6 +54,11 @@ class SettingsViewModel(
 
     fun toggleDark() {
         theme = theme.copy(dark = !theme.dark, palette = paletteFor(!theme.dark, amoled))
+        persist()
+    }
+
+    fun toggleAutoReconnect() {
+        autoReconnect = !autoReconnect
         persist()
     }
 
@@ -77,7 +85,7 @@ class SettingsViewModel(
     private fun persist() {
         val s = store ?: return
         val sc = scope ?: return
-        val snap = PersistedSettings(theme.dark, theme.fontScale, backendUrl, tenantToken, amoled)
+        val snap = PersistedSettings(theme.dark, theme.fontScale, backendUrl, tenantToken, amoled, autoReconnect)
         sc.launch { s.save(snap) }
     }
 }

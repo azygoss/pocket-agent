@@ -34,6 +34,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +43,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -119,8 +124,9 @@ fun FilesScreen(files: FilesViewModel) {
             return@Column
         }
 
-        // Workspace modunda diff kısayolları
+        // Workspace modunda diff kısayolları + preview
         if (files.mode == FilesMode.WORKSPACE) {
+            var previewPort by remember { mutableStateOf<String?>(null) }
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -128,6 +134,44 @@ fun FilesScreen(files: FilesViewModel) {
                 listOf("staged" to "Staged", "unstaged" to "Unstaged", "working" to "Working", "last" to "Son commit").forEach { (kind, label) ->
                     OutlinedButton(onClick = { files.gwDiff(kind, "git diff ($label)") }) { Text(label, fontSize = 12.sp) }
                 }
+                OutlinedButton(onClick = { previewPort = "" }) { Text("Dev server…", fontSize = 12.sp) }
+            }
+            // Dev-server önizleme diyaloğu (loopback-only)
+            previewPort?.let { current ->
+                var port by remember { mutableStateOf(current) }
+                var path by remember { mutableStateOf("/") }
+                AlertDialog(
+                    onDismissRequest = { previewPort = null },
+                    title = { Text("Dev server önizleme") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "Yalnız host üzerindeki loopback adresler (127.0.0.1) — SSRF korumalı.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            OutlinedTextField(
+                                value = port,
+                                onValueChange = { port = it.filter(Char::isDigit).take(5) },
+                                label = { Text("Port (örn. 3000)") },
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                value = path,
+                                onValueChange = { path = it },
+                                label = { Text("Yol") },
+                                singleLine = true,
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            port.toIntOrNull()?.let { files.gwPreview(it, path) }
+                            previewPort = null
+                        }) { Text("Getir") }
+                    },
+                    dismissButton = { TextButton(onClick = { previewPort = null }) { Text("Vazgeç") } },
+                )
             }
         }
 

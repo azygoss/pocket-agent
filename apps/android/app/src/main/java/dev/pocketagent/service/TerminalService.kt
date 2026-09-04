@@ -47,11 +47,20 @@ class TerminalService : Service() {
             packageManager.getLaunchIntentForPackage(packageName),
             PendingIntent.FLAG_IMMUTABLE,
         )
+        // "Kapat" aksiyonu: tüm oturumları kapatır (App.closeAllReceiver'a gider).
+        val closeAll = PendingIntent.getBroadcast(
+            this, 1,
+            Intent(ACTION_CLOSE_ALL).setPackage(packageName),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
         return Notification.Builder(this, "terminal")
             .setContentTitle("Pocket Agent")
             .setContentText(if (count == 1) "1 aktif oturum" else "$count aktif oturum")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setContentIntent(openApp)
+            .addAction(
+                Notification.Action.Builder(null, "Tümünü kapat", closeAll).build(),
+            )
             .setOngoing(true)
             .build()
     }
@@ -59,6 +68,7 @@ class TerminalService : Service() {
     companion object {
         const val NOTIF_ID = 1
         const val EXTRA_COUNT = "count"
+        const val ACTION_CLOSE_ALL = "dev.pocketagent.action.CLOSE_ALL"
 
         fun updateCount(context: Context, count: Int) {
             val i = Intent(context, TerminalService::class.java).putExtra(EXTRA_COUNT, count)

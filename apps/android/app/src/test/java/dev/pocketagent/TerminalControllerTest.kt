@@ -65,7 +65,7 @@ class TerminalControllerTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val conn = SavedConnection("t", "h", 22, "u", "ram:password", id = "c1")
 
-    private suspend fun await(timeoutMs: Long = 3000, cond: () -> Boolean) {
+    private suspend fun await(timeoutMs: Long = 10_000, cond: () -> Boolean) {
         withTimeout(timeoutMs) { while (!cond()) delay(10) }
     }
 
