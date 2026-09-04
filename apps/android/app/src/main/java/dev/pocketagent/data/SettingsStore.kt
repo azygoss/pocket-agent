@@ -19,6 +19,9 @@ data class PersistedSettings(
     val tenantToken: String = "",
     val amoled: Boolean = false,
     val autoReconnect: Boolean = false,
+    // Kopmada otomatik yeniden bağlanma (SSH) — varsayılan açık; auth/host-key
+    // hataları P08 gereği yine hard-stop.
+    val autoReconnectOnDrop: Boolean = true,
 )
 
 interface SettingsStore {
@@ -35,6 +38,7 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
     private val tenantKey = stringPreferencesKey("tenant_token")
     private val amoledKey = booleanPreferencesKey("amoled")
     private val autoReconnectKey = booleanPreferencesKey("auto_reconnect")
+    private val autoReconnectDropKey = booleanPreferencesKey("auto_reconnect_drop")
 
     override suspend fun load(): PersistedSettings? {
         val p = context.prefs.data.first()
@@ -46,6 +50,7 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
             tenantToken = p[tenantKey] ?: "",
             amoled = p[amoledKey] ?: false,
             autoReconnect = p[autoReconnectKey] ?: false,
+            autoReconnectOnDrop = p[autoReconnectDropKey] ?: true,
         )
     }
 
@@ -57,6 +62,7 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
             it[tenantKey] = s.tenantToken
             it[amoledKey] = s.amoled
             it[autoReconnectKey] = s.autoReconnect
+            it[autoReconnectDropKey] = s.autoReconnectOnDrop
         }
     }
 }

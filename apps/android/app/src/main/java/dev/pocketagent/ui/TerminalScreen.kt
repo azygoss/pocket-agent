@@ -293,18 +293,20 @@ private fun ActiveTerminal(
     Column {
         // Durum çubuğu (tam ekranda gizli)
         if (!fullscreen) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            val retryAttempt by controller.retryAttempt.collectAsState()
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             StateDot(state)
             Spacer(Modifier.width(8.dp))
             AssistChip(
                 onClick = {},
                 label = {
                     Text(
-                        when (state) {
-                            ConnectionState.ACTIVE -> "${vm.badge} • ${active?.host}" +
+                        when {
+                            retryAttempt > 0 -> "Yeniden bağlanıyor ($retryAttempt/${dev.pocketagent.transport.TerminalController.MAX_RETRY})…"
+                            state == ConnectionState.ACTIVE -> "${vm.badge} • ${active?.host}" +
                                 (if (windowTitle.isNotBlank()) " • $windowTitle" else "")
-                            ConnectionState.CONNECTING -> "Bağlanıyor…"
-                            ConnectionState.FAILED -> "Hata"
+                            state == ConnectionState.CONNECTING -> "Bağlanıyor…"
+                            state == ConnectionState.FAILED -> "Hata"
                             else -> "Bağlı değil"
                         },
                         maxLines = 1,

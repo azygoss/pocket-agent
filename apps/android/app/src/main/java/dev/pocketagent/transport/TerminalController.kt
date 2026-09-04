@@ -32,13 +32,29 @@ class TerminalController(
     val connectedTo: StateFlow<SavedConnection?> = _connectedTo
 
     private var job: Job? = null
+    private var retryJob: Job? = null
     private var transport: SshTransport? = null
     private var lastConn: SavedConnection? = null
     private var lastSecret: Secret? = null
 
+    // Kopmada otomatik yeniden bağlanma (SessionManager ayarından beslenir).
+    // Auth/host-key hataları hard-stop kalır (P08) — yalnız ağ kopması/EOF retried edilir.
+    var autoReconnectOnDrop: Boolean = true
+    var retryBaseMs: Long = 2_000 // testlerde kısaltılır
+    private var manualClose: Boolean = true
+    private var retryCount = 0
+
+    // 0 = yeniden deneme yok; >0 = n. deneme sürüyor (UI rozeti)
+    private val _retryAttempt = MutableStateFlow(0)
+    val retryAttempt: StateFlow<Int> = _retryAttempt
+
+    companion object { const val MAX_RETRY = 5 }
+
     @Synchronized
     fun connect(conn: SavedConnection, secret: Secret?) {
         if (_state.value == ConnectionState.CONNECTING || _state.value == ConnectionState.ACTIVE) return
+        retryJob?.cancel()
+        _retryAttempt.value = 0
         lastConn = conn
         lastSecret = secret
         doConnect(conn, secret)
@@ -57,6 +73,7 @@ class TerminalController(
         lastConn != null && (_state.value == ConnectionState.CLOSED || _state.value == ConnectionState.FAILED)
 
     private fun doConnect(conn: SavedConnection, secret: Secret?) {
+        manualClose = false
         _failure.value = null
         _pendingHostKey.value = null
         vm.clear()
@@ -68,6 +85,8 @@ class TerminalController(
                 transport = t
                 _connectedTo.value = conn
                 _state.value = ConnectionState.ACTIVE
+                _retryAttempt.value = 0
+                retryCount = 0
                 onConnected?.invoke(conn)
                 // tmux otomatik bağlanma: kabuk hazır olsun diye kısa gecikme.
                 if (conn.autoTmux) {
@@ -132,11 +151,46 @@ class TerminalController(
 
     @Synchronized
     fun disconnect() {
+        manualClose = true
+        retryJob?.cancel()
+        retryJob = null
+        _retryAttempt.value = 0
+        retryCount = 0
         job?.cancel()
         runCatching { transport?.close() }
         transport = null
         _connectedTo.value = null
         _state.value = ConnectionState.CLOSED
+    }
+
+    // Beklenmeyen kopma (EOF/ağ) sonrası üstel geri çekilmeyle yeniden dener.
+    // Hard-stop: auth/host-key hatası, kullanıcı kapatması, maks deneme.
+    private fun scheduleRetry() {
+        if (!autoReconnectOnDrop || manualClose) return
+        val c = lastConn ?: return
+        val s = lastSecret
+        retryJob?.cancel()
+        retryJob = scope.launch {
+            var delayMs = retryBaseMs
+            while (retryCount < MAX_RETRY) {
+                retryCount++
+                _retryAttempt.value = retryCount
+                kotlinx.coroutines.delay(delayMs)
+                if (manualClose || _state.value != ConnectionState.CLOSED) break
+                doConnect(c, s)
+                // CONNECTING çözümlenene kadar bekle (maks 15s)
+                var waited = 0L
+                while (_state.value == ConnectionState.CONNECTING && waited < 15_000) {
+                    kotlinx.coroutines.delay(100); waited += 100
+                }
+                if (_state.value == ConnectionState.ACTIVE) break
+                // Auth/host-key hatası → P08 hard-stop, denemeyi bırak
+                val f = _failure.value
+                if (f is TransportFailure.AuthFailed || f is TransportFailure.HostKeyChanged) break
+                delayMs = (delayMs * 2).coerceAtMost(32_000)
+            }
+            _retryAttempt.value = 0
+        }
     }
 
     private suspend fun readLoop(t: SshTransport) {
@@ -161,6 +215,8 @@ class TerminalController(
                 _state.value = ConnectionState.CLOSED
                 _connectedTo.value = null
             }
+            // Uzaktan kopma (kullanıcı kapatmadıysa) → otomatik yeniden dene
+            if (_state.value == ConnectionState.CLOSED) scheduleRetry()
         }
     }
 }

@@ -37,6 +37,9 @@ class SessionManager(
 
     var onConnected: ((SavedConnection) -> Unit)? = null
 
+    // Kopmada otomatik yeniden bağlanma tercihi (Ayarlar'dan beslenir).
+    var autoReconnectOnDrop: Boolean = true
+
     fun active(): TerminalController? =
         _sessions.value.firstOrNull { it.id == _activeId.value }?.controller
 
@@ -48,6 +51,7 @@ class SessionManager(
             return h.controller
         }
         val c = TerminalController(scope, connectorFactory(), hostKeys)
+        c.autoReconnectOnDrop = autoReconnectOnDrop
         c.onConnected = { conn2 -> onConnected?.invoke(conn2) }
         val handle = SessionHandle(UUID.randomUUID().toString(), conn, c)
         scope.launch {

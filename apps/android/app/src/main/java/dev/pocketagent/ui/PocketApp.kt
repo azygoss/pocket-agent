@@ -80,6 +80,8 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
 
     // Açılışta otomatik reconnect (opt-in): yalnız Keystore'da secret saklıysa.
     var autoReconnectTried by remember { mutableStateOf(false) }
+    // Kopmada yeniden bağlanma tercihini oturum yöneticisine yansıt.
+    LaunchedEffect(settings.autoReconnectOnDrop) { sessions.autoReconnectOnDrop = settings.autoReconnectOnDrop }
     LaunchedEffect(settings.autoReconnect, connections2.value) {
         if (!settings.autoReconnect || autoReconnectTried) return@LaunchedEffect
         val conns = connections2.value
