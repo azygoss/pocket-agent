@@ -196,7 +196,7 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Hakkında", style = MaterialTheme.typography.titleMedium)
-                Text("Pocket Agent 0.8.1 • GPL-3.0-or-later")
+                Text("Pocket Agent 0.8.2 • GPL-3.0-or-later")
                 Text(
                     "Terminal baytları, diff ve dosya içerikleri backend'den geçmez; yalnız kısa özetler (≤256 karakter, 24s TTL) tutulur.",
                     style = MaterialTheme.typography.bodySmall,
