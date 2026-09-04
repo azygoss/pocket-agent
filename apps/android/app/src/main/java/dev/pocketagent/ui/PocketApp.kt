@@ -66,6 +66,9 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
     var tab by remember { mutableStateOf(AppTab.Home) }
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val notifPermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { }
 
     val sessions = app.sessions
     val hostKeyPrompt by sessions.hostKeyPrompt.collectAsState()
@@ -91,13 +94,26 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
     }
 
     // Oturum varken foreground service ayakta; yokken durur.
-    LaunchedEffect(anyActive) {
-        if (anyActive) {
+    val sessionList by sessions.sessions.collectAsState()
+    val activeCount = sessionList.count { it.controller.state.collectAsState().value == dev.pocketagent.transport.ConnectionState.ACTIVE }
+    LaunchedEffect(activeCount) {
+        if (activeCount > 0) {
+            // Android 13+: bildirim izni yoksa FGS bildirimi görünmez — iste.
+            if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.POST_NOTIFICATIONS,
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                notifPermLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
             ContextCompat.startForegroundService(context, Intent(context, TerminalService::class.java))
-            snackbar.showSnackbar("Oturum bağlandı")
-        } else {
+            TerminalService.updateCount(context, activeCount)
+        } else if (!anyActive) {
             context.stopService(Intent(context, TerminalService::class.java))
         }
+    }
+    LaunchedEffect(anyActive) {
+        if (anyActive) snackbar.showSnackbar("Oturum bağlandı")
     }
 
     PocketAgentTheme(dark = settings.theme.dark, amoled = settings.theme.amoled) {
