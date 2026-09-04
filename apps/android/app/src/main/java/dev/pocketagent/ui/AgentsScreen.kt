@@ -87,11 +87,17 @@ fun AgentsScreen(inbox: InboxViewModel, approval: ApprovalViewModel, app: App) {
                     FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f) })
                 }
             }
-            Text(
-                "sync: $syncStatus",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "sync: $syncStatus",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                androidx.compose.material3.TextButton(
+                    onClick = { app.eventSync.syncNow() },
+                    enabled = app.backendClient != null,
+                ) { Text("Şimdi senkronla", style = MaterialTheme.typography.bodySmall) }
+            }
         }
 
         val shown = inbox.rows.filter { if (filter == "Okunmamış") it.unread else true }

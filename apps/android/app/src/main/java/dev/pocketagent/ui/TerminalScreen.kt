@@ -33,6 +33,12 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -399,11 +405,36 @@ private fun ActiveTerminal(
         val charW = with(density) { (13 * settings.theme.fontScale).sp.toPx() } * 0.6f
         val lineH = with(density) { (16 * settings.theme.fontScale).sp.toPx() }
         Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 6.dp)) {
+            val surfaceFocus = remember { androidx.compose.ui.focus.FocusRequester() }
             Surface(
                 color = termBg,
                 shape = if (fullscreen) RoundedCornerShape(0.dp) else RoundedCornerShape(10.dp),
                 modifier = Modifier.fillMaxSize()
                     .semantics { contentDescription = "Terminal çıktısı" }
+                    .focusRequester(surfaceFocus)
+                    .focusable()
+                    // Donanım klavyesi: Ctrl+harf → kontrol kodu, oklar/Home/End/PgUp/PgDn/Esc
+                    .onPreviewKeyEvent { ev ->
+                        if (ev.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        if (state != ConnectionState.ACTIVE) return@onPreviewKeyEvent false
+                        val k = ev.key
+                        when {
+                            ev.isCtrlPressed && k.keyCode in androidx.compose.ui.input.key.Key.A.keyCode..androidx.compose.ui.input.key.Key.Z.keyCode -> {
+                                val letter = 'a'.code + (k.keyCode - androidx.compose.ui.input.key.Key.A.keyCode).toInt()
+                                sendText(((letter and 0x1F).toChar()).toString()); true
+                            }
+                            k == androidx.compose.ui.input.key.Key.DirectionUp -> { sendText("\u001B[A"); true }
+                            k == androidx.compose.ui.input.key.Key.DirectionDown -> { sendText("\u001B[B"); true }
+                            k == androidx.compose.ui.input.key.Key.DirectionRight -> { sendText("\u001B[C"); true }
+                            k == androidx.compose.ui.input.key.Key.DirectionLeft -> { sendText("\u001B[D"); true }
+                            k == androidx.compose.ui.input.key.Key.MoveHome -> { sendText("\u001B[H"); true }
+                            k == androidx.compose.ui.input.key.Key.MoveEnd -> { sendText("\u001B[F"); true }
+                            k == androidx.compose.ui.input.key.Key.PageUp -> { sendText("\u001B[5~"); true }
+                            k == androidx.compose.ui.input.key.Key.PageDown -> { sendText("\u001B[6~"); true }
+                            k == androidx.compose.ui.input.key.Key.Escape -> { sendText("\u001B"); true }
+                            else -> false
+                        }
+                    }
                     .onSizeChanged { sz ->
                         val pad = with(density) { 16.dp.toPx() }
                         val cols = ((sz.width - pad) / charW).toInt().coerceIn(20, 500)
