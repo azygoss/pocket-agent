@@ -1,7 +1,7 @@
 # HANDOFF — Pocket Agent
 
 Tarih: 2026-09-03 (v0.8.2). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
-Hedef tamamlama: ~%90 (headless tavan: ekran-modeli terminal + SFTP + gateway tüneli + mosh bootstrap + backend sync). Emülatör/cihaz gerektiren işler açıkta (bkz. §7).
+Hedef tamamlama: ~%92 (headless tavan: ekran-modeli terminal + SFTP + gateway tüneli + mosh bootstrap + backend sync). Emülatör/cihaz gerektiren işler açıkta (bkz. §7).
 
 ## 1. Proje özeti
 
@@ -18,9 +18,11 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
   Android SDK `/opt/android-sdk` (platform 34, build-tools 34.0.0, **NDK 29.0.14206865 + CMake 3.22.1**),
   Buf 1.72, `gh` (azygoss). Native derleme için `libtool-bin`, `bison`, `flex`, `texinfo` kurulu.
 - Canlı test altyapısı: `pa-dev` kullanıcısı (ed25519 key `/tmp/pa-dev-key`), sshd :22,
-  backend `go build -o /tmp/pa-backend ./backend/cmd/server && /tmp/pa-backend` (:8080, in-memory).
+  backend `go build -o /tmp/pa-backend ./backend/cmd/server && /tmp/pa-backend` (:8080, in-memory),
+  gateway `POCKET_GATEWAY_TOKEN=tok123 /tmp/pa-hook gateway serve --root /tmp/pa-workspace` (:24543 loopback),
+  preview için `python3 -m http.server 8899 --bind 127.0.0.1` (/tmp/pa-preview), `mosh-server` 1.4.0 kurulu.
 - Sonuç: emülatör kurulmadı (`docs/emulator.md` gerekçesi). `connectedDebugAndroidTest`
-  ve video kanıtları cihaz bekler. Telafi: Robolectric JVM-UI testi + 2 canlı env-gated test yeşil.
+  ve video kanıtları cihaz bekler. Telafi: Robolectric Compose UI testleri + 5 canlı env-gated süit.
 
 ## 3. Adım durumu (P00–P18)
 
@@ -31,8 +33,8 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 | P02 backend | ✅ | tenant guard, TTL sweep (event+pairing+upload), pairing race 409, uploads 10MB cap, approvals CAS (401/202/409), canlı HTTP: healthz/202/400; `compose config` OK |
 | P03 CLI/daemon | ✅ | full komut yüzeyi, 0600 socket ping, idempotent service, imzasız update ret, `status --json` schema=1 |
 | P04 Easy Pair | ✅ | QR `pa1\|…`, aynı-claim idempotent, farklı-claim 409, marker-only revoke, TOFU hard-stop, `tests/e2e/p04-flow.sh` OK |
-| P05–P10 Android terminal | ✅ headless | Room v3, TerminalService (dataSync FGS), gerçek SSH (`SshjConnector`/SSHJ + TOFU pin diyaloğu), **TerminalBuffer v2 ekran modeli** (CUP/alt-screen/DECSTBM/IL-DL/DEC-grafik/SGR bg+inverse — vim/htop/tmux kullanılabilir), viewport→PTY resize, `SessionManager` çoklu oturum, 10MB burst <10s |
-| P11 gateway | ✅ + canlı | strict jail, loopback-only, binary guard, dosya 401/400/200, git diff 4 tür, `/ls` + `/diff` endpointleri, `pocket-agent gateway serve` komutu; **Android: direct-tcpip tüneli (GatewayTunnel) + Workspace modu — GatewayTunnelLiveTest canlı yeşil** |
+| P05–P10 Android terminal | ✅ headless | Room v4, TerminalService (dataSync FGS + oturum sayılı bildirim + tümünü-kapat aksiyonu), gerçek SSH (`SshjConnector`/SSHJ + TOFU pin diyaloğu), **TerminalBuffer v2 ekran modeli** (CUP/alt-screen/DECSTBM/IL-DL/DEC-grafik/SGR bg+inverse — vim/htop/tmux kullanılabilir), viewport→PTY resize, `SessionManager` çoklu oturum, 10MB burst <10s |
+| P11 gateway | ✅ + canlı | strict jail, loopback-only, binary guard, dosya 401/400/200, git diff 4 tür, `/ls` + `/diff` + `/preview` endpointleri, `gateway serve` + `service install-gateway` (systemd user unit); **Android: direct-tcpip tüneli (GatewayTunnel) + Workspace modu — GatewayTunnelLiveTest canlı yeşil (ls/file/401/traversal/preview)** |
 | P12 hook'lar | ✅ | 12 agent merge (tekrar kurulumda dubl yok), Claude/Codex JSONL parser + fixture, ANSI-ban, journal-first emit |
 | P07 Mosh | ⚠️ derleme + bootstrap | 3 ABI `libmoshclient.so` kaynaktan (D014) + **SSH exec bootstrap canlı kanıtlı** (`mosh-server new` → MOSH CONNECT parse, anahtar SSH içinde RAM'de; VPS'te mosh 1.4.0); UDP client spawn cihaz bekler |
 | P13 inbox/onay | ✅ + canlı | onay geldiğinde yüksek-öncelik bildirim (0.8.1); session-merge + 24h, CAS ilk-kazanan, digest/rev bağlı, tenant gate; **BackendClient + EventSync (15s poll) gerçek backend'e bağlı — BackendLiveTest: event→özet→cursor→CAS 202/409→tenant izolasyonu** |
@@ -45,11 +47,12 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 ## 4. Test raporu (son yeşil koşu)
 
 - Go: 18 paket `ok`, 0 FAIL (`go test ./... -count=1`), `go vet` + `go build ./...` temiz.
-- Android: 84/84 unit (5 canlı env-gated: SSH + backend + SFTP + gateway + mosh bootstrap — hepsi bu makinede kanıtlı) + `lintDebug` (0 hata) + `assembleDebug` yeşil.
+- Android: 84/84 unit (5 canlı env-gated: SSH + backend + SFTP + gateway + mosh bootstrap — hepsi bu makinede kanıtlı; + 2 Robolectric Compose UI süiti) + `lintDebug` (0 hata) + `assembleDebug` yeşil.
 - Canlı SSH kanıtı: `PA_LIVE_SSH=1 PA_LIVE_USER=pa-dev PA_LIVE_PEM=/tmp/pa-dev-key ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SshjLiveTest` → localhost sshd'ye TOFU hard-stop → pin → ed25519 key auth → PTY → `echo PA_ALIVE_42` okundu (test user `pa-dev` bu makinede hazır).
 - Canlı backend kanıtı: `/tmp/pa-backend` ayaktayken `PA_LIVE_BACKEND=http://127.0.0.1:8080 ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.BackendLiveTest` → event post → özet çekme → cursor → CAS 202/409 → tenant izolasyonu.
 - Canlı SFTP kanıtı: `PA_LIVE_SSH=1 … ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SftpLiveTest` → list `/` + write/read `/tmp` + kota kesme + dizin-önce sıralama.
-- Canlı gateway tüneli: gateway çalışırken (`POCKET_GATEWAY_TOKEN=tok123 pocket-agent gateway serve --root /tmp/pa-workspace`) `PA_LIVE_GW=1 PA_LIVE_SSH=1 … --tests dev.pocketagent.GatewayTunnelLiveTest` → SSH direct-tcpip → ls/file/401/traversal.
+- Canlı gateway tüneli: gateway çalışırken (`POCKET_GATEWAY_TOKEN=tok123 pocket-agent gateway serve --root /tmp/pa-workspace`) `PA_LIVE_GW=1 PA_LIVE_SSH=1 … --tests dev.pocketagent.GatewayTunnelLiveTest` → SSH direct-tcpip → ls/file/401/traversal + preview (127.0.0.1:8899 marker).
+- Canlı mosh bootstrap: `PA_LIVE_SSH=1 … --tests dev.pocketagent.MoshBootstrapTest` → SSH exec → `mosh-server new` → MOSH CONNECT port+key parse (anahtar yalnız RAM).
 - Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (72MB v0.8.2, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI dahil).
 - CLI: `dist/` git-dışı (tarballs + `SHA256SUMS` + `sbom-go.json`).
 
@@ -80,7 +83,7 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 
 ## 7. Bilinen eksikler (cihaz/ağ/kimlik bilgisi ister)
 
-1. Mosh runtime: JNI exec + SSH bootstrap wiring (binary hazır, D014); ET derlemesi (libsodium+openssl) başlanmadı; termlib render + IME/CJK/OSC52 + gesture.
+1. Mosh runtime: native client exec (libmoshclient.so pakette, nativeLibraryDir'den) + UDP wiring + Wi-Fi/LTE resync ölçümü (cihaz); bootstrap kanıtlı (D018). ET ertelendi (D021: upstream repo 404, resmi Android yolu yok). termlib tam VT100 + IME/CJK + gesture.
 2. Keystore StrongBox + Biometric CryptoObject; biyometrik app-kilit.
 3. FCM service-account push; Passkey/OIDC turu; whisper model; S3 adapter.
 4. AAB + Play kanalı + upload-keystore imza; cosign/SLSA/syft-CycloneDX; CCS paketi.
@@ -114,14 +117,14 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 
 1. ~~`SshTransport` fake→cbssh takma~~ → **yapıldı (SSHJ, D012)**; sırada: cihazda PTY/resize doğrulaması, tam VT100 için termlib.
 2. Mosh: native client exec + UDP wiring (bootstrap kanıtlı, D018) + Wi-Fi/LTE resync ölçümü (cihaz).
-3. ~~Gateway wiring~~ → **yapıldı (D017: direct-tcpip + /ls + /diff + Workspace UI)**; sırada: host daemon'a gateway serve entegrasyonu (systemd unit), preview fetch uçları.
+3. ~~Gateway wiring~~ → **tamam (D017/D019: direct-tcpip + /ls + /diff + /preview + Workspace UI + systemd unit)**.
 4. FCM + 2-cihaz onay yarışı + 24h inbox senkron (FCM creds gerekli); backend X-Tenant iskeleti → passkey auth.
 5. Release: AAB + tarballs imza + SBOM + CCS + `REPRODUCING.md`.
-6. Compose UI testleri genişlet (TerminalScreen smoke başladı; Files/Connections/Agents ekranları).
+6. Compose UI testleri genişlet (TerminalScreen + AgentsScreen smoke var; Files/Connections eklenebilir).
 
 ## 9. Kurallar
 
 - Conventional commits (`feat(Pxx): …`), her P için test + kapı yeşili zorunlu.
-- `decisions.tsv` append-only (D001–D018 yazıldı).
+- `decisions.tsv` append-only (D001–D021 yazıldı).
 - Marka/kod taraması yalnızca izinli dosyalardaki referanslara izin verir (`secret-scan.sh` kuralı); ham kopya yasaktır.
 - `docs/reference/**` yayın paketine girmez (`check-packaging.sh`).
