@@ -207,8 +207,17 @@ func cmdService(args []string) {
 			os.Exit(1)
 		}
 		fmt.Println("installed " + p + " (idempotent rerun converges)")
+	case "install-gateway":
+		cwd, _ := os.Getwd()
+		p, err := service.InstallGateway(h, exe, cwd)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("installed " + p + " (root=" + cwd + ")")
 	case "status":
 		fmt.Println(service.Status(h))
+		fmt.Println("gateway: " + service.GatewayStatus(h))
 	case "uninstall":
 		if err := service.Uninstall(h); err != nil {
 			fmt.Fprintln(os.Stderr, err)

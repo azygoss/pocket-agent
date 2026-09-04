@@ -305,7 +305,7 @@ private fun WorkspaceMissingCard() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Workspace gateway kurulu değil", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Host'ta çalıştır:\n  pocket-agent gateway serve\n\n" +
+                "Host'ta çalıştır:\n  pocket-agent gateway serve\n  veya kalıcı servis:\n  pocket-agent service install-gateway\n\n" +
                     "Token ~/.config/pocket-agent/gateway.token altında üretilir; " +
                     "uygulama onu SSH oturumu içinden okur. Gateway yalnız 127.0.0.1:24543 dinler.",
                 style = MaterialTheme.typography.bodyMedium,
