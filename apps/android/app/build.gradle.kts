@@ -1,3 +1,4 @@
+import java.io.File
 plugins {
     alias(libs.plugins.android.app)
     alias(libs.plugins.kotlin.android)
@@ -19,10 +20,29 @@ android {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
+    signingConfigs {
+        // P18: upload keystore yalnız env'den gelir; repo'ya asla girmez (0600, gitignored).
+        // Env yoksa release debug anahtarıyla imzalanır (headless CI/doğrulama için).
+        create("upload") {
+            val ks = System.getenv("POCKET_AGENT_UPLOAD_KEYSTORE")
+            if (ks != null && File(ks).exists()) {
+                storeFile = file(ks)
+                keyAlias = System.getenv("POCKET_AGENT_UPLOAD_ALIAS")
+                storePassword = System.getenv("POCKET_AGENT_UPLOAD_STORE_PASSWORD")
+                keyPassword = System.getenv("POCKET_AGENT_UPLOAD_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            val uploadKs = System.getenv("POCKET_AGENT_UPLOAD_KEYSTORE")
+            signingConfig = if (uploadKs != null && File(uploadKs).exists()) {
+                signingConfigs.getByName("upload")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
     compileOptions {
@@ -70,4 +90,8 @@ dependencies {
     testImplementation(libs.test.core)
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    // Release unit testleri de Robolectric manifest'ine ComponentActivity ister
+    // (debugImplementation yalnız debug varyantına girer). Tek fark: manifestte
+    // intent-filter'sız ComponentActivity satırı.
+    releaseImplementation("androidx.compose.ui:ui-test-manifest")
 }
