@@ -1,6 +1,6 @@
 # HANDOFF — Pocket Agent
 
-Tarih: 2026-09-03 (v0.9.2). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
+Tarih: 2026-09-03 (v0.9.2, release zinciri eklendi). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
 Hedef tamamlama: ~%92 (headless tavan: ekran-modeli terminal + SFTP + gateway tüneli + mosh bootstrap + backend sync). Emülatör/cihaz gerektiren işler açıkta (bkz. §7).
 
 ## 1. Proje özeti
@@ -42,7 +42,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 | P15 paylaşım | ✅ + SFTP | 10MB cap, 24h sweep, short-code invalidate; **Files sekmesi gerçek SFTP gezgini** (list/cd/preview/download/share/upload, FileProvider, SftpLiveTest canlı) |
 | P16 ses/deeplink | ✅ | BYOK kapalı=varsayılan (unit), `pocketagent://tmux\|herdr` parse + MainActivity'de işlenip Terminal sekmesine yönleniyor (singleTask) |
 | P17 sertleştirme | ⚠️ kısmi | fuzz seed corpus, canary, threat-model iskeleti; cihaz perf/a11y yok |
-| P18 dağıtım | ⚠️ kısmi | 4-arch CLI tarball + SHA256 + win exe, SBOM (go), Dockerfile, 4 operasyon belgesi; AAB/imza/FCM-creds/cosign/CCS yok |
+| P18 dağıtım | ⚠️ büyük ölçüde | 4-arch CLI tarball, SBOM (go+android), Dockerfile, operasyon belgeleri + **env-driven imzalı release APK+AAB, R8 proguard, REPRODUCING.md, CCS paketi (package-ccs.sh), build-release.sh tam kapı (apksigner verify + release-checksums)**; cosign/SLSA/CI yok |
 
 ## 4. Test raporu (son yeşil koşu)
 
@@ -121,12 +121,12 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 2. Mosh: native client exec + UDP wiring (bootstrap kanıtlı, D018) + Wi-Fi/LTE resync ölçümü (cihaz).
 3. ~~Gateway wiring~~ → **tamam (D017/D019: direct-tcpip + /ls + /diff + /preview + Workspace UI + systemd unit)**.
 4. FCM + 2-cihaz onay yarışı + 24h inbox senkron (FCM creds gerekli); backend X-Tenant iskeleti → passkey auth.
-5. Release: AAB + tarballs imza + SBOM + CCS + `REPRODUCING.md`.
+5. ~~Release zinciri~~ → **imzalı APK+AAB + CCS + REPRODUCING.md + build-release.sh tamam (D025)**; sırada: gerçek upload keystore (kullanıcı), cosign/SLSA, CI job.
 6. ~~Compose UI testleri~~ → **5 ekran smoke yeşil (Terminal/Agents/Connections/Files/Settings)**; sırada: derin akışlar (diyaloglar, paylaşım intent).
 
 ## 9. Kurallar
 
 - Conventional commits (`feat(Pxx): …`), her P için test + kapı yeşili zorunlu.
-- `decisions.tsv` append-only (D001–D024 yazıldı).
+- `decisions.tsv` append-only (D001–D025 yazıldı).
 - Marka/kod taraması yalnızca izinli dosyalardaki referanslara izin verir (`secret-scan.sh` kuralı); ham kopya yasaktır.
 - `docs/reference/**` yayın paketine girmez (`check-packaging.sh`).
