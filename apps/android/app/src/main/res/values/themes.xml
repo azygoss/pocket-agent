@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.PocketAgent" parent="android:Theme.Material.NoActionBar" />
+    <!-- Açılış/pencere teması: uygulama koyu terminal estetiğinde olduğundan
+         pencere arkaplanı ve sistem çubukları aynı zeminde başlar (beyaz
+         flaş olmaz). Compose tarafı PocketAgentTheme ile devralır. -->
+    <style name="Theme.PocketAgent" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/term_bg</item>
+        <item name="android:statusBarColor">@color/term_bg</item>
+        <item name="android:navigationBarColor">@color/term_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
 </resources>

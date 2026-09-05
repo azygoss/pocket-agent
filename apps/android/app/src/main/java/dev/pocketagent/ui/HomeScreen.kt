@@ -99,17 +99,46 @@ fun HomeScreen(
             }
         }
 
-        // Başlangıç
+        // Başlangıç (yalnız hiç host yokken) / Son bağlantılar (varsa)
         Card(
             Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Başlangıç", style = MaterialTheme.typography.titleMedium)
-                StepRow(1, "Host'ta çalıştır: pocket-agent host setup")
-                StepRow(2, "Bağlantılar sekmesinden hostu ekle")
-                StepRow(3, "İlk bağlantıda parmak izini pinle (TOFU)")
-                StepRow(4, "Terminalde oturum aç — tmux re-attach hazır")
+                if (saved.isEmpty()) {
+                    Text("Başlangıç", style = MaterialTheme.typography.titleMedium)
+                    StepRow(1, "Host'ta çalıştır: pocket-agent host setup")
+                    StepRow(2, "Bağlantılar sekmesinden hostu ekle")
+                    StepRow(3, "İlk bağlantıda parmak izini pinle (TOFU)")
+                    StepRow(4, "Terminalde oturum aç — tmux re-attach hazır")
+                } else {
+                    Text("Son bağlantılar", style = MaterialTheme.typography.titleMedium)
+                    saved.sortedByDescending { it.lastConnectedAt }.take(3).forEach { c ->
+                        val hasSecret = connections.hasSavedSecret(c.id)
+                        val open = sessionList.firstOrNull { it.conn.id == c.id }
+                        FilledTonalButton(
+                            onClick = {
+                                if (open != null || hasSecret) {
+                                    sessions.open(c, connections.secret(c.id))
+                                    onGoTo(AppTab.Terminal)
+                                } else {
+                                    // secret RAM/Keystore'da yok — parola diyaloğu için Bağlantılar'a
+                                    onGoTo(AppTab.Connections)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                StateDot(open?.controller?.state?.collectAsState()?.value ?: ConnectionState.CLOSED)
+                                Spacer(Modifier.width(8.dp))
+                                Text("${c.name} — ${c.user}@${c.host}", maxLines = 1)
+                            }
+                        }
+                    }
+                }
             }
         }
 
