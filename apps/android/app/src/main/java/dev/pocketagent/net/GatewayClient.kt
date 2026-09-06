@@ -11,6 +11,9 @@ import org.json.JSONArray
 // aynı şekilde client'ta da uygulanır (defense in depth).
 data class GatewayEntry(val name: String, val isDir: Boolean, val size: Long, val mtime: Long)
 
+// P14: /chat yanıt bloğu (role: message|tool|result|error)
+data class ChatBlockDto(val role: String, val category: String, val text: String)
+
 class GatewayClient(private val tunnel: GatewayTunnel, private val token: String) {
 
     suspend fun ls(rel: String = ""): List<GatewayEntry> {
@@ -44,6 +47,20 @@ class GatewayClient(private val tunnel: GatewayTunnel, private val token: String
         val (status, body) = tunnel.gatewayGet("/preview?h=$host&p=$port&path=$p", token, 1 shl 20)
         require(status == 200) { "gateway preview $status" }
         return body.decodeToString()
+    }
+
+    // P14: jail içi agent transcript'i (JSONL) → sohbet blokları.
+    suspend fun chat(rel: String): List<ChatBlockDto> {
+        val clean = rel.trim('/')
+        require(clean.isNotBlank() && jailOk(clean)) { "traversal rejected" }
+        val (status, body) = tunnel.gatewayGet("/chat?path=$clean", token, 1 shl 20)
+        require(status == 200) { "gateway chat $status" }
+        val o = org.json.JSONObject(body.decodeToString())
+        val arr = o.optJSONArray("blocks") ?: JSONArray()
+        return (0 until arr.length()).mapNotNull { i ->
+            val b = arr.optJSONObject(i) ?: return@mapNotNull null
+            ChatBlockDto(b.optString("role"), b.optString("category"), b.optString("text"))
+        }
     }
 
     companion object {

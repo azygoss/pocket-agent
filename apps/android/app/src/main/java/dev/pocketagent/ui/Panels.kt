@@ -262,8 +262,38 @@ class FilesViewModel(
     // Dosyaya dokunma: küçükse önizle, değilse indir.
     fun onFile(f: dev.pocketagent.transport.RemoteFile) {
         if (f.isDir) { cd(f.path); return }
-        if (mode == FilesMode.WORKSPACE) { gwPreview(f); return }
+        if (mode == FilesMode.WORKSPACE) {
+            // Agent transcript'i (JSONL) → sohbet görünümü (P14)
+            if (f.name.endsWith(".jsonl")) { gwChat(f); return }
+            gwPreview(f); return
+        }
         if (f.size <= 64 * 1024) loadPreview(f) else download(f)
+    }
+
+    // Sohbet görünümü için bloklar (null = kapalı)
+    var chatBlocks by mutableStateOf<Pair<String, List<dev.pocketagent.net.ChatBlockDto>>?>(null)
+        private set
+    fun dismissChat() { chatBlocks = null }
+
+    private fun gwChat(f: dev.pocketagent.transport.RemoteFile) {
+        val c = gatewayClient ?: return
+        scope.launch {
+            loading = true; error = null
+            try {
+                val blocks = c.chat(f.path)
+                if (blocks.isEmpty()) {
+                    // JSONL ama agent transcript'i değil — düz önizlemeye düş
+                    gwPreview(f)
+                } else {
+                    chatBlocks = f.name to blocks
+                }
+            } catch (e: Exception) {
+                // parse edilemeyen JSONL düz metin olarak gösterilir
+                gwPreview(f)
+            } finally {
+                loading = false
+            }
+        }
     }
 
     fun dismissPreview() { preview = null }

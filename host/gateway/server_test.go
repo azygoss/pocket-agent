@@ -2,6 +2,7 @@
 package gateway
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -109,5 +110,45 @@ func TestServerPreviewLoopbackOnly(t *testing.T) {
 	s.ServeHTTP(w2, req2)
 	if w2.Code != 400 {
 		t.Fatalf("closed port want 400, got %d", w2.Code)
+	}
+}
+
+func TestServerChatEndpoint(t *testing.T) {
+	root := t.TempDir()
+	// Claude-format transcript fixture kopyala
+	src, _ := os.ReadFile("../hooks/testdata/claude.jsonl")
+	os.WriteFile(root+"/session.jsonl", src, 0o600)
+	s := &Server{Token: "tok", Root: root}
+
+	req := httptest.NewRequest("GET", "http://127.0.0.1:24543/chat?path=session.jsonl", nil)
+	req.Host = "127.0.0.1:24543"
+	req.Header.Set("Authorization", "Bearer tok")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("chat: got %d body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Blocks []struct {
+			Role string `json:"role"`
+			Text string `json:"text"`
+		} `json:"blocks"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if len(resp.Blocks) < 2 {
+		t.Fatalf("blocks: got %d", len(resp.Blocks))
+	}
+	if resp.Blocks[0].Role != "message" {
+		t.Fatalf("first role: got %q", resp.Blocks[0].Role)
+	}
+
+	// traversal reddedilir
+	req2 := httptest.NewRequest("GET", "http://127.0.0.1:24543/chat?path=../escape.jsonl", nil)
+	req2.Host = "127.0.0.1:24543"
+	req2.Header.Set("Authorization", "Bearer tok")
+	w2 := httptest.NewRecorder()
+	s.ServeHTTP(w2, req2)
+	if w2.Code != 400 {
+		t.Fatalf("traversal: got %d", w2.Code)
 	}
 }
