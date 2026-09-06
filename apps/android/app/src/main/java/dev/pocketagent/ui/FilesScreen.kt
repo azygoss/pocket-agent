@@ -241,6 +241,11 @@ fun FilesScreen(files: FilesViewModel) {
         )
     }
 
+    // P14: agent transcript sohbet görünümü
+    files.chatBlocks?.let { (name, blocks) ->
+        ChatDialog(title = name, blocks = blocks, onClose = { files.dismissChat() })
+    }
+
     // Önizleme diyaloğu (diff içeriği renklendirilir)
     files.preview?.let { (name, content) ->
         AlertDialog(

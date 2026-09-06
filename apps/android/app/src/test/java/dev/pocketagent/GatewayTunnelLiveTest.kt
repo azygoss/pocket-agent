@@ -75,6 +75,12 @@ class GatewayTunnelLiveTest {
                 runBlocking { g.preview("169.254.169.254", 80, "/") }
             }
 
+            // P14: /chat — workspace'teki claude fixture'ı blok akışına döner
+            val blocks = g.chat("session.jsonl")
+            assertTrue(blocks.size >= 2)
+            assertEquals("message", blocks.first().role)
+            assertTrue(blocks.any { it.role == "tool" })
+
             t.close()
             scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         }

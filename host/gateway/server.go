@@ -45,6 +45,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.servePreview(w, r)
 		return
 	}
+	// /chat?path=<rel> — jail içi agent transcript'i (JSONL) → sohbet blokları (P14).
+	if strings.HasPrefix(r.URL.Path, "/chat") {
+		s.serveChat(w, r)
+		return
+	}
 	rel := strings.TrimPrefix(r.URL.Path, "/file/")
 	if rel == r.URL.Path {
 		http.Error(w, "bad path", 400)

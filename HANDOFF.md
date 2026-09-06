@@ -1,6 +1,6 @@
 # HANDOFF — Pocket Agent
 
-Tarih: 2026-09-03 (v0.9.3). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
+Tarih: 2026-09-03 (v0.9.4). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
 Hedef tamamlama: ~%92 (headless tavan: ekran-modeli terminal + SFTP + gateway tüneli + mosh bootstrap + backend sync). Emülatör/cihaz gerektiren işler açıkta (bkz. §7).
 
 ## 1. Proje özeti
@@ -38,7 +38,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 | P12 hook'lar | ✅ | 12 agent merge (tekrar kurulumda dubl yok), Claude/Codex JSONL parser + fixture, ANSI-ban, journal-first emit |
 | P07 Mosh | ⚠️ derleme + bootstrap | 3 ABI `libmoshclient.so` kaynaktan (D014) + **SSH exec bootstrap canlı kanıtlı** (`mosh-server new` → MOSH CONNECT parse, anahtar SSH içinde RAM'de; VPS'te mosh 1.4.0); UDP client spawn cihaz bekler |
 | P13 inbox/onay | ✅ + canlı | onay bildirimi (0.8.1) + **Room kalıcılığı (0.9.2: yeniden başlatmada 24s TTL içi olaylar korunur, DB v5)**; session-merge + 24h, CAS ilk-kazanan, digest/rev bağlı, tenant gate; **BackendClient + EventSync (15s poll) gerçek backend'e bağlı — BackendLiveTest: event→özet→cursor→CAS 202/409→tenant izolasyonu** |
-| P14 Chat | ✅ | `ChatViewModel` aynı `SessionId`, MiniDiff gateway-only, unsupported→terminale |
+| P14 Chat | ✅ + canlı | gateway `/chat` endpointi (jail içi JSONL transcript → blok akışı, Claude/Codex parser); Workspace'te .jsonl → sohbet görünümü (ChatDialog: mesaj balonu/tool çipi/sonuç-hata); içerik backend'e gitmez |
 | P15 paylaşım | ✅ + SFTP | 10MB cap, 24h sweep, short-code invalidate; **Files sekmesi gerçek SFTP gezgini** (list/cd/preview/download/share/upload, FileProvider, SftpLiveTest canlı) |
 | P16 ses/deeplink | ✅ | BYOK kapalı=varsayılan (unit), `pocketagent://tmux\|herdr` parse + MainActivity'de işlenip Terminal sekmesine yönleniyor (singleTask) |
 | P17 sertleştirme | ⚠️ kısmi | fuzz seed corpus, canary, threat-model iskeleti; cihaz perf/a11y yok |
@@ -47,13 +47,13 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 ## 4. Test raporu (son yeşil koşu)
 
 - Go: 18 paket `ok`, 0 FAIL (`go test ./... -count=1`), `go vet` + `go build ./...` temiz.
-- Android: 98/98 unit (5 canlı env-gated: SSH + backend + SFTP + gateway + mosh bootstrap — hepsi bu makinede kanıtlı; + 2 Robolectric Compose UI süiti) + `lintDebug` (0 hata) + `assembleDebug` yeşil.
+- Android: 100/100 unit (5 canlı env-gated: SSH + backend + SFTP + gateway + mosh bootstrap — hepsi bu makinede kanıtlı; + 2 Robolectric Compose UI süiti) + `lintDebug` (0 hata) + `assembleDebug` yeşil.
 - Canlı SSH kanıtı: `PA_LIVE_SSH=1 PA_LIVE_USER=pa-dev PA_LIVE_PEM=/tmp/pa-dev-key ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SshjLiveTest` → localhost sshd'ye TOFU hard-stop → pin → ed25519 key auth → PTY → `echo PA_ALIVE_42` okundu (test user `pa-dev` bu makinede hazır).
 - Canlı backend kanıtı: `/tmp/pa-backend` ayaktayken `PA_LIVE_BACKEND=http://127.0.0.1:8080 ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.BackendLiveTest` → event post → özet çekme → cursor → CAS 202/409 → tenant izolasyonu.
 - Canlı SFTP kanıtı: `PA_LIVE_SSH=1 … ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SftpLiveTest` → list `/` + write/read `/tmp` + kota kesme + dizin-önce sıralama.
 - Canlı gateway tüneli: gateway çalışırken (`POCKET_GATEWAY_TOKEN=tok123 pocket-agent gateway serve --root /tmp/pa-workspace`) `PA_LIVE_GW=1 PA_LIVE_SSH=1 … --tests dev.pocketagent.GatewayTunnelLiveTest` → SSH direct-tcpip → ls/file/401/traversal + preview (127.0.0.1:8899 marker).
 - Canlı mosh bootstrap: `PA_LIVE_SSH=1 … --tests dev.pocketagent.MoshBootstrapTest` → SSH exec → `mosh-server new` → MOSH CONNECT port+key parse (anahtar yalnız RAM).
-- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (74MB v0.9.3, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI dahil).
+- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (74MB v0.9.4, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI dahil).
 - CLI: `dist/` git-dışı (tarballs + `SHA256SUMS` + `sbom-go.json`).
 
 ## 5. Derleme komutları
@@ -91,7 +91,7 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 6. WSL/macOS/Windows doğrulama; Homebrew tap; prod Postgres backup/restore + Caddy TLS.
 7. Port-forward yönetici UI'ı; tmux/Zellij seçim UI'ı (capability probe cihazda); backend gerçek auth (X-Tenant iskeleti → passkey).
 
-## 7b. Günlük kullanım katmanı (0.9.3'e kadar eklendi)
+## 7b. Günlük kullanım katmanı (0.9.4'e kadar eklendi)
 
 - Ayarlar DataStore'da kalıcı (tema + font ölçeği + backend URL/tenant); `SettingsViewModel(store, scope)`.
 - Secret'lar: RAM-only varsayılan, "Keystore ile sakla" opt-in → AES-256-GCM (`KeystoreSecretStore`); plaintext diskte yok.
@@ -128,6 +128,6 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 ## 9. Kurallar
 
 - Conventional commits (`feat(Pxx): …`), her P için test + kapı yeşili zorunlu.
-- `decisions.tsv` append-only (D001–D026 yazıldı).
+- `decisions.tsv` append-only (D001–D027 yazıldı).
 - Marka/kod taraması yalnızca izinli dosyalardaki referanslara izin verir (`secret-scan.sh` kuralı); ham kopya yasaktır.
 - `docs/reference/**` yayın paketine girmez (`check-packaging.sh`).
