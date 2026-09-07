@@ -19,7 +19,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -62,6 +64,8 @@ import kotlinx.coroutines.launch
 fun ConnectionsScreen(
     repo: ConnectionRepository,
     sessions: SessionManager,
+    app: dev.pocketagent.android.App? = null,
+    settings: SettingsViewModel? = null,
     onConnected: () -> Unit,
 ) {
     val items by repo.items.collectAsState()
@@ -69,7 +73,43 @@ fun ConnectionsScreen(
     var editing by remember { mutableStateOf<SavedConnection?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
+    var showPair by remember { mutableStateOf(false) }
+    var pairBusy by remember { mutableStateOf(false) }
+    var pairError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // P04: QR tarama (zxing-embedded ScanContract) + elle kod girişi
+    val qrLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        com.journeyapps.barcodescanner.ScanContract(),
+    ) { result ->
+        val contents = result.contents ?: return@rememberLauncherForActivityResult
+        val parsed = dev.pocketagent.net.PairingClient.parseQr(contents, settings?.backendUrl ?: "")
+        if (parsed == null) {
+            pairError = "QR tanınmadı — pa1| ile başlayan bir Pocket Agent kodu olmalı"
+            showPair = true
+        } else {
+            pairClaim(parsed.first, parsed.second, app, repo, sessions, scope, onConnected,
+                onBusy = { pairBusy = it }, onError = { pairError = it; showPair = true })
+        }
+    }
+    val camPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            qrLauncher.launch(
+                com.journeyapps.barcodescanner.ScanOptions().apply {
+                    setDesiredBarcodeFormats(com.journeyapps.barcodescanner.ScanOptions.QR_CODE)
+                    setPrompt("Host'taki QR kodunu okut")
+                    setBeepEnabled(false)
+                    setOrientationLocked(false)
+                },
+            )
+        } else {
+            pairError = "Kamera izni verilmedi — XXXX-XXXX kodunu elle girebilirsin"
+            showPair = true
+        }
+    }
     // Arama: ad/host/kullanıcı içinde süz (büyük-küçük harf duyarsız)
     val filtered = remember(items, query) {
         if (query.isBlank()) items
@@ -80,11 +120,16 @@ fun ConnectionsScreen(
 
     Scaffold(
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showAdd = true },
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text("Host ekle") },
-            )
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SmallFloatingActionButton(onClick = { pairError = null; showPair = true }) {
+                    Icon(Icons.Filled.QrCodeScanner, contentDescription = "QR ile bağlan")
+                }
+                ExtendedFloatingActionButton(
+                    onClick = { showAdd = true },
+                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                    text = { Text("Host ekle") },
+                )
+            }
         },
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
@@ -148,6 +193,72 @@ fun ConnectionsScreen(
                 }
             }
         }
+    }
+
+    // P04: Easy Pair diyaloğu — QR tara veya XXXX-XXXX kodu gir
+    if (showPair) {
+        var codeInput by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { if (!pairBusy) showPair = false },
+            title = { Text("QR / kod ile bağlan") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Host'ta `pocket-agent pair` çalıştır. QR'ı tara ya da 8 haneli kodu gir — anahtar tek kullanımlık, 5 dakika geçerli.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(
+                        onClick = { camPermission.launch(android.Manifest.permission.CAMERA) },
+                        enabled = !pairBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Filled.QrCodeScanner, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("QR tara")
+                    }
+                    OutlinedTextField(
+                        value = codeInput,
+                        onValueChange = { v ->
+                            val clean = v.uppercase().filter { it.isLetterOrDigit() }.take(8)
+                            codeInput = if (clean.length > 4) clean.take(4) + "-" + clean.drop(4) else clean
+                        },
+                        label = { Text("Kod (XXXX-XXXX)") },
+                        singleLine = true,
+                        enabled = !pairBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (pairBusy) {
+                        Text("Bağlanıyor…", style = MaterialTheme.typography.bodySmall)
+                    }
+                    pairError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val backend = settings?.backendUrl ?: ""
+                        val parsed = dev.pocketagent.net.PairingClient.parseQr(codeInput, backend)
+                        if (parsed == null) {
+                            pairError = if (backend.isBlank()) {
+                                "Kod için backend gerekli — önce Ayarlar → Backend URL gir"
+                            } else {
+                                "Kod 8 haneli olmalı (XXXX-XXXX)"
+                            }
+                        } else {
+                            pairClaim(parsed.first, parsed.second, app, repo, sessions, scope, onConnected,
+                                onBusy = { pairBusy = it }, onError = { pairError = it })
+                        }
+                    },
+                    enabled = !pairBusy && codeInput.length == 9,
+                ) { Text("Bağlan") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPair = false }, enabled = !pairBusy) { Text("Vazgeç") }
+            },
+        )
     }
 
     if (showAdd || editing != null) {
@@ -355,4 +466,42 @@ private fun ConnectionDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
     )
+}
+
+// P04: backend'den claim → bağlantıyı Keystore'lu kaydet → oturum aç.
+private fun pairClaim(
+    backend: String,
+    code: String,
+    app: dev.pocketagent.android.App?,
+    repo: ConnectionRepository,
+    sessions: SessionManager,
+    scope: kotlinx.coroutines.CoroutineScope,
+    onConnected: () -> Unit,
+    onBusy: (Boolean) -> Unit,
+    onError: (String) -> Unit,
+) {
+    val deviceId = app?.deviceId ?: "device:unknown"
+    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        onBusy(true)
+        try {
+            val r = dev.pocketagent.net.PairingClient.claim(backend, code, deviceId)
+            val conn = SavedConnection(
+                name = "${r.sshUser}@${r.sshHost}",
+                host = r.sshHost,
+                port = r.sshPort,
+                user = r.sshUser,
+                credentialRef = "keystore",
+            )
+            val secret = Secret.PemKey(r.privateKeyPem)
+            val id = repo.upsert(conn, secret, remember = true)
+            sessions.open(conn.copy(id = id), secret)
+            launch(kotlinx.coroutines.Dispatchers.Main) { onConnected() }
+        } catch (e: dev.pocketagent.net.PairingClient.FailureException) {
+            onError(e.failure.msg)
+        } catch (e: Exception) {
+            onError(e.message ?: "pairing başarısız")
+        } finally {
+            onBusy(false)
+        }
+    }
 }

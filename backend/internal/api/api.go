@@ -119,15 +119,16 @@ func (s *Server) handlePairCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var v struct {
-		Code   string `json:"code"`
-		HostID string `json:"host_id"`
+		Code    string `json:"code"`
+		HostID  string `json:"host_id"`
+		Payload string `json:"payload"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&v); err != nil || v.Code == "" {
 		http.Error(w, "bad request", 400)
 		return
 	}
 	now := time.Now()
-	s.Store.CreatePairing(store.Pairing{Code: v.Code, TenantID: tenant, HostID: v.HostID, State: "PENDING", ExpiresAt: now.Add(5 * time.Minute)})
+	s.Store.CreatePairing(store.Pairing{Code: v.Code, TenantID: tenant, HostID: v.HostID, State: "PENDING", ExpiresAt: now.Add(5 * time.Minute), Payload: v.Payload})
 	w.WriteHeader(201)
 	json.NewEncoder(w).Encode(map[string]string{"code": v.Code, "expires_in": "300"})
 }
@@ -143,7 +144,7 @@ func (s *Server) handlePairClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	code := r.PathValue("code")
-	st, err := s.Store.ClaimPairing(code, v.DeviceID, time.Now())
+	st, payload, err := s.Store.ClaimPairingPayload(code, v.DeviceID, time.Now())
 	if err != nil {
 		if err.Error() == "conflict" {
 			http.Error(w, "already claimed by another device", 409)
@@ -153,7 +154,7 @@ func (s *Server) handlePairClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = tenant
-	json.NewEncoder(w).Encode(map[string]string{"state": st})
+	json.NewEncoder(w).Encode(map[string]string{"state": st, "payload": payload})
 }
 
 func (s *Server) handlePairGet(w http.ResponseWriter, r *http.Request) {

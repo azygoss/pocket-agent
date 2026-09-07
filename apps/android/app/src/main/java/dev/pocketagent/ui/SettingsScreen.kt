@@ -207,7 +207,7 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Hakkında", style = MaterialTheme.typography.titleMedium)
-                Text("Pocket Agent 0.9.5 • GPL-3.0-or-later")
+                Text("Pocket Agent 0.10.0 • GPL-3.0-or-later")
                 Text(
                     "Terminal fontu: JetBrains Mono 2.304 (OFL-1.1) • Lisans metni uygulama içi assets/licenses altında.",
                     style = MaterialTheme.typography.bodySmall,
