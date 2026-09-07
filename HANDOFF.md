@@ -1,6 +1,6 @@
 # HANDOFF — Pocket Agent
 
-Tarih: 2026-09-03 (v0.11.0). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
+Tarih: 2026-09-03 (v0.12.0). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
 Hedef tamamlama: ~%92 (headless tavan: ekran-modeli terminal + SFTP + gateway tüneli + mosh bootstrap + backend sync). Emülatör/cihaz gerektiren işler açıkta (bkz. §7).
 
 ## 1. Proje özeti
@@ -53,7 +53,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 - Canlı SFTP kanıtı: `PA_LIVE_SSH=1 … ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SftpLiveTest` → list `/` + write/read `/tmp` + kota kesme + dizin-önce sıralama.
 - Canlı gateway tüneli: gateway çalışırken (`POCKET_GATEWAY_TOKEN=tok123 pocket-agent gateway serve --root /tmp/pa-workspace`) `PA_LIVE_GW=1 PA_LIVE_SSH=1 … --tests dev.pocketagent.GatewayTunnelLiveTest` → SSH direct-tcpip → ls/file/401/traversal + preview (127.0.0.1:8899 marker).
 - Canlı mosh bootstrap: `PA_LIVE_SSH=1 … --tests dev.pocketagent.MoshBootstrapTest` → SSH exec → `mosh-server new` → MOSH CONNECT port+key parse (anahtar yalnız RAM).
-- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (75MB v0.11.0, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI dahil).
+- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (75MB v0.12.0, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI dahil).
 - CLI: `dist/` git-dışı (tarballs + `SHA256SUMS` + `sbom-go.json`).
 
 ## 5. Derleme komutları
@@ -113,6 +113,7 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 - **Açılışta reconnect (0.8.0, opt-in)**: secret Keystore'da saklıysa son oturum otomatik bağlanır; değilse sessizce atlanır.
 - **Klavye (0.8.2)**: donanım klavye desteği (Ctrl+harf→kontrol kodu, ok/Home/End/PgUp/PgDn/Esc doğrudan terminal yüzeyine); Agents'ta "Şimdi senkronla" (EventSync syncNow); ET spike: upstream repo 404, resmi Android yolu yok → ET ertelendi (D021).
 - **Preview (0.8.0)**: gateway /preview ucu + Workspace "Dev server…" diyaloğu (loopback-only, SSRF korumalı, 1MB/5s).
+- **Terminal redesign (0.12.0)**: oturum şeridi pill'leri, overlay aksiyon çubuğu, ghost tuşlar, ❯ prompt'lu borderless giriş — terminal artık tamamen ekrana yayılan modern yüzey.
 - **Console redesign (0.11.0)**: keskin köşeler (4-6dp), outlined kartlar, mono başlık tipografisi, özel ince topbar+altbar, ANSI palet uygulamayla uyumlu — M3 şablon görünümü tamamen gitti.
 - **Tema (0.6.0-0.9.0)**: AMOLED saf-siyah seçeneği (kalıcı), koyu/aydınlık palet; **JetBrains Mono 2.304 bundle** (OFL-1.1, regular/bold/italic/bold-italic — sistem monospace yok, gerçek terminal fontu; lisans assets/licenses, Hakkında atfı).
 - Terminal: komut geçmişi (↑↓, dedupe, 100 cap), Ctrl toggle, reconnect, sonda-otomatik kaydırma + alta-in FAB, scrollback arama (eşleşme vurgusu), clipboard yapıştır, 30s SSH keepalive, bilinen-hosts yönetimi (Ayarlar).
@@ -130,6 +131,6 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 ## 9. Kurallar
 
 - Conventional commits (`feat(Pxx): …`), her P için test + kapı yeşili zorunlu.
-- `decisions.tsv` append-only (D001–D031 yazıldı).
+- `decisions.tsv` append-only (D001–D032 yazıldı).
 - Marka/kod taraması yalnızca izinli dosyalardaki referanslara izin verir (`secret-scan.sh` kuralı); ham kopya yasaktır.
 - `docs/reference/**` yayın paketine girmez (`check-packaging.sh`).
