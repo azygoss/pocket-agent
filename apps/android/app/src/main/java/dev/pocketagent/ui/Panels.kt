@@ -463,6 +463,32 @@ class FilesViewModel(
         }
     }
 
+    // P14: allowlist dizinlerindeki son agent transcript'leri (workspace modunda listelenir)
+    var transcripts by mutableStateOf<List<dev.pocketagent.net.TranscriptEntry>?>(null)
+        private set
+
+    fun loadTranscripts() {
+        val c = gatewayClient ?: return
+        scope.launch {
+            transcripts = runCatching { c.chatRecent() }.getOrDefault(emptyList())
+        }
+    }
+
+    fun openTranscript(t: dev.pocketagent.net.TranscriptEntry) {
+        val c = gatewayClient ?: return
+        scope.launch {
+            loading = true; error = null
+            try {
+                val blocks = c.chat(t.rel, t.src)
+                chatBlocks = "${t.src}: ${t.rel.substringAfterLast('/')}" to blocks
+            } catch (e: Exception) {
+                error = "transcript okunamadı: ${e.message ?: "hata"}"
+            } finally {
+                loading = false
+            }
+        }
+    }
+
     // Loopback dev-server önizlemesi (P11: yalnız 127.0.0.0/8 + ::1).
     fun gwPreview(port: Int, path: String) {
         val c = gatewayClient ?: return
