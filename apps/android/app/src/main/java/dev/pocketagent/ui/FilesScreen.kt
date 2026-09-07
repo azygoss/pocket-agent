@@ -405,8 +405,11 @@ private fun NoSessionCard() {
     ) {
         Card(
             Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.small,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        ) {
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Filled.Folder, contentDescription = null, tint = TermGreen)
                 Text("Uzak dosyalar", style = MaterialTheme.typography.titleMedium)

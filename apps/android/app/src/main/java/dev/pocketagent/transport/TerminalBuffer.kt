@@ -23,18 +23,19 @@ data class TermLine(val spans: List<Span>) {
 }
 
 // Standart ANSI paleti (koyu terminal zeminine göre ayarlı).
+// Console paletiyle uyumlu ANSI 16 (theme/Theme.kt ile aynı dil).
 private val ANSI_COLORS = longArrayOf(
-    0xFF484F58, 0xFFF85149, 0xFF3FB950, 0xFFD29922,
-    0xFF58A6FF, 0xFFBB9AF7, 0xFF39C5CF, 0xFFB1BAC4,
+    0xFF3A4552, 0xFFE6676B, 0xFF3FD68F, 0xFFE5B567,
+    0xFF5FA8F5, 0xFFB48CE8, 0xFF4FD0C5, 0xFFC6D0DC,
 )
 private val ANSI_BRIGHT = longArrayOf(
-    0xFF6E7681, 0xFFFF7B72, 0xFF56D364, 0xFFE3B341,
-    0xFF79C0FF, 0xFFD2A8FF, 0xFF56D4DD, 0xFFFFFFFF,
+    0xFF5C6B7E, 0xFFF08589, 0xFF6FE3AC, 0xFFEECA8A,
+    0xFF83BCF7, 0xFFC9A6EF, 0xFF7ADED5, 0xFFFFFFFF,
 )
 
 // SGR 7 (inverse) fg/bg takasında tema-bağımsız varsayılanlar.
-private const val INVERSE_FG = 0xFFE6EDF3L
-private const val INVERSE_BG = 0xFF0D1117L
+private const val INVERSE_FG = 0xFFD9E1EAL
+private const val INVERSE_BG = 0xFF07090DL
 
 // DEC özel grafik charset'i (ESC ( 0): tmux/vim çerçeve karakterleri.
 private val DEC_GRAPHICS = mapOf(
