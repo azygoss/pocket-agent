@@ -47,7 +47,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 ## 4. Test raporu (son yeşil koşu)
 
 - Go: 18 paket `ok`, 0 FAIL (`go test ./... -count=1`), `go vet` + `go build ./...` temiz.
-- Android: 107/107 unit (redesign sonrası da yeşil) (5 canlı env-gated: SSH + backend + SFTP + gateway + mosh bootstrap — hepsi bu makinede kanıtlı; + 2 Robolectric Compose UI süiti) + `lintDebug` (0 hata) + `assembleDebug` yeşil.
+- Android: 107/107 unit (redesign sonrası da yeşil) (6 canlı env-gated: SSH + backend + SFTP + gateway + mosh bootstrap + pairing E2E — hepsi bu makinede kanıtlı; + 6 Robolectric Compose UI süiti: Terminal/Agents/Connections/Files/Settings/Home/Chat) + `lintDebug` (0 hata) + `assembleDebug` yeşil.
 - Canlı SSH kanıtı: `PA_LIVE_SSH=1 PA_LIVE_USER=pa-dev PA_LIVE_PEM=/tmp/pa-dev-key ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SshjLiveTest` → localhost sshd'ye TOFU hard-stop → pin → ed25519 key auth → PTY → `echo PA_ALIVE_42` okundu (test user `pa-dev` bu makinede hazır).
 - Canlı backend kanıtı: `/tmp/pa-backend` ayaktayken `PA_LIVE_BACKEND=http://127.0.0.1:8080 ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.BackendLiveTest` → event post → özet çekme → cursor → CAS 202/409 → tenant izolasyonu.
 - Canlı SFTP kanıtı: `PA_LIVE_SSH=1 … ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SftpLiveTest` → list `/` + write/read `/tmp` + kota kesme + dizin-önce sıralama.
