@@ -40,19 +40,38 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import dev.pocketagent.transport.ConnectionState
+import dev.pocketagent.ui.theme.TermRed
+import dev.pocketagent.ui.theme.TerminalFont
 import androidx.core.content.ContextCompat
 import dev.pocketagent.android.App
 import dev.pocketagent.service.TerminalService
 import dev.pocketagent.ui.theme.PocketAgentTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 
-enum class AppTab(val label: String, val icon: ImageVector) {
-    Home("Ana Sayfa", Icons.Filled.Home),
-    Connections("Bağlantılar", Icons.Filled.Dns),
-    Terminal("Terminal", Icons.Filled.Terminal),
-    Agents("Agentlar", Icons.Filled.SmartToy),
-    Files("Dosyalar", Icons.Filled.Folder),
-    Settings("Ayarlar", Icons.Filled.Settings),
+enum class AppTab(val label: String, val short: String, val icon: ImageVector) {
+    Home("Ana Sayfa", "ana", Icons.Filled.Home),
+    Connections("Bağlantılar", "host", Icons.Filled.Dns),
+    Terminal("Terminal", "term", Icons.Filled.Terminal),
+    Agents("Agentlar", "agent", Icons.Filled.SmartToy),
+    Files("Dosyalar", "dosya", Icons.Filled.Folder),
+    Settings("Ayarlar", "ayar", Icons.Filled.Settings),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -134,46 +153,9 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
 
     PocketAgentTheme(dark = settings.theme.dark, amoled = settings.theme.amoled) {
         Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(
-                                "pocket-agent",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(tab.label, style = MaterialTheme.typography.titleMedium)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    ),
-                )
-            },
+            topBar = { ConsoleTopBar(tab, activeCount) },
             snackbarHost = { SnackbarHost(snackbar) },
-            bottomBar = {
-                NavigationBar {
-                    AppTab.entries.forEach { t ->
-                        NavigationBarItem(
-                            selected = tab == t,
-                            onClick = { tab = t },
-                            icon = {
-                                if (t == AppTab.Agents && unread > 0) {
-                                    BadgedBox(badge = { Badge { Text("$unread") } }) {
-                                        Icon(t.icon, contentDescription = t.label)
-                                    }
-                                } else {
-                                    Icon(t.icon, contentDescription = t.label)
-                                }
-                            },
-                            label = { Text(t.label, maxLines = 1) },
-                            alwaysShowLabel = false,
-                        )
-                    }
-                }
-            },
+            bottomBar = { ConsoleNavBar(tab, unread) { tab = it } },
         ) { pad ->
             Box(Modifier.fillMaxSize().padding(pad)) {
                 when (tab) {
@@ -228,5 +210,113 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
                 TextButton(onClick = { prompt.controller.rejectHostKey() }) { Text("Vazgeç") }
             },
         )
+    }
+}
+
+// ── Console chrome ──────────────────────────────────────────────────────────
+
+// İnce üst bar: prompt glifi + uygulama adı + aktif sekme + oturum sayısı.
+@Composable
+private fun ConsoleTopBar(tab: AppTab, activeSessions: Int) {
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "❯",
+                    fontFamily = TerminalFont,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "pocket-agent",
+                    fontFamily = TerminalFont,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    " / ${tab.label}",
+                    fontFamily = TerminalFont,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.weight(1f))
+                if (activeSessions > 0) {
+                    StateDot(ConnectionState.ACTIVE)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "$activeSessions oturum",
+                        fontFamily = TerminalFont,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            ConsoleDivider()
+        }
+    }
+}
+
+// Sade alt bar: ikon + kısa mono etiket; aktif sekme üstte ince yeşil çizgi.
+@Composable
+private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Column {
+            ConsoleDivider()
+            Row(Modifier.fillMaxWidth().height(54.dp)) {
+                AppTab.entries.forEach { t ->
+                    val selected = current == t
+                    val tint = if (selected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(onClick = { onSelect(t) }),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(
+                            Modifier.fillMaxWidth().height(2.dp).background(
+                                if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            ),
+                        )
+                        Spacer(Modifier.height(7.dp))
+                        Box {
+                            Icon(
+                                t.icon,
+                                contentDescription = t.label,
+                                tint = tint,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            if (t == AppTab.Agents && agentUnread > 0) {
+                                Text(
+                                    "$agentUnread",
+                                    fontFamily = TerminalFont,
+                                    fontSize = 8.sp,
+                                    color = Color(0xFF04150C),
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .offset(x = 8.dp, y = (-4).dp)
+                                        .background(TermRed, CircleShape)
+                                        .padding(horizontal = 3.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            t.short,
+                            fontFamily = TerminalFont,
+                            fontSize = 9.sp,
+                            color = tint,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
     }
 }

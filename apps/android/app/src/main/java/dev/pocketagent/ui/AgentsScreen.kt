@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.pocketagent.android.App
+import dev.pocketagent.ui.theme.TerminalFont
 import dev.pocketagent.ui.theme.TermAmber
 import dev.pocketagent.ui.theme.TermBlue
 import dev.pocketagent.ui.theme.TermGreen
@@ -130,10 +131,17 @@ fun AgentsScreen(inbox: InboxViewModel, approval: ApprovalViewModel, app: App) {
                     val isApproval = r.category == "APPROVAL_REQUIRED" || r.digest.isNotBlank()
                     Card(
                         Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.small,
                         colors = CardDefaults.cardColors(
                             containerColor = if (r.unread) MaterialTheme.colorScheme.secondaryContainer
                             else MaterialTheme.colorScheme.surfaceContainer,
                         ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (r.unread) MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
+                            else MaterialTheme.colorScheme.outline,
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                     ) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -148,7 +156,7 @@ fun AgentsScreen(inbox: InboxViewModel, approval: ApprovalViewModel, app: App) {
                                     Text(
                                         listOf(r.source, r.sessionId, eventTime(r.createdAt)).filter { it.isNotBlank() }
                                             .joinToString(" • "),
-                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = TerminalFont),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }

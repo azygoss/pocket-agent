@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.SmallFloatingActionButton
@@ -52,12 +53,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.pocketagent.data.ConnectionRepository
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.SavedConnection
 import dev.pocketagent.transport.Secret
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalTransport
+import dev.pocketagent.ui.theme.TerminalFont
 import kotlinx.coroutines.launch
 
 @Composable
@@ -288,12 +291,19 @@ private fun ConnectionCard(
     var menu by remember { mutableStateOf(false) }
     Card(
         Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.small,
         colors = CardDefaults.cardColors(
             containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer
             else MaterialTheme.colorScheme.surfaceContainer,
         ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+            else MaterialTheme.colorScheme.outline,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -305,7 +315,7 @@ private fun ConnectionCard(
                     }
                     Text(
                         "${conn.user}@${conn.host}:${conn.port}",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = TerminalFont),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -328,7 +338,19 @@ private fun ConnectionCard(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 conn.transportOrder.forEach { t ->
-                    FilterChip(selected = t == TerminalTransport.SSH, onClick = {}, label = { Text(t.name) })
+                    Text(
+                        t.name,
+                        fontFamily = TerminalFont,
+                        fontSize = 10.sp,
+                        color = if (t == TerminalTransport.SSH) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                MaterialTheme.shapes.extraSmall,
+                            )
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {

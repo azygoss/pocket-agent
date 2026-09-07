@@ -12,9 +12,9 @@ import kotlinx.coroutines.launch
 data class TerminalPalette(val background: Long, val foreground: Long, val cursor: Long)
 data class AppTheme(val dark: Boolean, val fontScale: Float, val palette: TerminalPalette, val amoled: Boolean = false)
 
-val DarkPalette = TerminalPalette(0xFF0D1117, 0xFFC9D1D9, 0xFF58A6FF)
-val AmoledPalette = TerminalPalette(0xFF000000, 0xFFC9D1D9, 0xFF58A6FF)
-val LightPalette = TerminalPalette(0xFFFFFFFF, 0xFF1F2328, 0xFF0969DA)
+val DarkPalette = TerminalPalette(0xFF07090D, 0xFFD9E1EA, 0xFF3FD68F)
+val AmoledPalette = TerminalPalette(0xFF000000, 0xFFD9E1EA, 0xFF3FD68F)
+val LightPalette = TerminalPalette(0xFFFFFFFF, 0xFF1B2129, 0xFF0E7A46)
 
 private fun paletteFor(dark: Boolean, amoled: Boolean): TerminalPalette = when {
     !dark -> LightPalette

@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -299,6 +300,11 @@ private fun ActiveTerminal(
             Spacer(Modifier.width(8.dp))
             AssistChip(
                 onClick = {},
+                shape = MaterialTheme.shapes.extraSmall,
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                colors = androidx.compose.material3.AssistChipDefaults.assistChipColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
                 label = {
                     Text(
                         when {
@@ -608,9 +614,11 @@ private fun ActiveTerminal(
 private fun ExtraKey(label: String, onTap: () -> Unit) {
     OutlinedButton(
         onClick = onTap,
-        shape = RoundedCornerShape(8.dp),
+        shape = MaterialTheme.shapes.extraSmall,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
     ) {
-        Text(label, fontFamily = TerminalFont, fontSize = 13.sp)
+        Text(label, fontFamily = TerminalFont, fontSize = 12.sp)
     }
 }
 

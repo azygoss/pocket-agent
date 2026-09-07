@@ -58,8 +58,11 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         // Görünüm
         Card(
             Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.small,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        ) {
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Görünüm", style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -131,8 +134,11 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         // Kullanım
         Card(
             Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.small,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        ) {
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Kullanım", style = MaterialTheme.typography.titleMedium)
                 if (usage.rows.isEmpty()) {
@@ -165,8 +171,11 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         // Bilinen host anahtarları (TOFU pin)
         Card(
             Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.small,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        ) {
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Bilinen host anahtarları", style = MaterialTheme.typography.titleMedium)
                 if (pinnedKeys.isEmpty()) {
@@ -203,11 +212,14 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         // Hakkında
         Card(
             Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.small,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        ) {
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Hakkında", style = MaterialTheme.typography.titleMedium)
-                Text("Pocket Agent 0.10.1 • GPL-3.0-or-later")
+                Text("Pocket Agent 0.11.0 • GPL-3.0-or-later")
                 Text(
                     "Terminal fontu: JetBrains Mono 2.304 (OFL-1.1) • Lisans metni uygulama içi assets/licenses altında.",
                     style = MaterialTheme.typography.bodySmall,
@@ -248,8 +260,11 @@ private fun BackendCard(settings: SettingsViewModel, app: App) {
 
     Card(
         Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.small,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-    ) {
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Backend (self-hosted)", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(

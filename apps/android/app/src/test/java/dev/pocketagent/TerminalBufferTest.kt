@@ -40,7 +40,7 @@ class TerminalBufferTest {
         val line = b.snapshot().single()
         assertEquals("red plain", line.text)
         assertEquals(2, line.spans.size)
-        assertEquals(0xFFF85149, line.spans[0].style.fg)
+        assertEquals(0xFFE6676B, line.spans[0].style.fg)
         assertNull(line.spans[1].style.fg)
     }
 
@@ -49,7 +49,7 @@ class TerminalBufferTest {
         b.feed("\u001B[1;96mhi\u001B[0m\r\n")
         val s = b.snapshot().single().spans.single().style
         assertTrue(s.bold)
-        assertEquals(0xFF56D4DD, s.fg) // bright cyan
+        assertEquals(0xFF7ADED5, s.fg) // bright cyan
         val b2 = TerminalBuffer()
         b2.feed("\u001B[38;5;196mx\r\n")
         assertEquals(0xFFFF0000, b2.snapshot().single().spans.single().style.fg) // kırmızı küp
@@ -59,7 +59,7 @@ class TerminalBufferTest {
         val b = TerminalBuffer()
         b.feed("\u001B[41;97mhi\u001B[0m\r\n")
         val s = b.snapshot().single().spans.single().style
-        assertEquals(0xFFF85149, s.bg) // kırmızı zemin
+        assertEquals(0xFFE6676B, s.bg) // kırmızı zemin
         assertEquals(0xFFFFFFFF, s.fg) // parlak beyaz
         val b2 = TerminalBuffer()
         b2.feed("\u001B[48;2;10;20;30mx\r\n")
@@ -168,7 +168,7 @@ class TerminalBufferTest {
         b.feed("2mgreen\r\n") // tamamlanıyor
         val line = b.snapshot().single()
         assertEquals("agreen", line.text)
-        assertEquals(0xFF3FB950, line.spans[1].style.fg)
+        assertEquals(0xFF3FD68F, line.spans[1].style.fg)
     }
 
     @Test fun boundsAndCount() {
