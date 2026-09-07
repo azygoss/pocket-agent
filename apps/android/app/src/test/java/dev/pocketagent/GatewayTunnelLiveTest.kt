@@ -81,6 +81,13 @@ class GatewayTunnelLiveTest {
             assertEquals("message", blocks.first().role)
             assertTrue(blocks.any { it.role == "tool" })
 
+            // P14: /chat-recent — allowlist dizinleri (~/.claude/projects altında demo fixture)
+            val recent = g.chatRecent()
+            assertTrue(recent.any { it.src == "claude" && it.rel.endsWith("live-session.jsonl") })
+            val demo = recent.first { it.src == "claude" }
+            val demoBlocks = g.chat(demo.rel, demo.src)
+            assertTrue(demoBlocks.isNotEmpty())
+
             t.close()
             scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         }

@@ -14,6 +14,9 @@ data class GatewayEntry(val name: String, val isDir: Boolean, val size: Long, va
 // P14: /chat yanıt bloğu (role: message|tool|result|error)
 data class ChatBlockDto(val role: String, val category: String, val text: String)
 
+// P14: /chat-recent girdisi — allowlist dizinlerindeki transcript kimliği
+data class TranscriptEntry(val src: String, val rel: String, val size: Long, val mtime: Long)
+
 class GatewayClient(private val tunnel: GatewayTunnel, private val token: String) {
 
     suspend fun ls(rel: String = ""): List<GatewayEntry> {
@@ -49,13 +52,33 @@ class GatewayClient(private val tunnel: GatewayTunnel, private val token: String
         return body.decodeToString()
     }
 
-    // P14: jail içi agent transcript'i (JSONL) → sohbet blokları.
-    suspend fun chat(rel: String): List<ChatBlockDto> {
+    // P14: agent transcript'i (JSONL) → sohbet blokları. src boş: workspace
+    // jail'i; "claude"/"codex": hosttaki allowlist dizini (~/.claude/projects,
+    // ~/.codex/sessions) — jail bu köklerle ayrı uygulanır.
+    suspend fun chat(rel: String, src: String = ""): List<ChatBlockDto> {
         val clean = rel.trim('/')
         require(clean.isNotBlank() && jailOk(clean)) { "traversal rejected" }
-        val (status, body) = tunnel.gatewayGet("/chat?path=$clean", token, 1 shl 20)
+        require(src.isEmpty() || src == "claude" || src == "codex") { "bad src" }
+        val q = if (src.isEmpty()) "path=$clean" else "src=$src&path=$clean"
+        val (status, body) = tunnel.gatewayGet("/chat?$q", token, 1 shl 20)
         require(status == 200) { "gateway chat $status" }
+        return parseBlocks(body.decodeToString())
+    }
+
+    // Son transcript'ler (allowlist dizinleri; içerik değil kimlik/boyut/zaman)
+    suspend fun chatRecent(): List<TranscriptEntry> {
+        val (status, body) = tunnel.gatewayGet("/chat-recent", token, 256 * 1024)
+        require(status == 200) { "gateway chat-recent $status" }
         val o = org.json.JSONObject(body.decodeToString())
+        val arr = o.optJSONArray("transcripts") ?: JSONArray()
+        return (0 until arr.length()).mapNotNull { i ->
+            val t = arr.optJSONObject(i) ?: return@mapNotNull null
+            TranscriptEntry(t.optString("src"), t.optString("rel"), t.optLong("size"), t.optLong("mtime"))
+        }.filter { it.rel.isNotBlank() }
+    }
+
+    private fun parseBlocks(body: String): List<ChatBlockDto> {
+        val o = org.json.JSONObject(body)
         val arr = o.optJSONArray("blocks") ?: JSONArray()
         return (0 until arr.length()).mapNotNull { i ->
             val b = arr.optJSONObject(i) ?: return@mapNotNull null

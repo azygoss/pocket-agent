@@ -135,6 +135,39 @@ fun FilesScreen(files: FilesViewModel) {
                     OutlinedButton(onClick = { files.gwDiff(kind, "git diff ($label)") }) { Text(label, fontSize = 12.sp) }
                 }
                 OutlinedButton(onClick = { previewPort = "" }) { Text("Dev server…", fontSize = 12.sp) }
+                OutlinedButton(onClick = { files.loadTranscripts() }) { Text("Agent sohbetleri", fontSize = 12.sp) }
+            }
+            // Son agent transcript'leri (allowlist dizinlerinden; ~/.claude, ~/.codex)
+            files.transcripts?.let { list ->
+                if (list.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        list.take(5).forEach { t ->
+                            TextButton(onClick = { files.openTranscript(t) }, modifier = Modifier.fillMaxWidth()) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        t.src,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        t.rel.substringAfterLast('/').removeSuffix(".jsonl"),
+                                        fontSize = 12.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        maxLines = 1,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Text(
+                                        relativeTime(t.mtime * 1000),
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
             // Dev-server önizleme diyaloğu (loopback-only)
             previewPort?.let { current ->

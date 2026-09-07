@@ -45,7 +45,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.servePreview(w, r)
 		return
 	}
-	// /chat?path=<rel> — jail içi agent transcript'i (JSONL) → sohbet blokları (P14).
+	// /chat-recent — bilinen agent dizinlerindeki son transcript'ler (allowlist, P14).
+	if strings.HasPrefix(r.URL.Path, "/chat-recent") {
+		s.serveChatRecent(w, r)
+		return
+	}
+	// /chat?path=<rel>[&src=claude|codex] — transcript → sohbet blokları (P14).
 	if strings.HasPrefix(r.URL.Path, "/chat") {
 		s.serveChat(w, r)
 		return
