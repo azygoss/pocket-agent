@@ -31,6 +31,9 @@ type Pairing struct {
 	State      string // PENDING|CLAIMED|CONSUMED|EXPIRED
 	ClaimedBy  string
 	ExpiresAt  time.Time
+	// SSH bağlantı yükü (host/port/user/private-key). Yalnız claim sonrası
+	// döner; GET varlık sorgusu payload sızdırmaz. TTL + tek-kullanım.
+	Payload string
 }
 
 type Upload struct {
@@ -152,6 +155,18 @@ func (s *Store) ClaimPairing(code, deviceID string, now time.Time) (string, erro
 	p.ClaimedBy = deviceID
 	s.pairings[code] = p
 	return "CLAIMED", nil
+}
+
+// ClaimPairingPayload: claim + payload döner (aynı cihaz tekrar isteyebilir —
+// ağ koptuysa yeniden deneme); farklı cihaz 409.
+func (s *Store) ClaimPairingPayload(code, deviceID string, now time.Time) (string, string, error) {
+	st, err := s.ClaimPairing(code, deviceID, now)
+	if err != nil {
+		return "", "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return st, s.pairings[code].Payload, nil
 }
 
 func (s *Store) CreatePairing(p Pairing) { s.mu.Lock(); defer s.mu.Unlock(); s.pairings[p.Code] = p }

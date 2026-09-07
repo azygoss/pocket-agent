@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"path/filepath"
 
 	"github.com/pocket-agent/pocket-agent/host/config"
@@ -100,9 +101,24 @@ func main() {
 		fmt.Println("cwd-list: tmux pane cwd via servers (see servers)")
 	case "completion":
 		fmt.Println("# bash/zsh completion: source <(pocket-agent completion bash)")
-	case "pair", "unpair":
-		fmt.Printf("pocket-agent %s: use 'host setup' Easy Pair (see plan P04)\n", os.Args[1])
-		fmt.Printf("pocket-agent %s: wired in next slice (surface frozen)\n", os.Args[1])
+	case "pair":
+		cmdPair(os.Args[2:])
+	case "unpair":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: pocket-agent unpair <pair-KODU|deviceId>")
+			os.Exit(2)
+		}
+		ak := filepath.Join(home(), ".ssh", "authorized_keys")
+		id := os.Args[2]
+		if !strings.HasPrefix(id, "pair-") && len(id) == 9 {
+			id = "pair-" + id
+		}
+		n, err := pairing.RevokeAuthorizedKey(ak, id)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Printf("unpair %s: %d anahtar kaldırıldı\n", id, n)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
 		os.Exit(2)

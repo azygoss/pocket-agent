@@ -15,7 +15,7 @@ android {
         minSdk = 29
         targetSdk = 34
         versionCode = 1
-        versionName = "0.9.5"
+        versionName = "0.10.0"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
@@ -85,6 +85,7 @@ dependencies {
     implementation(libs.sshj)
     implementation(libs.bcprov)
     implementation(libs.slf4j.nop)
+    implementation(libs.zxing.embedded) // P04: QR tarama (Apache-2.0)
     testImplementation(libs.junit4)
     testImplementation(libs.robolectric)
     testImplementation(libs.test.core)

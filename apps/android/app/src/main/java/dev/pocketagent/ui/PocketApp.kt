@@ -186,6 +186,8 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
                     AppTab.Connections -> ConnectionsScreen(
                         repo = app.connections,
                         sessions = sessions,
+                        app = app,
+                        settings = settings,
                         onConnected = { tab = AppTab.Terminal },
                     )
                     AppTab.Terminal -> TerminalScreen(
