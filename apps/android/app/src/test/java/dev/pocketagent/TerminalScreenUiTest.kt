@@ -80,6 +80,9 @@ class TerminalScreenUiTest {
         org.junit.Assert.assertEquals(true, fullscreenSeen)
         rule.onNodeWithText("ctrl").assertIsDisplayed()
         rule.onNodeWithText("esc").assertIsDisplayed()
+        // 0.15.2: overlay aksiyonları tam ekranda da erişilebilir (ara/paylaş/çık).
+        rule.onNodeWithContentDescription("Scrollback'te ara").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Scrollback'i paylaş").assertIsDisplayed()
         // Çıkış → bildirim false, normal görünüm.
         rule.onNodeWithContentDescription("Tam ekrandan çık").performClick()
         rule.waitForIdle()

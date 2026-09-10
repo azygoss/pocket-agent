@@ -1,6 +1,6 @@
 # HANDOFF — Pocket Agent
 
-Tarih: 2026-09-10 (v0.15.1). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
+Tarih: 2026-09-10 (v0.15.2). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
 Hedef tamamlama: ~%94 (headless tavan: ekran-modeli terminal + SFTP + gateway tüneli + mosh bootstrap + backend sync + kullanılabilirlik paketi). Emülatör/cihaz gerektiren işler açıkta (bkz. §7).
 
 ## 1. Proje özeti
@@ -45,7 +45,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 | P17 sertleştirme | ⚠️ kısmi | fuzz seed corpus, canary, threat-model iskeleti; cihaz perf/a11y yok |
 | P18 dağıtım | ⚠️ büyük ölçüde | 4-arch CLI tarball, SBOM (go+android), Dockerfile, operasyon belgeleri + **env-driven imzalı release APK+AAB, R8 proguard, REPRODUCING.md, CCS paketi (package-ccs.sh), build-release.sh tam kapı (apksigner verify + release-checksums)**; cosign/SLSA/CI yok |
 
-## 4. Test raporu (son yeşil koşu, v0.15.0)
+## 4. Test raporu (son yeşil koşu, v0.15.2)
 
 - Go: 18 paket `ok`, 0 FAIL (`go test ./...`), `go vet` + `go build ./...` temiz, `buf lint` temiz.
 - Kapılar: `secret-scan`, `license-check`, `check-packaging`, `privacy-schema`, `canary`, `tests/e2e/p04-flow.sh` — hepsi yeşil.
@@ -57,7 +57,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 - Canlı SFTP kanıtı: `PA_LIVE_SSH=1 … ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SftpLiveTest` → list `/` + write/read `/tmp` + kota kesme + dizin-önce sıralama.
 - Canlı gateway tüneli: gateway çalışırken (`POCKET_GATEWAY_TOKEN=tok123 pocket-agent gateway serve --root /tmp/pa-workspace`) `PA_LIVE_GW=1 PA_LIVE_SSH=1 … --tests dev.pocketagent.GatewayTunnelLiveTest` → SSH direct-tcpip → ls/file/401/traversal + preview (127.0.0.1:8899 marker).
 - Canlı mosh bootstrap: `PA_LIVE_SSH=1 … --tests dev.pocketagent.MoshBootstrapTest` → SSH exec → `mosh-server new` → MOSH CONNECT port+key parse (anahtar yalnız RAM).
-- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` + kopya `dist/pocket-agent-0.15.1-debug.apk` (77.5MB v0.15.1 / versionCode 7, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI + 3 gömülü font dahil; sha256: `136009de…706f`, tam değer `dist/` içinde `sha256sum` ile doğrulanır). İndirilebilir sayfa: `http://<vps>:8090/` (`/srv/pocket-agent-apk`, ufw'da 8090 açık).
+- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` + kopya `dist/pocket-agent-0.15.2-debug.apk` (77.5MB v0.15.2 / versionCode 8, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI + 3 gömülü font dahil; sha256: `8e6de0f6…0845`, tam değer `dist/` içinde `sha256sum` ile doğrulanır). İndirilebilir sayfa: `http://<vps>:8090/` (`/srv/pocket-agent-apk`, ufw'da 8090 açık).
 - CLI: `dist/` git-dışı (tarballs + `SHA256SUMS` + `sbom-go.json`).
 
 ## 5. Derleme komutları
@@ -150,6 +150,7 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 - **Yedekleme**: Ayarlar → Yedekleme kartı — bağlantılar+ayarlar JSON (secret'lar asla dahil değil, `Backup` codec; version+şema sabit); içe aktarım ekler, silmez; geçersiz kayıtlar atlanır.
 - **Hata banner'ı aksiyonları**: terminal hata banner'ında "Yeniden dene" (reconnect mümkünse) + "Bağlantıya git".
 - **Tam ekran tuş şeridi (0.15.1)**: tam ekranda artık tuş şeridi (ctrl/esc/oklar/snippet'lar/yapıştır/klavye) altta görünür; `onFullscreenChange` callback'iyle Scaffold nav bar'ı gizlenir, şerit onun yerini alır. Sekme değişiminde bayrak sıfırlanır. `fullscreenKeepsKeyBarAndNotifies` UI testi.
+- **Kullanıcı-performans turu (0.15.2)**: overlay aksiyon çubuğu tam ekranda da görünür (ara/paylaş/tam-ekran-toggle/reconnect/kapat — ayrı çıkış FAB'ı kaldırıldı); geri tuşu sırayla arama → tam ekran → dizin üstü kapatır (`BackHandler`, Files'ta köke kadar üst dizine iner); Dosyalar'da dokunulabilir breadcrumb yol çubuğu (segment → o derinliğe cd, otomatik sona kayar); bağlantı kartının tamamı tıklanabilir (Bağlan düğmesi ipucu olarak kalır); tuş şeridi 46dp + 13sp + KEYBOARD_TAP haptic (tuşlar ripple'sız olduğundan dokunma onayı haptic'ten gelir); aramada önceki-eşleşme butonu; nav bar 64dp/22dp ikon/10sp etiket + `selectable(Role.Tab)`; üst bar 56dp; Ayarlar → Hakkında sürümü manifest'ten okur (hardcode drift'i bitti).
 
 ### CLI (host tarafı)
 
@@ -178,6 +179,6 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 ## 9. Kurallar
 
 - Conventional commits (`feat(Pxx): …`), her P için test + kapı yeşili zorunlu.
-- `decisions.tsv` append-only (D001–D038 yazıldı).
+- `decisions.tsv` append-only (D001–D039 yazıldı).
 - Marka/kod taraması yalnızca izinli dosyalardaki referanslara izin verir (`secret-scan.sh` kuralı); ham kopya yasaktır.
 - `docs/reference/**` yayın paketine girmez (`check-packaging.sh`).

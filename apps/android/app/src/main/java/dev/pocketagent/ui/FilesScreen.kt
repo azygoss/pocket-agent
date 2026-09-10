@@ -2,6 +2,7 @@
 package dev.pocketagent.ui
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -53,7 +54,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -201,22 +201,20 @@ fun FilesScreen(files: FilesViewModel) {
             }
         }
 
-        // Yol çubuğu
+        // Geri tuşu önce bir üst dizine iner; kökteyse normal davranır.
+        val canGoUp = if (files.mode == FilesMode.WORKSPACE) files.gwPath.isNotEmpty()
+        else files.path != null && files.path != "/"
+        BackHandler(enabled = canGoUp) { files.up() }
+
+        // Yol çubuğu: dokunulabilir breadcrumb — her segment o dizine atlar.
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            val curPath = if (files.mode == FilesMode.WORKSPACE) "/" + files.gwPath else files.path
             IconButton(
                 onClick = { files.up() },
-                enabled = if (files.mode == FilesMode.WORKSPACE) files.gwPath.isNotEmpty() else files.path != null && files.path != "/",
+                enabled = canGoUp,
             ) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Üst dizin")
             }
-            Text(
-                curPath ?: "…",
-                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-            )
+            PathBar(files, Modifier.weight(1f))
             IconButton(onClick = { files.refresh() }, enabled = !files.loading) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Yenile")
             }
@@ -362,6 +360,43 @@ private fun RemoteFileRow(f: RemoteFile, onClick: () -> Unit) {
         },
         onClick = onClick,
     )
+}
+
+// Dokunulabilir yol çubuğu: "/a/b/c" → / a / b / c; her segment o derinliğe
+// cd eder. Yol uzayınca en derin segment görünür kalır (sona otomatik kayar).
+@Composable
+private fun PathBar(files: FilesViewModel, modifier: Modifier = Modifier) {
+    val isGw = files.mode == FilesMode.WORKSPACE
+    val rel = if (isGw) files.gwPath else (files.path ?: "").trim('/')
+    val segments = rel.split('/').filter { it.isNotEmpty() }
+    val scroll = rememberScrollState()
+    LaunchedEffect(rel) { scroll.scrollTo(scroll.maxValue) }
+    Row(modifier.horizontalScroll(scroll), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "/",
+            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+            color = if (segments.isEmpty()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable { files.cd(if (isGw) "" else "/") }.padding(vertical = 6.dp, horizontal = 2.dp),
+        )
+        segments.forEachIndexed { i, seg ->
+            val last = i == segments.lastIndex
+            Text(
+                seg,
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                color = if (last) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                modifier = Modifier
+                    .clickable(enabled = !last) {
+                        val target = segments.take(i + 1).joinToString("/")
+                        files.cd(if (isGw) target else "/$target")
+                    }
+                    .padding(vertical = 6.dp),
+            )
+            if (!last) {
+                Text("/", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
 }
 
 private fun humanSize(bytes: Long): String = when {
