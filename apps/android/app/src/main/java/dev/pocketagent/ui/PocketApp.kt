@@ -93,6 +93,8 @@ fun PocketAgentApp(
     val usage = app.usage
     val files = remember { FilesViewModel(app.sessions, app.appScope, app.cacheDir) }
     var tab by remember { mutableStateOf(AppTab.Home) }
+    // Terminal tam ekran: nav bar gizlenir, yerine terminal tuş şeridi gelir.
+    var termFullscreen by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     val notifPermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -131,6 +133,9 @@ fun PocketAgentApp(
             }
         }
     }
+
+    // Sekme değişince tam ekran bayrağını sıfırla (nav bar geri gelir).
+    LaunchedEffect(tab) { if (tab != AppTab.Terminal) termFullscreen = false }
 
     // pocketagent://add?host=… → Bağlantılar sekmesi (diyalog ekranda açılır).
     LaunchedEffect(Unit) {
@@ -173,7 +178,13 @@ fun PocketAgentApp(
         Scaffold(
             topBar = { ConsoleTopBar(tab, activeCount) },
             snackbarHost = { SnackbarHost(snackbar) },
-            bottomBar = { ConsoleNavBar(tab, unread) { tab = it } },
+            bottomBar = {
+                // Terminal tam ekrandayken ana menü barı yerine terminalin
+                // kendi tuş şeridi görünür (TerminalScreen içinde render edilir).
+                if (!(tab == AppTab.Terminal && termFullscreen)) {
+                    ConsoleNavBar(tab, unread) { tab = it }
+                }
+            },
         ) { pad ->
             Box(Modifier.fillMaxSize().padding(pad)) {
                 when (tab) {
@@ -195,6 +206,7 @@ fun PocketAgentApp(
                         manager = sessions,
                         settings = settings,
                         onNewConnection = { tab = AppTab.Connections },
+                        onFullscreenChange = { termFullscreen = it },
                     )
                     AppTab.Agents -> AgentsScreen(inbox = inbox, approval = approval, app = app)
                     AppTab.Files -> FilesScreen(files = files)

@@ -219,7 +219,7 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         ConsoleCard {
             CardHeader("Hakkında")
             Spacer(Modifier.height(Space.sm))
-            Text("Pocket Agent 0.15.0 • GPL-3.0-or-later", style = MaterialTheme.typography.bodyMedium)
+            Text("Pocket Agent 0.15.1 • GPL-3.0-or-later", style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(Space.xs))
             Text(
                 "Fontlar: JetBrains Mono, IBM Plex Mono, Space Mono (OFL-1.1) • Lisans metinleri assets/licenses altında.",
