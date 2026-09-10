@@ -156,9 +156,10 @@ fun ConnectionsScreen(
 
     Scaffold(
         floatingActionButton = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            // Dikey speed-dial: ana aksiyon ("Host ekle") en altta, yardımcılar üstte.
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.End,
             ) {
                 SmallFloatingActionButton(
                     onClick = { sshConfigPicker.launch(arrayOf("*/*")) },
@@ -454,6 +455,8 @@ private fun ConnectionCard(
         modifier = Modifier.clip(MaterialTheme.shapes.small).clickable(onClick = onConnect),
         containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
         else MaterialTheme.colorScheme.surfaceContainer,
+        borderColor = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+        else MaterialTheme.colorScheme.outline,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
