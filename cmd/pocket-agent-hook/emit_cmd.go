@@ -22,6 +22,7 @@ import (
 	"github.com/pocket-agent/pocket-agent/host/emit"
 	"github.com/pocket-agent/pocket-agent/host/hooks"
 	"github.com/pocket-agent/pocket-agent/host/journal"
+	"github.com/pocket-agent/pocket-agent/host/watch"
 )
 
 func stateDir() string {
@@ -181,11 +182,28 @@ func cmdDaemon(_ []string) {
 		}
 	}()
 
+	// Process watcher: config'e wire edilemeyen agent'lar dahil hepsi için
+	// session_started/ended üretir (PID ilk görülme/kaybolma geçişleri).
+	tracker := watch.NewTracker()
+	scan := func() {
+		if cur, err := watch.Scan("/proc"); err == nil {
+			started, ended := tracker.Diff(cur)
+			for _, p := range started {
+				_ = emitEvent(p.Agent, "session_started", "proc:"+strconv.Itoa(p.PID), "", p.Agent+" başladı")
+			}
+			for _, p := range ended {
+				_ = emitEvent(p.Agent, "session_ended", "proc:"+strconv.Itoa(p.PID)+":end", "", p.Agent+" kapandı")
+			}
+		}
+	}
+
 	flush := func() { flushJournal(dir) }
+	scan()
 	flush()
 	for {
 		select {
 		case <-time.After(15 * time.Second):
+			scan()
 			flush()
 		case <-flushCh:
 			flush()
