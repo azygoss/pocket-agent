@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/user"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -44,6 +45,13 @@ func TestLiveLocalhost(t *testing.T) {
 	authKeys := filepath.Join(dir, "authorized_keys")
 	os.WriteFile(authKeys, pub, 0o600)
 	port := freePort(t)
+	// CI runner'ları root değildir ve root hesabı kilitlidir (shadow '!') —
+	// pubkey denense bile sshd reddeder. Geçerli kullanıcıyla dial et;
+	// bu makinede zaten root'uz, runner'da 'runner' olur.
+	u, uerr := user.Current()
+	if uerr != nil || u.Username == "" {
+		t.Skip("current user unknown")
+	}
 	cfg := fmt.Sprintf(`Port %d
 ListenAddress 127.0.0.1
 HostKey %s
@@ -52,6 +60,7 @@ AuthorizedKeysFile %s
 PasswordAuthentication no
 PubkeyAuthentication yes
 StrictModes no
+UsePAM no
 `, port, hostKey, dir, authKeys)
 	cfgPath := filepath.Join(dir, "sshd_config")
 	os.WriteFile(cfgPath, []byte(cfg), 0o600)
@@ -65,7 +74,7 @@ StrictModes no
 	keyPEM, _ := os.ReadFile(userKey)
 	kh := filepath.Join(dir, "known_hosts_pa")
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	c, err := Dial(Options{User: "root", Addr: addr, PrivateKeyPEM: keyPEM, KnownHostsFile: kh, Timeout: 5 * time.Second})
+	c, err := Dial(Options{User: u.Username, Addr: addr, PrivateKeyPEM: keyPEM, KnownHostsFile: kh, Timeout: 5 * time.Second})
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -75,7 +84,7 @@ StrictModes no
 	}
 	c.Close()
 	// second dial: TOFU pinned, must still pass
-	c2, err := Dial(Options{User: "root", Addr: addr, PrivateKeyPEM: keyPEM, KnownHostsFile: kh, Timeout: 5 * time.Second})
+	c2, err := Dial(Options{User: u.Username, Addr: addr, PrivateKeyPEM: keyPEM, KnownHostsFile: kh, Timeout: 5 * time.Second})
 	if err != nil {
 		t.Fatalf("redial pinned: %v", err)
 	}
@@ -83,7 +92,7 @@ StrictModes no
 	// wrong key => auth failed (no fallback)
 	bad := append([]byte{}, keyPEM...)
 	bad[len(bad)-10] ^= 0xff
-	if _, err := Dial(Options{User: "root", Addr: addr, PrivateKeyPEM: bad, KnownHostsFile: filepath.Join(dir, "kh2"), Timeout: 5 * time.Second}); !errors.Is(err, ErrAuthFailed) {
+	if _, err := Dial(Options{User: u.Username, Addr: addr, PrivateKeyPEM: bad, KnownHostsFile: filepath.Join(dir, "kh2"), Timeout: 5 * time.Second}); !errors.Is(err, ErrAuthFailed) {
 		t.Fatalf("bad key must be ErrAuthFailed, got %v", err)
 	}
 }

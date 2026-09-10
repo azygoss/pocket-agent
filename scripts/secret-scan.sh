@@ -10,7 +10,16 @@ if grep -RInE 'AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|xox[bpas]-|-----BEGIN (RSA 
   echo "FAIL: possible secret in tree" >&2; exit 1
 fi
 # Moshi code/asset copy check: allow plan.md, feature-matrix/README links, decisions.tsv rationale
-if rg -i 'moshi' --glob '!.git/' --glob '!plan.md' --glob '!decisions.tsv' --glob '!docs/reference/**' --glob '!README.md' --glob '!scripts/secret-scan.sh' . ; then
-  echo "FAIL: unexpected 'moshi' reference outside allowed files" >&2; exit 1
+# rg yoksa (CI runner) grep'e düş — yoksa `command not found` if-false olur ve
+# tarama sessizce hiç koşmaz.
+if command -v rg >/dev/null 2>&1; then
+  if rg -i 'moshi' --glob '!.git/' --glob '!plan.md' --glob '!decisions.tsv' --glob '!docs/reference/**' --glob '!README.md' --glob '!scripts/secret-scan.sh' . ; then
+    echo "FAIL: unexpected 'moshi' reference outside allowed files" >&2; exit 1
+  fi
+else
+  if grep -rIni 'moshi' --exclude-dir=.git --exclude-dir=build --exclude-dir=reference \
+    --exclude=plan.md --exclude=decisions.tsv --exclude=README.md --exclude=secret-scan.sh . ; then
+    echo "FAIL: unexpected 'moshi' reference outside allowed files" >&2; exit 1
+  fi
 fi
 echo "[secret-scan] OK"
