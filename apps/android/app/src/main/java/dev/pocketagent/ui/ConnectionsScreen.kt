@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.SmallFloatingActionButton
@@ -448,6 +449,9 @@ private fun ConnectionCard(
 ) {
     var menu by remember { mutableStateOf(false) }
     ConsoleCard(
+        // Kartın tamamı bağlanma hedefi — kullanıcı küçük "Bağlan" düğmesini
+        // aramak zorunda kalmaz; düğme görünür ipucu olarak kalır.
+        modifier = Modifier.clip(MaterialTheme.shapes.small).clickable(onClick = onConnect),
         containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
         else MaterialTheme.colorScheme.surfaceContainer,
     ) {

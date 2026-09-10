@@ -42,8 +42,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,6 +54,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.graphics.Color
@@ -253,7 +254,7 @@ private fun ConsoleTopBar(tab: AppTab, activeSessions: Int) {
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column {
             Row(
-                Modifier.fillMaxWidth().height(52.dp).padding(horizontal = Space.lg),
+                Modifier.fillMaxWidth().height(56.dp).padding(horizontal = Space.lg),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
@@ -309,7 +310,7 @@ private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) 
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column {
             ConsoleDivider()
-            Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 4.dp)) {
+            Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp)) {
                 AppTab.entries.forEach { t ->
                     val selected = current == t
                     val tint by animateColorAsState(
@@ -324,7 +325,7 @@ private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) 
                         Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .clickable(onClick = { onSelect(t) }),
+                            .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(t) }),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
@@ -340,7 +341,7 @@ private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) 
                                     t.icon,
                                     contentDescription = t.label,
                                     tint = tint,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(22.dp),
                                 )
                                 if (t == AppTab.Agents && agentUnread > 0) {
                                     Text(
@@ -358,7 +359,7 @@ private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) 
                             }
                         }
                         Spacer(Modifier.height(3.dp))
-                        Text(t.short, fontFamily = mono, fontSize = 9.sp, color = tint, maxLines = 1)
+                        Text(t.short, fontFamily = mono, fontSize = 10.sp, color = tint, maxLines = 1)
                     }
                 }
             }

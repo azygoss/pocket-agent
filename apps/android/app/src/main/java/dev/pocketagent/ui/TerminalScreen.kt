@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package dev.pocketagent.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,6 +41,7 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -216,7 +218,7 @@ fun TerminalScreen(
                     onClick = { manager.setActive(h.id) },
                 )
             }
-            IconButton(onClick = onNewConnection, modifier = Modifier.size(30.dp)) {
+            IconButton(onClick = onNewConnection, modifier = Modifier.size(36.dp)) {
                 Icon(
                     Icons.Filled.Add,
                     contentDescription = "Yeni bağlantı",
@@ -318,6 +320,10 @@ private fun ActiveTerminal(
     // Tam ekran durumunu üst katmana bildir — PocketApp nav bar'ı gizler,
     // yerine terminal kendi tuş şeridini gösterir.
     LaunchedEffect(fullscreen) { onFullscreenChange(fullscreen) }
+    // Geri tuşu: önce aramayı kapat, sonra tam ekrandan çık.
+    BackHandler(enabled = searchOpen || fullscreen) {
+        if (searchOpen) { searchOpen = false; query = "" } else fullscreen = false
+    }
     // Görünmez IME alanı: alanın gerçek içeriği (delta hesabı için).
     var imeBuf by remember { mutableStateOf("") }
     var typing by remember { mutableStateOf(false) }
@@ -558,7 +564,7 @@ private fun ActiveTerminal(
                                         start = 8.dp,
                                         end = 8.dp,
                                         bottom = 8.dp,
-                                        top = if (fullscreen) 8.dp else 40.dp,
+                                        top = 40.dp,
                                     ),
                                 ) {
                                     itemsIndexed(lines) { idx, line ->
@@ -629,65 +635,72 @@ private fun ActiveTerminal(
             }
 
             // ── Overlay: üst-sağ aksiyon çubuğu (yarı saydam, içeriğin üstünde) ──
-            if (!fullscreen) {
-                Row(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f), MaterialTheme.shapes.extraSmall),
-                    verticalAlignment = Alignment.CenterVertically,
+            // Tam ekranda da görünür — ara/paylaş/kapat erişilebilir kalır.
+            Row(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f), MaterialTheme.shapes.extraSmall),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Durum metni (mono, dim): transport • host • pencere başlığı
+                Text(
+                    buildString {
+                        append(vm.badge)
+                        active?.let { append(" · ${it.host}") }
+                        if (windowTitle.isNotBlank()) append(" · $windowTitle")
+                        if (state == ConnectionState.CONNECTING) append(" · bağlanıyor…")
+                    },
+                    fontFamily = LocalMonoFont.current,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+                OverlayAction("Scrollback'te ara", { searchOpen = !searchOpen; if (!searchOpen) query = "" }) {
+                    Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                OverlayAction("Scrollback'i paylaş", {
+                    val dump = lines.joinToString("\n") { it.text }
+                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
+                        val f = java.io.File(dir, "scrollback.txt")
+                        f.writeText(dump)
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                context, context.packageName + ".fileprovider", f,
+                            )
+                            val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(android.content.Intent.createChooser(share, "Scrollback"))
+                        }
+                    }
+                }) {
+                    Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                OverlayAction(
+                    if (fullscreen) "Tam ekrandan çık" else "Tam ekran",
+                    { fullscreen = !fullscreen },
                 ) {
-                    // Durum metni (mono, dim): transport • host • pencere başlığı
-                    Text(
-                        buildString {
-                            append(vm.badge)
-                            active?.let { append(" · ${it.host}") }
-                            if (windowTitle.isNotBlank()) append(" · $windowTitle")
-                            if (state == ConnectionState.CONNECTING) append(" · bağlanıyor…")
-                        },
-                        fontFamily = LocalMonoFont.current,
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        modifier = Modifier.padding(start = 8.dp),
+                    Icon(
+                        if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    OverlayAction("Scrollback'te ara", { searchOpen = !searchOpen; if (!searchOpen) query = "" }) {
-                        Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    OverlayAction("Scrollback'i paylaş", {
-                        val dump = lines.joinToString("\n") { it.text }
-                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                            val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
-                            val f = java.io.File(dir, "scrollback.txt")
-                            f.writeText(dump)
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                val uri = androidx.core.content.FileProvider.getUriForFile(
-                                    context, context.packageName + ".fileprovider", f,
-                                )
-                                val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(android.content.Intent.createChooser(share, "Scrollback"))
-                            }
-                        }
-                    }) {
-                        Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    OverlayAction("Tam ekran", { fullscreen = true }) {
-                        Icon(Icons.Filled.Fullscreen, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (state == ConnectionState.CLOSED || state == ConnectionState.FAILED) {
-                        if (controller.canReconnect()) {
-                            OverlayAction("Yeniden bağlan", { controller.reconnect() }) {
-                                Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
-                            }
+                }
+                if (state == ConnectionState.CLOSED || state == ConnectionState.FAILED) {
+                    if (controller.canReconnect()) {
+                        OverlayAction("Yeniden bağlan", { controller.reconnect() }) {
+                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
                         }
                     }
-                    OverlayAction("Oturumu kapat", onClose) {
-                        Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
-                    }
+                }
+                OverlayAction("Oturumu kapat", onClose) {
+                    Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
                 }
             }
 
@@ -757,6 +770,19 @@ private fun ActiveTerminal(
                         IconButton(
                             enabled = matches.isNotEmpty(),
                             onClick = {
+                                matchCursor = (matchCursor - 1 + matches.size) % matches.size
+                                scope.launch { listState.scrollToItem(matches[matchCursor]) }
+                            },
+                        ) {
+                            Icon(
+                                Icons.Filled.KeyboardArrowUp,
+                                contentDescription = "Önceki eşleşme",
+                                tint = if (matches.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(
+                            enabled = matches.isNotEmpty(),
+                            onClick = {
                                 matchCursor = (matchCursor + 1) % matches.size
                                 scope.launch { listState.scrollToItem(matches[matchCursor]) }
                             },
@@ -771,18 +797,6 @@ private fun ActiveTerminal(
                 }
             }
 
-            if (fullscreen) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
-                    shape = CircleShape,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
-                ) {
-                    IconButton(onClick = { fullscreen = false }) {
-                        Icon(Icons.Filled.FullscreenExit, contentDescription = "Tam ekrandan çık", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
         }
     }
 }
@@ -803,7 +817,7 @@ private fun TerminalKeyBar(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(42.dp),
+            .height(46.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TermKey("ctrl", enabled = enabled, active = ctrl, onTap = onCtrl)
@@ -856,7 +870,8 @@ private fun TerminalKeyBar(
     }
 }
 
-// Konsol tuşu: çerçevesiz mono metin, basılıyken hafif zemin; ripple yok.
+// Konsol tuşu: çerçevesiz mono metin, basılıyken hafif zemin + hafif haptic;
+// ripple yok. Haptic, dokunmanın algılandığını garantiler (tuşlar ripple'sız).
 @Composable
 private fun TermKey(
     label: String,
@@ -866,6 +881,7 @@ private fun TermKey(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val view = LocalView.current
     Box(
         Modifier
             .fillMaxHeight()
@@ -881,15 +897,18 @@ private fun TermKey(
                 interactionSource = interaction,
                 indication = null,
                 enabled = enabled,
-                onClick = onTap,
+                onClick = {
+                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    onTap()
+                },
             )
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 13.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
             fontFamily = LocalMonoFont.current,
-            fontSize = 12.sp,
+            fontSize = 13.sp,
             maxLines = 1,
             color = when {
                 !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
@@ -904,6 +923,7 @@ private fun TermKey(
 private fun TermIconKey(icon: ImageVector, desc: String, enabled: Boolean, onTap: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val view = LocalView.current
     Box(
         Modifier
             .fillMaxHeight()
@@ -913,7 +933,10 @@ private fun TermIconKey(icon: ImageVector, desc: String, enabled: Boolean, onTap
                 interactionSource = interaction,
                 indication = null,
                 enabled = enabled,
-                onClick = onTap,
+                onClick = {
+                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    onTap()
+                },
             )
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
