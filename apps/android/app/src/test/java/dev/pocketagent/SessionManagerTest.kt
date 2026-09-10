@@ -54,4 +54,21 @@ class SessionManagerTest {
         assertNull(m.activeId.value)
         assertNull(m.active())
     }
+
+    @Test fun forceNewOpensParallelSessionOnSameHost() = runBlocking {
+        val m = manager()
+        m.open(c1, Secret.Password("p"))
+        // forceNew: dedupe atlanır → aynı conn.id'li ikinci oturum.
+        val t2 = m.open(c1, Secret.Password("p"), forceNew = true)
+        assertEquals(2, m.sessions.value.size)
+        // Yeni oturum aktif olur ve controller'ları farklıdır.
+        assertSame(t2, m.active())
+        assertEquals(2, m.sessions.value.map { it.controller }.toSet().size)
+        // Üçüncüsü de açılır; normal open yine ilkine odaklanır.
+        m.open(c1, Secret.Password("p"), forceNew = true)
+        assertEquals(3, m.sessions.value.size)
+        val first = m.sessions.value.first { it.conn.id == c1.id }
+        assertSame(first.controller, m.open(c1, Secret.Password("p")))
+        m.closeAll()
+    }
 }

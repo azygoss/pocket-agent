@@ -241,8 +241,12 @@ private fun SessionPillsRow(
         sessionList.forEach { h ->
             val st by h.controller.state.collectAsState()
             val retry by h.controller.retryAttempt.collectAsState()
+            // Aynı host'ta paralel oturumlar: ·2, ·3… ile ayırt et.
+            val same = sessionList.count { it.conn.id == h.conn.id }
+            val nth = sessionList.take(sessionList.indexOf(h)).count { it.conn.id == h.conn.id }
+            val label = if (same > 1) "${h.conn.name}·${nth + 1}" else h.conn.name
             SessionPill(
-                name = h.conn.name,
+                name = label,
                 state = st,
                 retry = retry,
                 active = h.id == activeId,
