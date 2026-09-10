@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package dev.pocketagent.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,12 +12,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,11 +29,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.pocketagent.data.ConnectionRepository
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.SessionManager
-import dev.pocketagent.ui.theme.TerminalFont
+import dev.pocketagent.ui.theme.Space
+import dev.pocketagent.ui.theme.LocalMonoFont
 
 @Composable
 fun HomeScreen(
@@ -46,115 +50,110 @@ fun HomeScreen(
     val activeConn = active?.conn
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Space.lg),
+        verticalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        // Durum satırı: prompt estetiğinde tek satır özet
+        // ── Durum hero'u: bir bakışta bağlantı durumu ──────────────────────
         ConsoleCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StateDot(state)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    when (state) {
-                        ConnectionState.ACTIVE -> "bağlı — ${activeConn?.user}@${activeConn?.host}"
-                        ConnectionState.CONNECTING -> "bağlanıyor…"
-                        ConnectionState.RECONNECTING -> "yeniden bağlanıyor…"
-                        ConnectionState.FAILED -> "bağlantı hatası"
-                        else -> if (sessionList.isEmpty()) "açık oturum yok" else "${sessionList.size} oturum askıda"
-                    },
-                    fontFamily = TerminalFont,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+                StateDot(state, size = 10.dp)
+                Spacer(Modifier.width(Space.md))
+                Column(Modifier.weight(1f)) {
+                    Text(stateText(state, sessionList.size), style = MaterialTheme.typography.titleMedium)
+                    if (state == ConnectionState.ACTIVE && activeConn != null) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "${activeConn.user}@${activeConn.host}",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = LocalMonoFont.current),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                }
+                if (state == ConnectionState.ACTIVE && active != null) {
+                    TagPill(active.controller.vm.badge, active = true, tone = MaterialTheme.colorScheme.primary)
+                }
             }
             if (state == ConnectionState.ACTIVE && active != null) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "${active.controller.vm.badge} • pty ${active.controller.vm.size.cols}x${active.controller.vm.size.rows} • ${sessionList.size} oturum",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Spacer(Modifier.height(Space.md))
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.lg)) {
+                    Metric("pty", "${active.controller.vm.size.cols}×${active.controller.vm.size.rows}")
+                    Metric("oturum", "${sessionList.size}")
+                }
             }
         }
 
-        // Hızlı eylemler
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(onClick = { onGoTo(AppTab.Connections) }, modifier = Modifier.weight(1f)) {
-                Text(
-                    if (saved.isEmpty()) "İlk hostu ekle" else "Hostlar (${saved.size})",
-                    fontFamily = TerminalFont, fontSize = 12.sp,
-                )
+        // ── Hızlı eylemler ─────────────────────────────────────────────────
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+            ConsoleButton(onClick = { onGoTo(AppTab.Connections) }, modifier = Modifier.weight(1f)) {
+                Text(if (saved.isEmpty()) "İlk hostu ekle" else "Hostlar (${saved.size})")
             }
             if (state == ConnectionState.ACTIVE) {
-                FilledTonalButton(onClick = { onGoTo(AppTab.Terminal) }, modifier = Modifier.weight(1f)) {
-                    Text("Terminale git", fontFamily = TerminalFont, fontSize = 12.sp)
+                ConsoleOutlinedButton(onClick = { onGoTo(AppTab.Terminal) }, modifier = Modifier.weight(1f)) {
+                    Text("Terminal")
                     Icon(
-                        Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null,
-                        modifier = Modifier.padding(start = 4.dp),
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        modifier = Modifier.padding(start = 6.dp).size(16.dp),
                     )
                 }
             } else if (active?.controller?.canReconnect() == true) {
-                FilledTonalButton(
+                ConsoleOutlinedButton(
                     onClick = { active.controller.reconnect(); onGoTo(AppTab.Terminal) },
                     modifier = Modifier.weight(1f),
-                ) {
-                    Text("Yeniden bağlan", fontFamily = TerminalFont, fontSize = 12.sp)
-                }
+                ) { Text("Yeniden bağlan") }
             }
         }
 
-        // Başlangıç (yalnız hiç host yokken) / Son bağlantılar
+        // ── Başlangıç / Son bağlantılar ────────────────────────────────────
         if (saved.isEmpty()) {
             ConsoleCard {
-                SectionLabel("Başlangıç")
-                Spacer(Modifier.height(8.dp))
+                CardHeader("Başlangıç")
+                Spacer(Modifier.height(Space.md))
                 StepRow(1, "Host'ta çalıştır: pocket-agent pair")
                 StepRow(2, "QR'ı tara ya da XXXX-XXXX kodunu gir")
                 StepRow(3, "İlk bağlantıda parmak izini pinle (TOFU)")
                 StepRow(4, "tmux re-attach hazır — kopmaya dayanıklı")
             }
         } else {
-            ConsoleCard {
-                SectionLabel("Son bağlantılar")
-                Spacer(Modifier.height(4.dp))
+            ConsoleCard(padding = Space.sm) {
+                Box(Modifier.padding(start = Space.lg, top = Space.sm, end = Space.lg)) {
+                    CardHeader("Son bağlantılar")
+                }
+                Spacer(Modifier.height(Space.xs))
                 saved.sortedByDescending { it.lastConnectedAt }.take(3).forEach { c ->
                     val open = sessionList.firstOrNull { it.conn.id == c.id }
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                if (open != null || connections.hasSavedSecret(c.id)) {
-                                    sessions.open(c, connections.secret(c.id))
-                                    onGoTo(AppTab.Terminal)
-                                } else {
-                                    onGoTo(AppTab.Connections)
-                                }
+                    ListRow(
+                        title = "${c.name} — ${c.user}@${c.host}",
+                        titleMono = true,
+                        leading = {
+                            StateDot(open?.controller?.state?.collectAsState()?.value ?: ConnectionState.CLOSED)
+                        },
+                        trailing = {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                        onClick = {
+                            if (open != null || connections.hasSavedSecret(c.id)) {
+                                sessions.open(c, connections.secret(c.id))
+                                onGoTo(AppTab.Terminal)
+                            } else {
+                                onGoTo(AppTab.Connections)
                             }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        StateDot(open?.controller?.state?.collectAsState()?.value ?: ConnectionState.CLOSED)
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            "${c.name} — ${c.user}@${c.host}",
-                            fontFamily = TerminalFont, fontSize = 12.sp,
-                            maxLines = 1,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            "❯",
-                            fontFamily = TerminalFont, fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                        },
+                    )
                 }
             }
         }
 
-        // Son agent olayları
+        // ── Son agent olayları ─────────────────────────────────────────────
         ConsoleCard {
-            SectionLabel("Agent olayları")
-            Spacer(Modifier.height(6.dp))
+            CardHeader("Agent olayları")
+            Spacer(Modifier.height(Space.sm))
             if (inbox.rows.isEmpty()) {
                 Text(
                     "Henüz olay yok. Hook'lar kurulunca onay istekleri burada birleşir (24s TTL).",
@@ -163,13 +162,17 @@ fun HomeScreen(
                 )
             } else {
                 inbox.rows.take(3).forEach { r ->
-                    Text(
-                        "• ${r.title}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                    )
+                    Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(5.dp)
+                                .background(MaterialTheme.colorScheme.primary, MaterialTheme.shapes.extraSmall),
+                        )
+                        Spacer(Modifier.width(Space.sm))
+                        Text(r.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                    }
                 }
                 if (inbox.rows.size > 3) {
+                    Spacer(Modifier.height(Space.xs))
                     Text(
                         "+${inbox.rows.size - 3} daha",
                         style = MaterialTheme.typography.labelSmall,
@@ -178,7 +181,23 @@ fun HomeScreen(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(Space.sm))
+    }
+}
+
+private fun stateText(state: ConnectionState, sessionCount: Int): String = when (state) {
+    ConnectionState.ACTIVE -> "Bağlı"
+    ConnectionState.CONNECTING -> "Bağlanıyor…"
+    ConnectionState.RECONNECTING -> "Yeniden bağlanıyor…"
+    ConnectionState.FAILED -> "Bağlantı hatası"
+    else -> if (sessionCount == 0) "Açık oturum yok" else "$sessionCount oturum askıda"
+}
+
+@Composable
+private fun Metric(label: String, value: String) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.titleSmall)
     }
 }
 
@@ -186,11 +205,12 @@ fun HomeScreen(
 private fun StepRow(n: Int, text: String) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 3.dp)) {
         Text(
-            "$n.",
-            fontFamily = TerminalFont, fontSize = 12.sp,
+            "$n",
+            fontFamily = LocalMonoFont.current,
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary,
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(Space.md))
         Text(text, style = MaterialTheme.typography.bodyMedium)
     }
 }

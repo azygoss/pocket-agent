@@ -16,11 +16,11 @@ const (
 )
 
 type Record struct {
-	EventID string
-	Digest  string
+	EventID  string
+	Digest   string
 	Revision string
-	State   State
-	Winner  string
+	State    State
+	Winner   string
 }
 
 type Table struct {

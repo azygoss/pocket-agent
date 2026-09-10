@@ -51,9 +51,11 @@ class ConnectionsFilesUiTest {
         return ConnectionRepository(db.connections())
     }
 
-    @Test fun emptyConnectionsShowsEmptyState() {
+    @Test fun emptyConnectionsShowsFirstRunWizard() {
         rule.setContent { ConnectionsScreen(repo(), manager()) {} }
-        rule.onNodeWithText("Kayıtlı host yok").assertIsDisplayed()
+        rule.onNodeWithText("Hızlı kurulum").assertExists()
+        rule.onNodeWithText("pocket-agent onboard").assertExists()
+        rule.onNodeWithText("QR / kod ile eşle").assertExists()
     }
 
     @Test fun savedConnectionShowsCard() {

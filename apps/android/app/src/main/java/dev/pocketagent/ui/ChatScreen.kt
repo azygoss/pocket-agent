@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.pocketagent.net.ChatBlockDto
-import dev.pocketagent.ui.theme.TerminalFont
+import dev.pocketagent.ui.theme.LocalMonoFont
 
 // P14: agent transcript sohbet görünümü. Bloklar gateway /chat üzerinden gelir
 // (tam içerik yalnız SSH tünelinde; backend yalnız ≤256 karakter özet görür).
@@ -48,7 +48,7 @@ fun ChatDialog(title: String, blocks: List<ChatBlockDto>, onClose: () -> Unit) {
                     Text(
                         title,
                         style = MaterialTheme.typography.titleSmall,
-                        fontFamily = TerminalFont,
+                        fontFamily = LocalMonoFont.current,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                     )
@@ -88,7 +88,7 @@ private fun ChatBlockRow(b: ChatBlockDto) {
                     Text(
                         b.text.removePrefix("tool:"),
                         style = MaterialTheme.typography.bodySmall,
-                        fontFamily = TerminalFont,
+                        fontFamily = LocalMonoFont.current,
                     )
                 }
             }

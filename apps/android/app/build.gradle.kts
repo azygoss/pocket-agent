@@ -14,8 +14,8 @@ android {
         applicationId = "dev.pocketagent.android"
         minSdk = 29
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.12.0"
+        versionCode = 6
+        versionName = "0.15.0"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
@@ -73,6 +73,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
+    implementation("androidx.compose.animation:animation")
     implementation(libs.compose.tooling.preview)
     implementation(libs.androidx.activity.compose)
     implementation(libs.coroutines.android)

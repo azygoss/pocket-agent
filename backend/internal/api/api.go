@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/pocket-agent/pocket-agent/backend/internal/approvals"
@@ -18,10 +19,19 @@ import (
 type Server struct {
 	Store *store.Store
 	Table *approvals.Table
+
+	started  time.Time
+	nEvents  atomic.Int64
+	nPairs   atomic.Int64
+	nClaims  atomic.Int64
+	nUploads atomic.Int64
+	nApprove atomic.Int64
 }
 
 // New builds the handler with shared store.
-func New(st *store.Store) *Server { return &Server{Store: st, Table: approvals.New()} }
+func New(st *store.Store) *Server {
+	return &Server{Store: st, Table: approvals.New(), started: time.Now()}
+}
 
 // Handler exposes routes for cmd/server.
 func (s *Server) Handler() http.Handler { return s.routes() }
@@ -48,10 +58,27 @@ func (s *Server) routes() *http.ServeMux {
 	m.HandleFunc("DELETE /v1/uploads/{uploadId}", s.handleUploadDel)
 	m.HandleFunc("POST /v1/approvals/{approvalId}/actions", s.handleApprovalAction)
 	m.HandleFunc("POST /v1/webhooks/{token}", s.handleWebhook)
+	// /v1/metrics: basit operasyon sayaçları — gözlemlenebilirlik, auth istemez
+	// (yalnızca toplamlar; tenant'a özgü veri yok).
+	m.HandleFunc("GET /v1/metrics", s.handleMetrics)
 	return m
 }
 
+func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"uptime_s":        int64(time.Since(s.started).Seconds()),
+		"events_total":    s.nEvents.Load(),
+		"pairings_total":  s.nPairs.Load(),
+		"claims_total":    s.nClaims.Load(),
+		"uploads_total":   s.nUploads.Load(),
+		"approvals_total": s.nApprove.Load(),
+		"schema":          1,
+	})
+}
+
 func (s *Server) handlePostEvent(w http.ResponseWriter, r *http.Request) {
+	s.nEvents.Add(1)
 	tenant := tenantOf(r)
 	if tenant == "" {
 		http.Error(w, "missing tenant", 401)
@@ -113,6 +140,7 @@ func (s *Server) handleGetEvents(w http.ResponseWriter, r *http.Request) {
 
 // Pairing (P04): 5-min TTL, single-use; same-claim idempotent, different-claim 409.
 func (s *Server) handlePairCreate(w http.ResponseWriter, r *http.Request) {
+	s.nPairs.Add(1)
 	tenant := tenantOf(r)
 	if tenant == "" {
 		http.Error(w, "missing tenant", 401)
@@ -134,6 +162,7 @@ func (s *Server) handlePairCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePairClaim(w http.ResponseWriter, r *http.Request) {
+	s.nClaims.Add(1)
 	tenant := tenantOf(r)
 	var v struct {
 		DeviceID string `json:"device_id"`
@@ -217,6 +246,7 @@ func (s *Server) handleUsages(w http.ResponseWriter, r *http.Request) {
 
 // Uploads (P15): 10MB cap, 24h short URL.
 func (s *Server) handleUploadCreate(w http.ResponseWriter, r *http.Request) {
+	s.nUploads.Add(1)
 	tenant := tenantOf(r)
 	var v struct {
 		ID        string `json:"id"`
@@ -259,6 +289,7 @@ func (s *Server) handleUploadDel(w http.ResponseWriter, r *http.Request) {
 
 // Approvals (P13): CAS first-wins; digest/revision mismatch rejected.
 func (s *Server) handleApprovalAction(w http.ResponseWriter, r *http.Request) {
+	s.nApprove.Add(1)
 	if tenantOf(r) == "" {
 		http.Error(w, "missing tenant", 401)
 		return

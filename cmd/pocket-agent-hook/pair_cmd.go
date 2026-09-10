@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/pocket-agent/pocket-agent/host/pairing"
-	"golang.org/x/crypto/ssh"
 	qrcode "github.com/skip2/go-qrcode"
+	"golang.org/x/crypto/ssh"
 	"io"
 )
 
@@ -55,15 +55,20 @@ func cmdPair(args []string) {
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--backend":
-			i++; backend = args[i]
+			i++
+			backend = args[i]
 		case "--host":
-			i++; host = args[i]
+			i++
+			host = args[i]
 		case "--port":
-			i++; fmt.Sscanf(args[i], "%d", &port)
+			i++
+			fmt.Sscanf(args[i], "%d", &port)
 		case "--user":
-			i++; usr = args[i]
+			i++
+			usr = args[i]
 		case "--png":
-			i++; png = args[i]
+			i++
+			png = args[i]
 		}
 	}
 	if host == "" {

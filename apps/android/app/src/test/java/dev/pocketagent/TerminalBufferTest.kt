@@ -108,6 +108,30 @@ class TerminalBufferTest {
         assertEquals(listOf("main line"), b.snapshot().map { it.text })
     }
 
+    @Test fun altScreenCursorSurvivesResize() {
+        // Ajan (codex vb.) açıkken klavye açılınca viewport küçülür; ?1049
+        // çıkışında kayıtlı imleç korunmazsa prompt eski satırların üstüne yazar.
+        val b = TerminalBuffer(cols = 40, rows = 10)
+        for (i in 0 until 9) b.feed("l$i\r\n") // imleç satır 9
+        b.feed("\u001B[?1049h")
+        b.feed("\u001B[1;1HAGENT UI")
+        b.setScreenSize(40, 8) // 2 satır scrollback'e taşar
+        b.feed("\u001B[?1049l")
+        assertFalse(b.altScreenActive)
+        assertEquals(9, b.cursorPosition()!!.first) // 0 değil
+        assertEquals("l8", b.snapshot().last().text)
+    }
+
+    @Test fun sgrStoresAnsiIndexForTheming() {
+        // Renk indeksi saklanır ki tema değişince çıktı yeni paletten çözülsün.
+        val b = TerminalBuffer()
+        b.feed("\u001B[31mred\u001B[38;5;208morange\u001B[38;2;1;2;3mtrue")
+        val spans = b.snapshot().single().spans
+        assertEquals(1, spans[0].style.fgIndex)
+        assertEquals(208, spans[1].style.fgIndex)
+        assertNull(spans[2].style.fgIndex) // truecolor: indeks yok, fg doğrudan
+    }
+
     @Test fun decGraphicsCharset() {
         val b = TerminalBuffer()
         b.feed("\u001B[?1049h\u001B[1;1H\u001B(0lqqk\u001B(B") // DEC graphics: ┌──┐
@@ -223,6 +247,31 @@ class TerminalBufferTest {
         assertTrue(b.bracketedPaste)
         b.feed("\u001B[?2004l")
         assertFalse(b.bracketedPaste)
+    }
+
+    @Test fun spacesAdvanceCursorPastTrimmedCells() {
+        // "ls" + 3 boşluk: satır metni kırpılır ("ls") ama imleç sütun 5'te
+        // kalmalı — render katmanı boşluk doldurur (TerminalRenderTest).
+        val b = TerminalBuffer(cols = 20, rows = 4)
+        b.feed("ls   ")
+        assertEquals(0 to 5, b.cursorPosition())
+        assertEquals("ls", b.snapshot()[0].text)
+    }
+
+    @Test fun bellFiresCallback() {
+        var bells = 0
+        val b = TerminalBuffer()
+        b.onBell = { bells++ }
+        b.feed("x\u0007y\u0007")
+        assertEquals(2, bells)
+    }
+
+    @Test fun bellInsideOscDoesNotFire() {
+        var bells = 0
+        val b = TerminalBuffer()
+        b.onBell = { bells++ }
+        b.feed("\u001B]0;title\u0007") // OSC: BEL sonlandırıcı zil değildir
+        assertEquals(0, bells)
     }
 
     @Test fun cursorPositionTracksScreen() {

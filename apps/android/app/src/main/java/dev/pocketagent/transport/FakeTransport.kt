@@ -63,10 +63,14 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     // OSC 52: uzaktan kopyalama — UI sisteme panosuna yazar
     private val _pendingClipboard = MutableStateFlow<String?>(null)
     val pendingClipboard: StateFlow<String?> = _pendingClipboard
+    // BEL sayacı: her uzak zilde artar — UI değişimi izleyip haptic verir.
+    private val _bellCount = MutableStateFlow(0)
+    val bellCount: StateFlow<Int> = _bellCount
 
     init {
         buffer.onTitle = { _windowTitle.value = it }
         buffer.onClipboard = { _pendingClipboard.value = it }
+        buffer.onBell = { _bellCount.value += 1 }
     }
 
     fun consumeClipboard() { _pendingClipboard.value = null }

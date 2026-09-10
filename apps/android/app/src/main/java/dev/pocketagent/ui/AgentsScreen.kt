@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package dev.pocketagent.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,13 +22,8 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -36,15 +34,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.pocketagent.android.App
-import dev.pocketagent.ui.theme.TerminalFont
+import dev.pocketagent.ui.theme.Space
 import dev.pocketagent.ui.theme.TermAmber
 import dev.pocketagent.ui.theme.TermBlue
 import dev.pocketagent.ui.theme.TermGreen
 import dev.pocketagent.ui.theme.TermRed
+import dev.pocketagent.ui.theme.LocalMonoFont
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -77,114 +76,112 @@ fun AgentsScreen(inbox: InboxViewModel, approval: ApprovalViewModel, app: App) {
     val scope = rememberCoroutineScope()
     val syncStatus by app.eventSync.status.collectAsState()
 
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxSize().padding(Space.lg), verticalArrangement = Arrangement.spacedBy(Space.md)) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Tümü", "Okunmamış").forEach { f ->
-                    FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f) })
-                }
-            }
+            SegmentedControl(
+                options = listOf(Segment("Tümü", "Tümü"), Segment("Okunmamış", "Okunmamış")),
+                selected = filter,
+                onSelect = { filter = it },
+                modifier = Modifier.width(200.dp),
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "sync: $syncStatus",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                TagPill(
+                    syncStatus,
+                    active = syncStatus == "bağlı",
+                    tone = if (syncStatus == "bağlı") TermGreen else null,
                 )
-                androidx.compose.material3.TextButton(
+                ConsoleTextButton(
                     onClick = { app.eventSync.syncNow() },
                     enabled = app.backendClient != null,
-                ) { Text("Şimdi senkronla", style = MaterialTheme.typography.bodySmall) }
+                ) { Text("Şimdi senkronla") }
             }
         }
 
         val shown = inbox.rows.filter { if (filter == "Okunmamış") it.unread else true }
         if (shown.isEmpty()) {
-            Column(
-                Modifier.fillMaxSize().padding(32.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(
-                    Icons.Filled.SmartToy,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                Text("Aktif agent olayı yok", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    if (syncStatus == "bağlı") {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyState(
+                    icon = Icons.Filled.SmartToy,
+                    title = "Aktif agent olayı yok",
+                    body = if (syncStatus == "bağlı") {
                         "Hook'lar olay ürettikçe burada birleşir; 24 saat sonra düşer."
                     } else {
                         "Ayarlar → Backend ile sunucunu bağla; hook olayları 15s içinde akar."
                     },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                 items(shown, key = { it.eventId }) { r ->
                     val isApproval = r.category == "APPROVAL_REQUIRED" || r.digest.isNotBlank()
-                    Card(
-                        Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.small,
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (r.unread) MaterialTheme.colorScheme.secondaryContainer
-                            else MaterialTheme.colorScheme.surfaceContainer,
-                        ),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (r.unread) MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
-                            else MaterialTheme.colorScheme.outline,
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    val tint = categoryColor(r.category)
+                    ConsoleCard(
+                        padding = Space.md,
+                        containerColor = if (r.unread) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.30f)
+                        else MaterialTheme.colorScheme.surfaceContainer,
                     ) {
-                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier
+                                    .size(38.dp)
+                                    .clip(MaterialTheme.shapes.small)
+                                    .background(tint.copy(alpha = 0.14f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
                                 Icon(
                                     categoryIcon(r.category),
                                     contentDescription = null,
-                                    tint = categoryColor(r.category),
+                                    tint = tint,
+                                    modifier = Modifier.size(20.dp),
                                 )
-                                Spacer(Modifier.width(8.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(r.title, style = MaterialTheme.typography.titleSmall)
-                                    Text(
-                                        listOf(r.source, r.sessionId, eventTime(r.createdAt)).filter { it.isNotBlank() }
-                                            .joinToString(" • "),
-                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = TerminalFont),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                            }
+                            Spacer(Modifier.width(Space.md))
+                            Column(Modifier.weight(1f)) {
+                                Text(r.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    listOf(r.source, r.sessionId, eventTime(r.createdAt))
+                                        .filter { it.isNotBlank() }
+                                        .joinToString(" · "),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                            if (r.unread) {
+                                Box(
+                                    Modifier
+                                        .size(7.dp)
+                                        .clip(MaterialTheme.shapes.extraSmall)
+                                        .background(MaterialTheme.colorScheme.primary),
+                                )
+                            }
+                        }
+                        if (isApproval && r.unread) {
+                            Spacer(Modifier.height(Space.md))
+                            Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                                ConsoleButton(onClick = {
+                                    scope.launch(Dispatchers.IO) { decideRemote(app, inbox, approval, r, true) }
+                                }) {
+                                    Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Onayla")
+                                }
+                                ConsoleOutlinedButton(onClick = {
+                                    scope.launch(Dispatchers.IO) { decideRemote(app, inbox, approval, r, false) }
+                                }) {
+                                    Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Reddet")
                                 }
                             }
-                            if (isApproval && r.unread) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(onClick = {
-                                        scope.launch(Dispatchers.IO) {
-                                            decideRemote(app, inbox, approval, r, true)
-                                        }
-                                    }) {
-                                        Icon(Icons.Filled.Check, contentDescription = null)
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("Onayla")
-                                    }
-                                    OutlinedButton(onClick = {
-                                        scope.launch(Dispatchers.IO) {
-                                            decideRemote(app, inbox, approval, r, false)
-                                        }
-                                    }) {
-                                        Icon(Icons.Filled.Close, contentDescription = null)
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("Reddet")
-                                    }
-                                }
-                            } else if (r.unread) {
-                                TextButtonRow { inbox.markRead(r.eventId) }
-                            }
+                        } else if (r.unread) {
+                            Spacer(Modifier.height(Space.sm))
+                            ConsoleTextButton(onClick = { inbox.markRead(r.eventId) }) { Text("Okundu") }
                         }
                     }
                 }
@@ -201,11 +198,6 @@ fun AgentsScreen(inbox: InboxViewModel, approval: ApprovalViewModel, app: App) {
             )
         }
     }
-}
-
-@Composable
-private fun TextButtonRow(onRead: () -> Unit) {
-    OutlinedButton(onClick = onRead) { Text("Okundu") }
 }
 
 // Onay backend'e gider: 202 = kazandın (kayıt düşer), 409 = başka cihaz kazandı.

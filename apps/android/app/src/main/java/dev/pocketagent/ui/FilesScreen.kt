@@ -4,6 +4,7 @@ package dev.pocketagent.ui
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import dev.pocketagent.transport.RemoteFile
+import dev.pocketagent.ui.theme.Space
 import dev.pocketagent.ui.theme.TermGreen
 import dev.pocketagent.ui.theme.TermRed
 
@@ -99,25 +102,15 @@ fun FilesScreen(files: FilesViewModel) {
         }
 
         // Kaynak seçimi: SFTP (tüm FS) veya Workspace (gateway jail'i)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = files.mode == FilesMode.SFTP,
-                onClick = { files.selectMode(FilesMode.SFTP) },
-                label = { Text("SFTP") },
-            )
-            FilterChip(
-                selected = files.mode == FilesMode.WORKSPACE,
-                onClick = { files.selectMode(FilesMode.WORKSPACE) },
-                label = {
-                    Text(
-                        when (files.gatewayAvailable) {
-                            false -> "Workspace (kurulu değil)"
-                            else -> "Workspace"
-                        },
-                    )
-                },
-            )
-        }
+        SegmentedControl(
+            options = listOf(
+                Segment(FilesMode.SFTP, "SFTP"),
+                Segment(FilesMode.WORKSPACE, "Workspace"),
+            ),
+            selected = files.mode,
+            onSelect = { files.selectMode(it) },
+            modifier = Modifier.fillMaxWidth(),
+        )
 
         if (files.mode == FilesMode.WORKSPACE && files.gatewayAvailable == false) {
             WorkspaceMissingCard()
@@ -132,10 +125,10 @@ fun FilesScreen(files: FilesViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 listOf("staged" to "Staged", "unstaged" to "Unstaged", "working" to "Working", "last" to "Son commit").forEach { (kind, label) ->
-                    OutlinedButton(onClick = { files.gwDiff(kind, "git diff ($label)") }) { Text(label, fontSize = 12.sp) }
+                    ConsoleOutlinedButton(onClick = { files.gwDiff(kind, "git diff ($label)") }) { Text(label) }
                 }
-                OutlinedButton(onClick = { previewPort = "" }) { Text("Dev server…", fontSize = 12.sp) }
-                OutlinedButton(onClick = { files.loadTranscripts() }) { Text("Agent sohbetleri", fontSize = 12.sp) }
+                ConsoleOutlinedButton(onClick = { previewPort = "" }) { Text("Dev server…") }
+                ConsoleOutlinedButton(onClick = { files.loadTranscripts() }) { Text("Agent sohbetleri") }
             }
             // Son agent transcript'leri (allowlist dizinlerinden; ~/.claude, ~/.codex)
             files.transcripts?.let { list ->
@@ -256,7 +249,7 @@ fun FilesScreen(files: FilesViewModel) {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(files.entries, key = { it.path }) { f ->
                         RemoteFileRow(f, onClick = { files.onFile(f) })
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        SoftDivider(Modifier.padding(start = 62.dp))
                     }
                 }
             }
@@ -314,7 +307,7 @@ private fun diffAnnotated(content: String): androidx.compose.ui.text.AnnotatedSt
         content.lines().forEach { line ->
             val style = when {
                 line.startsWith("+++") || line.startsWith("---") ->
-                    androidx.compose.ui.text.SpanStyle(color = dev.pocketagent.ui.theme.TermText.copy(alpha = 0.7f))
+                    androidx.compose.ui.text.SpanStyle(color = dev.pocketagent.ui.theme.ConsoleDim)
                 line.startsWith("+") ->
                     androidx.compose.ui.text.SpanStyle(color = dev.pocketagent.ui.theme.TermGreen)
                 line.startsWith("-") ->
@@ -338,37 +331,37 @@ private fun diffAnnotated(content: String): androidx.compose.ui.text.AnnotatedSt
 
 @Composable
 private fun RemoteFileRow(f: RemoteFile, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            if (f.isDir) Icons.Filled.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
-            contentDescription = null,
-            tint = if (f.isDir) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(22.dp),
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                f.name,
-                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                buildString {
-                    if (!f.isDir) append(humanSize(f.size))
-                    if (f.mtime > 0) {
-                        if (isNotEmpty()) append(" • ")
-                        append(relativeTime(f.mtime * 1000))
-                    }
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    ListRow(
+        title = f.name,
+        titleMono = true,
+        subtitle = buildString {
+            if (!f.isDir) append(humanSize(f.size))
+            if (f.mtime > 0) {
+                if (isNotEmpty()) append(" · ")
+                append(relativeTime(f.mtime * 1000))
+            }
+        }.ifBlank { null },
+        leading = {
+            Box(
+                Modifier
+                    .size(34.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(
+                        if (f.isDir) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (f.isDir) Icons.Filled.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
+                    contentDescription = null,
+                    tint = if (f.isDir) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        },
+        onClick = onClick,
+    )
 }
 
 private fun humanSize(bytes: Long): String = when {
@@ -380,20 +373,16 @@ private fun humanSize(bytes: Long): String = when {
 
 @Composable
 private fun WorkspaceMissingCard() {
-    Card(
-        Modifier.fillMaxWidth().padding(top = 12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Workspace gateway kurulu değil", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Host'ta çalıştır:\n  pocket-agent gateway serve\n  veya kalıcı servis:\n  pocket-agent service install-gateway\n\n" +
-                    "Token ~/.config/pocket-agent/gateway.token altında üretilir; " +
-                    "uygulama onu SSH oturumu içinden okur. Gateway yalnız 127.0.0.1:24543 dinler.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+    ConsoleCard {
+        CardHeader("Workspace gateway kurulu değil")
+        Spacer(Modifier.height(Space.sm))
+        Text(
+            "Host'ta çalıştır:\n  pocket-agent gateway serve\n  veya kalıcı servis:\n  pocket-agent service install-gateway\n\n" +
+                "Token ~/.config/pocket-agent/gateway.token altında üretilir; " +
+                "uygulama onu SSH oturumu içinden okur. Gateway yalnız 127.0.0.1:24543 dinler.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -403,31 +392,20 @@ private fun NoSessionCard() {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Center,
     ) {
-        Card(
-            Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.small,
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            ) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(Icons.Filled.Folder, contentDescription = null, tint = TermGreen)
-                Text("Uzak dosyalar", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Aktif bir SSH oturumu yok. Terminal sekmesinden bir host'a bağlan; " +
-                        "bu sekme aynı oturumun SFTP kanalıyla uzak dosya sistemini gösterir.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text("Güvenlik", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "• Dosyalar yalnız SSH tünelinde akar, backend içerik görmez\n" +
-                        "• İndirilenler paylaşım önbelleğine düşer (10MB üst sınır)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        EmptyState(
+            icon = Icons.Filled.Folder,
+            title = "Uzak dosyalar",
+            body = "Aktif bir SSH oturumu yok. Terminal sekmesinden bir host'a bağlan; bu sekme aynı oturumun SFTP kanalıyla uzak dosya sistemini gösterir.",
+        )
+        ConsoleCard(modifier = Modifier.padding(horizontal = Space.lg)) {
+            CardHeader("Güvenlik")
+            Spacer(Modifier.height(Space.sm))
+            Text(
+                "• Dosyalar yalnız SSH tünelinde akar, backend içerik görmez\n" +
+                    "• İndirilenler paylaşım önbelleğine düşer (10MB üst sınır)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

@@ -9,55 +9,54 @@ import kotlinx.coroutines.launch
 
 // P10/P16 zirve: tema + font + terminal paleti + klavye kısayolları tek Settings state.
 // store verilirse tercihler kalıcıdır (DataStore); verilmezse in-memory (testler).
-data class TerminalPalette(val background: Long, val foreground: Long, val cursor: Long)
-data class AppTheme(val dark: Boolean, val fontScale: Float, val palette: TerminalPalette, val amoled: Boolean = false)
-
-val DarkPalette = TerminalPalette(0xFF07090D, 0xFFD9E1EA, 0xFF3FD68F)
-val AmoledPalette = TerminalPalette(0xFF000000, 0xFFD9E1EA, 0xFF3FD68F)
-val LightPalette = TerminalPalette(0xFFFFFFFF, 0xFF1B2129, 0xFF0E7A46)
-
-private fun paletteFor(dark: Boolean, amoled: Boolean): TerminalPalette = when {
-    !dark -> LightPalette
-    amoled -> AmoledPalette
-    else -> DarkPalette
-}
+data class AppTheme(
+    val themeId: String = "pocket",
+    val fontId: String = "jetbrains",
+    val fontScale: Float = 1f,
+)
 
 class SettingsViewModel(
     private val store: SettingsStore? = null,
     private val scope: CoroutineScope? = null,
 ) {
-    var theme by mutableStateOf(AppTheme(true, 1f, DarkPalette))
+    var theme by mutableStateOf(AppTheme())
         private set
     var backendUrl by mutableStateOf("")
         private set
     var tenantToken by mutableStateOf("")
         private set
 
-    var amoled by mutableStateOf(false)
-        private set
     var autoReconnect by mutableStateOf(false)
         private set
     // Kopmada otomatik yeniden bağlan (varsayılan açık)
     var autoReconnectOnDrop by mutableStateOf(true)
+        private set
+    // Tuş şeridi snippet'ları: her satır "etiket=komut".
+    var snippets by mutableStateOf("")
         private set
 
     init {
         if (store != null && scope != null) {
             scope.launch {
                 store.load()?.let { p ->
-                    amoled = p.amoled
                     autoReconnect = p.autoReconnect
                     autoReconnectOnDrop = p.autoReconnectOnDrop
-                    theme = AppTheme(p.dark, p.fontScale.coerceIn(0.8f, 2.0f), paletteFor(p.dark, p.amoled), p.amoled)
+                    theme = AppTheme(p.themeId, p.fontId, p.fontScale.coerceIn(0.8f, 2.0f))
                     backendUrl = p.backendUrl
                     tenantToken = p.tenantToken
+                    snippets = p.snippets
                 }
             }
         }
     }
 
-    fun toggleDark() {
-        theme = theme.copy(dark = !theme.dark, palette = paletteFor(!theme.dark, amoled))
+    fun setThemeId(id: String) {
+        theme = theme.copy(themeId = id)
+        persist()
+    }
+
+    fun setFontId(id: String) {
+        theme = theme.copy(fontId = id)
         persist()
     }
 
@@ -68,12 +67,6 @@ class SettingsViewModel(
 
     fun toggleAutoReconnectOnDrop() {
         autoReconnectOnDrop = !autoReconnectOnDrop
-        persist()
-    }
-
-    fun toggleAmoled() {
-        amoled = !amoled
-        theme = theme.copy(amoled = amoled, palette = paletteFor(theme.dark, amoled))
         persist()
     }
 
@@ -88,13 +81,37 @@ class SettingsViewModel(
         persist()
     }
 
+    fun updateSnippets(v: String) {
+        snippets = v
+        persist()
+    }
+
+    // Yedekten dönen ayar setini toplu uygula (tenant token korunur —
+    // export'a girmez, mevcut değer ezilmez).
+    fun applyAll(p: PersistedSettings) {
+        theme = AppTheme(p.themeId, p.fontId, p.fontScale.coerceIn(0.8f, 2.0f))
+        if (p.backendUrl.isNotBlank()) backendUrl = p.backendUrl
+        autoReconnect = p.autoReconnect
+        autoReconnectOnDrop = p.autoReconnectOnDrop
+        snippets = p.snippets
+        persist()
+    }
+
+    // "gs=git status\nht=htop" → (etiket, gönderilecek metin) çiftleri.
+    // Komut sonuna \n eklenmez — kullanıcı Enter'a basar (iptal şansı kalır).
+    fun snippetList(): List<Pair<String, String>> =
+        snippets.lines().mapNotNull { l ->
+            val i = l.indexOf('=')
+            if (i <= 0) null else l.take(i).trim() to l.substring(i + 1)
+        }.filter { it.first.isNotBlank() && it.second.isNotBlank() }
+
     val backendConfigured: Boolean
         get() = backendUrl.isNotBlank() && tenantToken.isNotBlank()
 
     private fun persist() {
         val s = store ?: return
         val sc = scope ?: return
-        val snap = PersistedSettings(theme.dark, theme.fontScale, backendUrl, tenantToken, amoled, autoReconnect, autoReconnectOnDrop)
+        val snap = PersistedSettings(theme.fontScale, backendUrl, tenantToken, autoReconnect, autoReconnectOnDrop, theme.themeId, theme.fontId, snippets)
         sc.launch { s.save(snap) }
     }
 }
