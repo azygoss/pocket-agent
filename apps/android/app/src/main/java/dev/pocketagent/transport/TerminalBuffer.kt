@@ -12,6 +12,11 @@ package dev.pocketagent.transport
 data class TermStyle(
     val fg: Long? = null,
     val bg: Long? = null,
+    // ANSI indeksi (0-255): renk, render anında aktif temanın paletinden
+    // çözülür. Böylece tema değişince mevcut çıktı da yeni renkleri alır.
+    // Truecolor (38;2) için null; o zaman fg/bg doğrudan kullanılır.
+    val fgIndex: Int? = null,
+    val bgIndex: Int? = null,
     val bold: Boolean = false,
     val underline: Boolean = false,
     val link: String? = null, // OSC 8 hyperlink
@@ -150,6 +155,8 @@ class TerminalBuffer(
     // OSC 52 (cihaz panosuna kopyala) ve OSC 0/2 (pencere başlığı) geri çağrıları.
     var onClipboard: ((String) -> Unit)? = null
     var onTitle: ((String) -> Unit)? = null
+    // BEL (\u0007): uzaktan zil — UI katmanı haptic/bildirime çevirir.
+    var onBell: (() -> Unit)? = null
 
     var totalFed: Long = 0L
         private set
@@ -208,6 +215,11 @@ class TerminalBuffer(
         s.crow = old.crow - overflow
         s.ccol = old.ccol
         s.clampCursor()
+        // ?1049 alt ekran çıkışında cursor buraya döner; resize sırasında
+        // kaybolursa imleç 0'a düşer ve kabuk prompt'u eski satırların üstüne
+        // yazar. Taşan satır kadar kaydırıp sınırla.
+        s.savedRow = (old.savedRow - overflow).coerceIn(0, r - 1)
+        s.savedCol = old.savedCol.coerceIn(0, c - 1)
         return s
     }
 
@@ -254,7 +266,7 @@ class TerminalBuffer(
                     wrapPending = false
                     i++
                 }
-                else -> if (c < ' ' || c == '\u007F') i++ else { putChar(c); i++ }
+                else -> if (c < ' ' || c == '\u007F') { if (c == '\u0007') onBell?.invoke(); i++ } else { putChar(c); i++ }
             }
         }
     }
@@ -268,7 +280,12 @@ class TerminalBuffer(
         val c = if (decGraphics) DEC_GRAPHICS[c0] ?: c0 else c0
         val withLink = if (link != null) style.copy(link = link) else style
         val eff = if (inverse) {
-            withLink.copy(fg = style.bg ?: INVERSE_BG, bg = style.fg ?: INVERSE_FG)
+            withLink.copy(
+                fg = style.bg ?: INVERSE_BG,
+                bg = style.fg ?: INVERSE_FG,
+                fgIndex = style.bgIndex,
+                bgIndex = style.fgIndex,
+            )
         } else {
             withLink
         }
@@ -558,22 +575,23 @@ class TerminalBuffer(
                 24 -> style = style.copy(underline = false)
                 7 -> inverse = true
                 27 -> inverse = false
-                39 -> style = style.copy(fg = null)
-                49 -> style = style.copy(bg = null)
-                in 30..37 -> style = style.copy(fg = ANSI_COLORS[p - 30])
-                in 90..97 -> style = style.copy(fg = ANSI_BRIGHT[p - 90])
-                in 40..47 -> style = style.copy(bg = ANSI_COLORS[p - 40])
-                in 100..107 -> style = style.copy(bg = ANSI_BRIGHT[p - 100])
+                39 -> style = style.copy(fg = null, fgIndex = null)
+                49 -> style = style.copy(bg = null, bgIndex = null)
+                in 30..37 -> { val n = p - 30; style = style.copy(fg = ANSI_COLORS[n], fgIndex = n) }
+                in 90..97 -> { val n = p - 90; style = style.copy(fg = ANSI_BRIGHT[n], fgIndex = n + 8) }
+                in 40..47 -> { val n = p - 40; style = style.copy(bg = ANSI_COLORS[n], bgIndex = n) }
+                in 100..107 -> { val n = p - 100; style = style.copy(bg = ANSI_BRIGHT[n], bgIndex = n + 8) }
                 38, 48 -> { // genişletilmiş: 38;5;n / 38;2;r;g;b (ve bg karşılığı 48)
                     val target = if (p == 38) true else false
                     if (i + 2 < parts.size && parts[i + 1] == 5) {
-                        val c = xterm256(parts[i + 2])
-                        style = if (target) style.copy(fg = c) else style.copy(bg = c)
+                        val n = parts[i + 2]
+                        val c = xterm256(n)
+                        style = if (target) style.copy(fg = c, fgIndex = n) else style.copy(bg = c, bgIndex = n)
                         i += 2
                     } else if (i + 4 < parts.size && parts[i + 1] == 2) {
                         val r = parts[i + 2]; val g = parts[i + 3]; val b = parts[i + 4]
                         val c = 0xFF000000L or (r.toLong() shl 16) or (g.toLong() shl 8) or b.toLong()
-                        style = if (target) style.copy(fg = c) else style.copy(bg = c)
+                        style = if (target) style.copy(fg = c, fgIndex = null) else style.copy(bg = c, bgIndex = null)
                         i += 4
                     }
                 }

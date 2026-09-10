@@ -13,15 +13,18 @@ import kotlinx.coroutines.flow.first
 // tenantToken self-hosted iskelette X-Tenant header'ı olarak kullanılır;
 // passkey geldiğinde access token ile değişecek (P02 tam dilim).
 data class PersistedSettings(
-    val dark: Boolean = true,
     val fontScale: Float = 1f,
     val backendUrl: String = "",
     val tenantToken: String = "",
-    val amoled: Boolean = false,
     val autoReconnect: Boolean = false,
     // Kopmada otomatik yeniden bağlanma (SSH) — varsayılan açık; auth/host-key
     // hataları P08 gereği yine hard-stop.
     val autoReconnectOnDrop: Boolean = true,
+    // Görünüm: tema kataloğu kimliği + terminal font kimliği.
+    val themeId: String = "pocket",
+    val fontId: String = "jetbrains",
+    // Tuş şeridi snippet'ları: her satır "etiket=komut" (örn. "gs=git status").
+    val snippets: String = "",
 )
 
 interface SettingsStore {
@@ -32,37 +35,40 @@ interface SettingsStore {
 private val Context.prefs by preferencesDataStore(name = "settings")
 
 class DataStoreSettingsStore(private val context: Context) : SettingsStore {
-    private val darkKey = booleanPreferencesKey("dark")
     private val fontKey = floatPreferencesKey("font_scale")
     private val urlKey = stringPreferencesKey("backend_url")
     private val tenantKey = stringPreferencesKey("tenant_token")
-    private val amoledKey = booleanPreferencesKey("amoled")
     private val autoReconnectKey = booleanPreferencesKey("auto_reconnect")
     private val autoReconnectDropKey = booleanPreferencesKey("auto_reconnect_drop")
+    private val themeIdKey = stringPreferencesKey("theme_id")
+    private val fontIdKey = stringPreferencesKey("font_id")
+    private val snippetsKey = stringPreferencesKey("snippets")
 
     override suspend fun load(): PersistedSettings? {
         val p = context.prefs.data.first()
-        if (p[darkKey] == null && p[urlKey] == null) return null
+        if (p[themeIdKey] == null && p[urlKey] == null) return null
         return PersistedSettings(
-            dark = p[darkKey] ?: true,
             fontScale = p[fontKey] ?: 1f,
             backendUrl = p[urlKey] ?: "",
             tenantToken = p[tenantKey] ?: "",
-            amoled = p[amoledKey] ?: false,
             autoReconnect = p[autoReconnectKey] ?: false,
             autoReconnectOnDrop = p[autoReconnectDropKey] ?: true,
+            themeId = p[themeIdKey] ?: "pocket",
+            fontId = p[fontIdKey] ?: "jetbrains",
+            snippets = p[snippetsKey] ?: "",
         )
     }
 
     override suspend fun save(s: PersistedSettings) {
         context.prefs.edit {
-            it[darkKey] = s.dark
             it[fontKey] = s.fontScale
             it[urlKey] = s.backendUrl
             it[tenantKey] = s.tenantToken
-            it[amoledKey] = s.amoled
             it[autoReconnectKey] = s.autoReconnect
             it[autoReconnectDropKey] = s.autoReconnectOnDrop
+            it[themeIdKey] = s.themeId
+            it[fontIdKey] = s.fontId
+            it[snippetsKey] = s.snippets
         }
     }
 }

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Devin snapshot kurulumu — yeni ortamda tek seferde hazır repo.
+# Ayrıntılar: CONTRIBUTING.md + AGENTS.md
+setup:
+  - name: "Go toolchain (go.mod toolchain directive kendisi halleder)"
+    run: go version && go build ./...
+  - name: "Buf (proto lint)"
+    run: which buf || echo "buf opsiyonel — proto değişikliğinde gerekli"
+  - name: "Android SDK yolu"
+    run: 'echo "ANDROID_HOME=$ANDROID_HOME" && test -d "$ANDROID_HOME" || echo "Android SDK yok — apps/android derlenmez"'
+  - name: "Hızlı kapılar"
+    run: ./scripts/secret-scan.sh && ./scripts/license-check.sh && go vet ./...
+run:
+  - name: "Canlı test ortamı (backend :8080, gateway :24543, preview :8899)"
+    run: ./scripts/live-env.sh up

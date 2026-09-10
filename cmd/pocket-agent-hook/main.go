@@ -3,12 +3,13 @@
 package main
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"path/filepath"
+	"strings"
 
 	"github.com/pocket-agent/pocket-agent/host/config"
 	"github.com/pocket-agent/pocket-agent/host/doctor"
@@ -30,11 +31,17 @@ func home() string {
 }
 
 func main() {
+	doctor.BackendURL = backendURL
 	if len(os.Args) < 2 {
-		fmt.Println("pocket-agent: no args => would open/attach tmux session in cwd (P03: see tmux adapter)")
+		fmt.Println("pocket-agent — self-hosted Android terminal companion")
+		fmt.Println("usage: pocket-agent <command>  (tüm komutlar: pocket-agent help)")
 		return
 	}
 	switch os.Args[1] {
+	case "help", "--help", "-h":
+		printHelp()
+	case "onboard":
+		cmdOnboard(os.Args[2:])
 	case "version", "--version", "-V":
 		fmt.Println("pocket-agent-hook " + version)
 	case "status":
@@ -96,11 +103,11 @@ func main() {
 	case "diff":
 		cmdDiff(os.Args[2:])
 	case "context":
-		fmt.Println("{\"cwd\":\"\" appetizer\":false}")
+		fmt.Println("{\"cwd\":\"\",\"appetizer\":false}")
 	case "cwd-list":
 		fmt.Println("cwd-list: tmux pane cwd via servers (see servers)")
 	case "completion":
-		fmt.Println("# bash/zsh completion: source <(pocket-agent completion bash)")
+		cmdCompletion(os.Args[2:])
 	case "pair":
 		cmdPair(os.Args[2:])
 	case "unpair":
@@ -120,7 +127,7 @@ func main() {
 		}
 		fmt.Printf("unpair %s: %d anahtar kaldırıldı\n", id, n)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "unknown command %q — tüm komutlar: pocket-agent help\n", os.Args[1])
 		os.Exit(2)
 	}
 }
@@ -149,9 +156,18 @@ func cmdHost(args []string) {
 		fmt.Fprintln(os.Stderr, "QR single-use, 5min TTL. Scan, then claim with device key.")
 	case "list":
 		cfg, _ := config.Load(config.DefaultPath())
-		fmt.Printf("host_id=%s backend=%s\n", cfg.HostID, cfg.BackendURL)
 		ak := filepath.Join(h, ".ssh", "authorized_keys")
 		b, _ := os.ReadFile(ak)
+		if has("--json") {
+			json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"host_id":               cfg.HostID,
+				"backend":               cfg.BackendURL,
+				"authorized_keys_bytes": len(b),
+				"schema":                1,
+			})
+			return
+		}
+		fmt.Printf("host_id=%s backend=%s\n", cfg.HostID, cfg.BackendURL)
 		fmt.Printf("authorized_keys: %d bytes\n", len(b))
 	case "revoke":
 		if len(args) < 2 {
@@ -181,15 +197,9 @@ func cmdHooks(args []string) {
 	h := home()
 	switch args[0] {
 	case "install":
-		for _, a := range hooks.All() {
-			p := filepath.Join(h, a.ConfigFile)
-			cur, _ := os.ReadFile(p)
-			merged := hooks.Merge(string(cur), a.Block)
-			if merged != string(cur) {
-				_ = os.MkdirAll(filepath.Dir(p), 0o700)
-				_ = os.WriteFile(p, []byte(merged), 0o600)
-				fmt.Println("patched " + p)
-			}
+		if err := installHooks(h); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 	case "uninstall":
 		for _, a := range hooks.All() {
@@ -232,6 +242,14 @@ func cmdService(args []string) {
 		}
 		fmt.Println("installed " + p + " (root=" + cwd + ")")
 	case "status":
+		if has("--json") {
+			json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"daemon":  service.Status(h),
+				"gateway": service.GatewayStatus(h),
+				"schema":  1,
+			})
+			return
+		}
 		fmt.Println(service.Status(h))
 		fmt.Println("gateway: " + service.GatewayStatus(h))
 	case "uninstall":
@@ -313,12 +331,51 @@ func cmdSet(args []string) {
 	fmt.Println("saved " + p)
 }
 
-func cmdLogs(args []string) {
-	n := "50"
-	if len(args) > 0 {
-		n = args[0]
+// installHooks: 12 agent hook bloğunu config dosyalarına merge eder.
+// Tekrar kurulumda dubl olmaz (P12 gate).
+func installHooks(h string) error {
+	for _, a := range hooks.All() {
+		p := filepath.Join(h, a.ConfigFile)
+		cur, _ := os.ReadFile(p)
+		merged := hooks.Merge(string(cur), a.Block)
+		if merged != string(cur) {
+			if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+				return err
+			}
+			if err := os.WriteFile(p, []byte(merged), 0o600); err != nil {
+				return err
+			}
+			fmt.Println("patched " + p)
+		}
 	}
-	fmt.Printf("logs: last %s lines from journal (SQLite WAL in later slice)\n", n)
+	return nil
+}
+
+func cmdLogs(args []string) {
+	n := 50
+	if len(args) > 0 {
+		fmt.Sscanf(args[0], "%d", &n)
+	}
+	p := filepath.Join(home(), ".local", "state", "pocket-agent", "journal.jsonl")
+	f, err := os.Open(p)
+	if err != nil {
+		fmt.Println("journal yok:", p)
+		return
+	}
+	defer f.Close()
+	var lines []string
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		lines = append(lines, sc.Text())
+	}
+	start := len(lines) - n
+	if start < 0 {
+		start = 0
+	}
+	for _, l := range lines[start:] {
+		fmt.Println(l)
+	}
 }
 
 func cmdDiff(args []string) {

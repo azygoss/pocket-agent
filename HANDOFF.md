@@ -1,7 +1,7 @@
 # HANDOFF — Pocket Agent
 
-Tarih: 2026-09-03 (v0.12.0). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
-Hedef tamamlama: ~%92 (headless tavan: ekran-modeli terminal + SFTP + gateway tüneli + mosh bootstrap + backend sync). Emülatör/cihaz gerektiren işler açıkta (bkz. §7).
+Tarih: 2026-09-10 (v0.15.0). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
+Hedef tamamlama: ~%94 (headless tavan: ekran-modeli terminal + SFTP + gateway tüneli + mosh bootstrap + backend sync + kullanılabilirlik paketi). Emülatör/cihaz gerektiren işler açıkta (bkz. §7).
 
 ## 1. Proje özeti
 
@@ -21,6 +21,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
   backend `go build -o /tmp/pa-backend ./backend/cmd/server && /tmp/pa-backend` (:8080, in-memory),
   gateway `POCKET_GATEWAY_TOKEN=tok123 /tmp/pa-hook gateway serve --root /tmp/pa-workspace` (:24543 loopback),
   preview için `python3 -m http.server 8899 --bind 127.0.0.1` (/tmp/pa-preview), `mosh-server` 1.4.0 kurulu.
+  **Tek komutla hepsi:** `./scripts/live-env.sh up` (mevcut süreçleri sahiplenir, `status`/`env`/`down` alt komutları; `make live-up`).
 - Sonuç: emülatör kurulmadı (`docs/emulator.md` gerekçesi). `connectedDebugAndroidTest`
   ve video kanıtları cihaz bekler. Telafi: Robolectric Compose UI testleri + 5 canlı env-gated süit.
 
@@ -44,22 +45,30 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 | P17 sertleştirme | ⚠️ kısmi | fuzz seed corpus, canary, threat-model iskeleti; cihaz perf/a11y yok |
 | P18 dağıtım | ⚠️ büyük ölçüde | 4-arch CLI tarball, SBOM (go+android), Dockerfile, operasyon belgeleri + **env-driven imzalı release APK+AAB, R8 proguard, REPRODUCING.md, CCS paketi (package-ccs.sh), build-release.sh tam kapı (apksigner verify + release-checksums)**; cosign/SLSA/CI yok |
 
-## 4. Test raporu (son yeşil koşu)
+## 4. Test raporu (son yeşil koşu, v0.15.0)
 
-- Go: 18 paket `ok`, 0 FAIL (`go test ./... -count=1`), `go vet` + `go build ./...` temiz.
-- Android: 107/107 unit (redesign sonrası da yeşil) (6 canlı env-gated: SSH + backend + SFTP + gateway + mosh bootstrap + pairing E2E — hepsi bu makinede kanıtlı; + 6 Robolectric Compose UI süiti: Terminal/Agents/Connections/Files/Settings/Home/Chat) + `lintDebug` (0 hata) + `assembleDebug` yeşil.
+- Go: 18 paket `ok`, 0 FAIL (`go test ./...`), `go vet` + `go build ./...` temiz, `buf lint` temiz.
+- Kapılar: `secret-scan`, `license-check`, `check-packaging`, `privacy-schema`, `canary`, `tests/e2e/p04-flow.sh` — hepsi yeşil.
+- Android: **143 unit test yeşil** (`:app:testDebugUnitTest`), `lintDebug` 0 hata, `assembleDebug` yeşil.
+  Yeni testler (0.15.0): `TerminalRenderTest` x5 (imleç sonda-bosluk regresyonu), `spacesAdvanceCursorPastTrimmedCells` + `bellFiresCallback`/`bellInsideOscDoesNotFire` (TerminalBufferTest), `SshConfigTest` x4, `AddHostLinkTest` x4, `KeyGenTest` x3, `BackupTest` x4 (Robolectric), `emptyConnectionsShowsFirstRunWizard`.
+- Android: 6 canlı env-gated süit (SSH + backend + SFTP + gateway + mosh bootstrap + pairing E2E) — hepsi bu makinede kanıtlı; `scripts/live-env.sh up` tek komutla ortamı kurar/sahiplenir.
 - Canlı SSH kanıtı: `PA_LIVE_SSH=1 PA_LIVE_USER=pa-dev PA_LIVE_PEM=/tmp/pa-dev-key ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SshjLiveTest` → localhost sshd'ye TOFU hard-stop → pin → ed25519 key auth → PTY → `echo PA_ALIVE_42` okundu (test user `pa-dev` bu makinede hazır).
 - Canlı backend kanıtı: `/tmp/pa-backend` ayaktayken `PA_LIVE_BACKEND=http://127.0.0.1:8080 ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.BackendLiveTest` → event post → özet çekme → cursor → CAS 202/409 → tenant izolasyonu.
 - Canlı SFTP kanıtı: `PA_LIVE_SSH=1 … ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SftpLiveTest` → list `/` + write/read `/tmp` + kota kesme + dizin-önce sıralama.
 - Canlı gateway tüneli: gateway çalışırken (`POCKET_GATEWAY_TOKEN=tok123 pocket-agent gateway serve --root /tmp/pa-workspace`) `PA_LIVE_GW=1 PA_LIVE_SSH=1 … --tests dev.pocketagent.GatewayTunnelLiveTest` → SSH direct-tcpip → ls/file/401/traversal + preview (127.0.0.1:8899 marker).
 - Canlı mosh bootstrap: `PA_LIVE_SSH=1 … --tests dev.pocketagent.MoshBootstrapTest` → SSH exec → `mosh-server new` → MOSH CONNECT port+key parse (anahtar yalnız RAM).
-- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` (75MB v0.12.0, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI dahil).
+- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` + kopya `dist/pocket-agent-0.15.0-debug.apk` (77.5MB v0.15.0 / versionCode 6, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI + 3 gömülü font dahil; sha256: `184c1909…5d9d`, tam değer `dist/` içinde `sha256sum` ile doğrulanır).
 - CLI: `dist/` git-dışı (tarballs + `SHA256SUMS` + `sbom-go.json`).
 
 ## 5. Derleme komutları
 
 ```bash
-# Go + proto + kapılar
+# Kestirme: make help (tüm hedefler listeli)
+make gates      # secret-scan + license + packaging + protocol + canary
+make go         # go test + vet + build
+make android    # lintDebug + testDebugUnitTest + assembleDebug
+make live-up    # canlı test ortamı (backend+gateway+preview)
+# Elle eşdeğerleri:
 go test ./... && go vet ./... && go build ./...
 buf lint
 ./scripts/secret-scan.sh && ./scripts/license-check.sh && ./scripts/check-packaging.sh
@@ -72,6 +81,7 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 # Gateway canlı: go build -o /tmp/pa-hook ./cmd/pocket-agent-hook && POCKET_GATEWAY_TOKEN=… /tmp/pa-hook gateway serve --root <ws>
 # CLI paketleri: ./scripts/package-cli.sh (dist/)
 # Mosh (kaynaktan, 3 ABI): ./scripts/build-mosh.sh → jniLibs/<abi>/libmoshclient.so + native/mosh/SHA256SUMS
+# Commit öncesi: ./scripts/pre-commit.sh (gofmt + secret-scan + license + vet + hızlı test)
 ```
 
 ## 6. Hassas konumlar (repoya girmez)
@@ -88,8 +98,11 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 3. FCM service-account push; Passkey/OIDC turu; whisper model; S3 adapter.
 4. AAB + Play kanalı + upload-keystore imza; cosign/SLSA/syft-CycloneDX; CCS paketi.
 5. pcap privacy kanıtı; perf SLO ölçümleri; 10 canlı yol videosu; 2-cihaz race.
-6. WSL/macOS/Windows doğrulama; Homebrew tap; prod Postgres backup/restore + Caddy TLS.
+6. WSL/macOS/Windows doğrulama; Homebrew tap; prod Postgres backup/restore + Caddy TLS (bootstrap.sh + verify-backup.sh eklendi; gerçek restore provası VPS'te yapılmadı).
 7. Port-forward yönetici UI'ı; tmux/Zellij seçim UI'ı (capability probe cihazda); backend gerçek auth (X-Tenant iskeleti → passkey).
+8. i18n: UI metinleri hâlâ Kotlin'e gömülü Türkçe — `strings.xml` extraction + `values-en` mekanik ama geniş iş; henüz başlanmadı.
+9. `SshProbe` promiscuous verifier kullanır (salt-tanı) — TOFU pin'i yalnızca gerçek bağlantıda yapılır, tasarım gereği.
+10. Cihazda doğrulanacaklar (0.15.0): IME'de sonda-boşluk görünürlüğü, BEL haptic, pinch-zoom, snippet tuşları, SAF dosya seçici, QR→wizard akışı.
 
 ## 7b. Günlük kullanım katmanı (0.11.0'a kadar eklendi)
 
@@ -114,10 +127,43 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 - **Klavye (0.8.2)**: donanım klavye desteği (Ctrl+harf→kontrol kodu, ok/Home/End/PgUp/PgDn/Esc doğrudan terminal yüzeyine); Agents'ta "Şimdi senkronla" (EventSync syncNow); ET spike: upstream repo 404, resmi Android yolu yok → ET ertelendi (D021).
 - **Preview (0.8.0)**: gateway /preview ucu + Workspace "Dev server…" diyaloğu (loopback-only, SSRF korumalı, 1MB/5s).
 - **Terminal redesign (0.12.0)**: oturum şeridi pill'leri, overlay aksiyon çubuğu, ghost tuşlar, ❯ prompt'lu borderless giriş — terminal artık tamamen ekrana yayılan modern yüzey.
+- **Tema/font kataloğu (0.14.0)**: `theme/ConsoleThemes.kt`'de 18 tema (Pocket, Pocket AMOLED, Claude Dark/Light, Codex Dark, GitHub Dark/Light, Notion Light/Dark, Dracula, Nord, Gruvbox, One Dark, Tokyo Night, Catppuccin Mocha, Solarized Dark/Light, Monokai) ve `theme/Fonts.kt`'de 6 font (JetBrains Mono, IBM Plex Mono, Space Mono — OFL-1.1 gömülü; Sistem Mono/Sans/Serif). Her tema app renklerini + terminal ANSI-16 paletini taşır; `TermStyle` artık ANSI **indeksi** saklar, renk render anında aktif temadan çözülür — tema değişince mevcut terminal çıktısı da canlı renklenir. `PocketAgentTheme(theme, mono)` `LocalConsoleTheme`/`LocalMonoFont` yayar; tüm mono metin seçili fontu kullanır. Ayarlar > Görünüm'de tema kartları + font çipleri + ölçek.
+- **Alt ekran imleç düzeltmesi (0.14.0)**: `resizeScreen` artık `savedRow/savedCol`'u koruyor. Önceden ajan (codex/claude) açıkken viewport değişince (klavye) `?1049l` çıkışında imleç satır 0'a düşüyor, kabuk prompt'u eski satırların üstüne yazıyordu — bu yüzden `clear` gerekıyordu. Ayrıca tuş şeridine `^l` (ekran temizle) eklendi.
+- **Tasarım sistemi / genel modernizasyon (0.13.2)**: `theme/Theme.kt`'de ölçü tokenleri (`Space`), katmanlı yüzey paleti (surfaceContainer katmanları, shadow yok), 4/8/10/14dp köşe ölçeği ve tam tipografi ölçeği (mono başlık/label + sans gövde). `Components.kt` yeniden yazıldı: `ConsoleCard`/`CardHeader`/`ListRow`/`TagPill`/`EmptyState`/`SegmentedControl`/`SettingRow` + pill yerine 8dp köşeli `ConsoleButton` ailesi; tüm ekranlar bu dile taşındı (Home/Connections/Agents/Files/Settings). `PocketApp.kt` chrome: marka glifli 52dp üst bar + oturum pill'i, alt navigasyonda üst çizgi yerine yuvarlatılmış dolgu vurgusu (animated). FilterChip/FilledTonalButton/çift FAB gibi M3 varsayılanları kaldırıldı.
+- **Terminal klavye/IME düzeltmesi (0.13.1)**: IME yakalayıcı alanı çıktı alanının üstünden altına taşındı; `android:windowSoftInputMode="adjustResize"` + viewport her değiştiğinde (`viewportEpoch`) aktif satıra kaydırma — klavye açılınca yazılan satır artık klavyenin altında kalmıyor. Klavye toggle'ı `clearFocus()` kullanıyor (sistem geri tuşuyla kapatılan IME'de takılmıyor). LazyColumn üst `contentPadding` ile overlay aksiyon çubuğu ilk satırları gizlemiyor.
+- **Terminal giriş redesign (0.13.0)**: ayrı komut satırı kaldırıldı — terminal yüzeyine dokunup doğrudan yazılır (1dp görünmez, kontrollü IME alanı; her değişim `imeEdit` saf fonksiyonuyla PTY'ye delta olarak akar). Alt kısımda terminal yüzeyine bitişik tek satır tuş şeridi: `ctrl` mandalı + `esc/tab/^c/^d/^z` + oklar + `home/end/pgup/pgdn` + semboller; sağda yapıştır/klavye. Ripple yok, basılıyken hafif zemin; odakta ince yeşil border. Donanım okları artık gerçek CSI dizisi gönderir (eskiden yalnız ESC).
 - **Console redesign (0.11.0)**: keskin köşeler (4-6dp), outlined kartlar, mono başlık tipografisi, özel ince topbar+altbar, ANSI palet uygulamayla uyumlu — M3 şablon görünümü tamamen gitti.
 - **Tema (0.6.0-0.9.0)**: AMOLED saf-siyah seçeneği (kalıcı), koyu/aydınlık palet; **JetBrains Mono 2.304 bundle** (OFL-1.1, regular/bold/italic/bold-italic — sistem monospace yok, gerçek terminal fontu; lisans assets/licenses, Hakkında atfı).
 - Terminal: komut geçmişi (↑↓, dedupe, 100 cap), Ctrl toggle, reconnect, sonda-otomatik kaydırma + alta-in FAB, scrollback arama (eşleşme vurgusu), clipboard yapıştır, 30s SSH keepalive, bilinen-hosts yönetimi (Ayarlar).
 - Snackbar (bağlandı/kapandı), Agents tab okunmamış rozeti, sekmeye göre TopAppBar başlığı, deep-link yönlendirme.
+
+## 7c. Kullanılabilirlik paketi (0.15.0, D037)
+
+- **Terminal sonda-boşluk düzeltmesi**: `RowBuf.build()` sondaki boş hücreleri kırpar (kompakt snapshot — doğru davranış); `toAnnotatedString` imleci kırpılmış satır sonuna çiziyordu. Artık imleç gerçek sütununa kadar boşlukla doldurulur → boşluklar yazıldığı an görünür (TerminalRenderTest + buffer regresyonu).
+- **BEL (\u0007) → haptic**: `TerminalBuffer.onBell` callback → `vm.bellCount` → `KEYBOARD_TAP` titreşimi; OSC sonlandırıcı BEL'ler zil sayılmaz.
+- **Pinch-to-zoom**: terminal yüzeyinde iki parmak `detectTransformGestures` → `fontScale` (0.8–2.0 sınırı, DataStore'a kalıcı); PTY resize zinciri ölçümü zaten takip ediyor.
+- **Tuş şeridi snippet'ları**: Ayarlar → Tuş şeridi (`etiket=komut` her satır) → şeridin sonunda tuş olarak belirir; Enter kullanıcıda (iptal şansı kalır).
+- **İlk kurulum sihirbazı**: host yokken Bağlantılar'da 3 adım — backend URL kaydet → `pocket-agent onboard` kopyala → QR/kod eşle.
+- **Bağlantı diyaloğu**: PEM "Dosyadan al" (SAF OpenDocument), "Anahtar üret" (ed25519 → PKCS8 PEM alanı + public key kopyalama diyaloğu, BouncyCastle; EdEC arayüzleri API 33 istediğinden yalnız encoded baytlar), "Bağlantıyı sına" (SshProbe: ağ + auth probe, TOFU pin'ine dokunmaz).
+- **~/.ssh/config importu**: Bağlantılar ⋮ FAB'ı → dosya seç → önizleme (wildcard'lar atlanır) → toplu ekleme; secret taşınmaz.
+- **`pocketagent://add?host=…&user=…&port=…&name=…`**: deeplink ile host ekleme diyaloğu (doldurulmuş, parola bekler). Yalnız alan doldurur — komut çalıştırmaz.
+- **Yedekleme**: Ayarlar → Yedekleme kartı — bağlantılar+ayarlar JSON (secret'lar asla dahil değil, `Backup` codec; version+şema sabit); içe aktarım ekler, silmez; geçersiz kayıtlar atlanır.
+- **Hata banner'ı aksiyonları**: terminal hata banner'ında "Yeniden dene" (reconnect mümkünse) + "Bağlantıya git".
+
+### CLI (host tarafı)
+
+- `pocket-agent help` / `-h` / `--help`: tam komut ağacı + örnekler; argümansız çağrı usage basar.
+- `pocket-agent onboard`: tek komutla service install + gateway + hooks + pair QR.
+- `completion bash|zsh|fish`: statik completion scriptleri.
+- `doctor`: gerçek sondalar (binary varlığı, sshd :22, disk, tmux/mosh-server, backend erişim, gateway port) + `--json`; `status`/`service status`/`context`/`pair` `--json` çıktısı; `context` JSON bug'ı düzeltildi; `logs` artık journalctl/tail gerçek çıktı.
+- `hooks.Merge` idempotent düzeltmesi + `config.DefaultPath()` `POCKET_HOME` saygısı.
+
+### DX / operasyon
+
+- `Makefile` (`make help`), `scripts/live-env.sh` (up/down/env/status; ayakta port'ları sahiplenir), `scripts/pre-commit.sh` (gofmt+secret+license+vet+hızlı test), `AGENTS.md`, `CONTRIBUTING.md`, `environment.yaml`, README güncellendi (P00 iskelet değil, gerçek özet).
+- CI: `go-version` 1.22→1.26 (toolchain uyumu), `canary` kapısı, Android job (JDK17 + lint + unit).
+- `deploy/docker-compose/bootstrap.sh` (interaktif .env + compose up + healthz), `verify-backup.sh` (yedek restore provası), `docs/install.md` quickstart.
+- Backend `GET /v1/metrics`: uptime + işlem sayaçları (events/pairings/claims/uploads/approvals), tenant verisi yok.
 
 ## 8. Sıradaki iş (önerilen sıra)
 
@@ -131,6 +177,6 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 ## 9. Kurallar
 
 - Conventional commits (`feat(Pxx): …`), her P için test + kapı yeşili zorunlu.
-- `decisions.tsv` append-only (D001–D032 yazıldı).
+- `decisions.tsv` append-only (D001–D037 yazıldı).
 - Marka/kod taraması yalnızca izinli dosyalardaki referanslara izin verir (`secret-scan.sh` kuralı); ham kopya yasaktır.
 - `docs/reference/**` yayın paketine girmez (`check-packaging.sh`).

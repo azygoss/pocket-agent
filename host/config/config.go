@@ -10,13 +10,16 @@ import (
 )
 
 type Config struct {
-	BackendURL string `toml:"backend_url"`
-	HostID     string `toml:"host_id"`
-	GatewayPort int   `toml:"gateway_port"`
+	BackendURL  string `toml:"backend_url"`
+	HostID      string `toml:"host_id"`
+	GatewayPort int    `toml:"gateway_port"`
 }
 
 func DefaultPath() string {
-	home, _ := os.UserHomeDir()
+	home := os.Getenv("POCKET_HOME")
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
 	return filepath.Join(home, ".config", "pocket-agent", "config.toml")
 }
 

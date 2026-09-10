@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -42,6 +44,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +53,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -60,7 +64,8 @@ import dev.pocketagent.transport.SavedConnection
 import dev.pocketagent.transport.Secret
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalTransport
-import dev.pocketagent.ui.theme.TerminalFont
+import dev.pocketagent.ui.theme.Space
+import dev.pocketagent.ui.theme.LocalMonoFont
 import kotlinx.coroutines.launch
 
 @Composable
@@ -69,6 +74,7 @@ fun ConnectionsScreen(
     sessions: SessionManager,
     app: dev.pocketagent.android.App? = null,
     settings: SettingsViewModel? = null,
+    pendingAdd: kotlinx.coroutines.flow.MutableStateFlow<SavedConnection?>? = null,
     onConnected: () -> Unit,
 ) {
     val items by repo.items.collectAsState()
@@ -79,8 +85,34 @@ fun ConnectionsScreen(
     var showPair by remember { mutableStateOf(false) }
     var pairBusy by remember { mutableStateOf(false) }
     var pairError by remember { mutableStateOf<String?>(null) }
+    // ~/.ssh/config içe aktarım önizlemesi + bilgi mesajı.
+    var importPreview by remember { mutableStateOf<List<dev.pocketagent.transport.SshConfigEntry>?>(null) }
+    var notice by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val clipboard2 = androidx.compose.ui.platform.LocalClipboardManager.current
+
+    // pocketagent://add?host=… → doldurulmuş yeni-host diyaloğu.
+    if (pendingAdd != null) {
+        val pending by pendingAdd.collectAsState()
+        LaunchedEffect(pending) {
+            pending?.let { editing = it; pendingAdd.value = null }
+        }
+    }
+
+    // ssh config dosyası seçici → önizleme listesi.
+    val sshConfigPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            val text = context.contentResolver.openInputStream(uri)?.use { s ->
+                s.readBytes().decodeToString()
+            } ?: ""
+            val entries = dev.pocketagent.transport.SshConfig.parse(text)
+            if (entries.isEmpty()) notice = "Dosyada host bulunamadı" else importPreview = entries
+        }.onFailure { notice = "dosya okunamadı: ${it.message}" }
+    }
 
     // P04: QR tarama (zxing-embedded ScanContract) + elle kod girişi
     val qrLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -123,12 +155,31 @@ fun ConnectionsScreen(
 
     Scaffold(
         floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SmallFloatingActionButton(onClick = { pairError = null; showPair = true }) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SmallFloatingActionButton(
+                    onClick = { sshConfigPicker.launch(arrayOf("*/*")) },
+                    shape = MaterialTheme.shapes.medium,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ) {
+                    Icon(Icons.Filled.AttachFile, contentDescription = "~/.ssh/config içe aktar")
+                }
+                SmallFloatingActionButton(
+                    onClick = { pairError = null; showPair = true },
+                    shape = MaterialTheme.shapes.medium,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ) {
                     Icon(Icons.Filled.QrCodeScanner, contentDescription = "QR ile bağlan")
                 }
                 ExtendedFloatingActionButton(
                     onClick = { showAdd = true },
+                    shape = MaterialTheme.shapes.medium,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                     icon = { Icon(Icons.Filled.Add, contentDescription = null) },
                     text = { Text("Host ekle") },
                 )
@@ -137,23 +188,61 @@ fun ConnectionsScreen(
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
             if (items.isEmpty()) {
+                // İlk çalıştırma sihirbazı: backend → host komutu → QR/kod.
                 Column(
-                    Modifier.fillMaxSize().padding(32.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Space.lg),
+                    verticalArrangement = Arrangement.spacedBy(Space.md),
                 ) {
-                    Icon(
-                        Icons.Filled.Dns, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text("Kayıtlı host yok", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "SSH erişimi olan bir host ekle. Secret'lar ya RAM'de tutulur ya da Keystore ile şifrelenir — asla plaintext diske yazılmaz.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    ConsoleCard {
+                        CardHeader("Hızlı kurulum")
+                        Spacer(Modifier.height(Space.sm))
+                        Text(
+                            "3 adımda bağlan. Secret'lar ya RAM'de tutulur ya da Keystore ile şifrelenir — asla plaintext diske yazılmaz.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(Space.md))
+                        WizardStep(1, "Backend URL", "self-hosted API adresin (QR bunu taşır)") {
+                            var url by remember { mutableStateOf(settings?.backendUrl ?: "") }
+                            OutlinedTextField(
+                                value = url,
+                                onValueChange = { url = it },
+                                label = { Text("Backend URL") },
+                                placeholder = { Text("https://api.ornek.com") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            ConsoleOutlinedButton(
+                                enabled = url.isNotBlank() && url != settings?.backendUrl,
+                                onClick = { settings?.setBackend(url, settings.tenantToken.ifBlank { "default" }) },
+                                modifier = Modifier.padding(top = 6.dp),
+                            ) { Text("Kaydet", fontSize = 12.sp) }
+                        }
+                        WizardStep(2, "Host'ta çalıştır", "tek komut: daemon + gateway + QR") {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.extraSmall)
+                                    .padding(8.dp),
+                            ) {
+                                Text(
+                                    "pocket-agent onboard",
+                                    fontFamily = LocalMonoFont.current,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = {
+                                    clipboard2.setText(androidx.compose.ui.text.AnnotatedString("pocket-agent onboard"))
+                                }) { Text("Kopyala", fontSize = 11.sp) }
+                            }
+                        }
+                        WizardStep(3, "Eşle", "QR'ı tara ya da XXXX-XXXX kodu gir") {
+                            Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                                ConsoleButton(onClick = { pairError = null; showPair = true }) { Text("QR / kod ile eşle") }
+                                ConsoleOutlinedButton(onClick = { showAdd = true }) { Text("Elle ekle") }
+                            }
+                        }
+                    }
                 }
             } else {
                 Column(Modifier.fillMaxSize()) {
@@ -277,6 +366,75 @@ fun ConnectionsScreen(
             },
         )
     }
+
+    // ~/.ssh/config içe aktarım önizlemesi: hangi host'lar eklenecek göster.
+    importPreview?.let { entries ->
+        AlertDialog(
+            onDismissRequest = { importPreview = null },
+            title = { Text("${entries.size} host bulundu") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "Secret'lar taşınmaz — her host ilk bağlanışında parola/anahtar sorar.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    entries.forEach { e ->
+                        Text(
+                            "${e.name}  ${e.user.ifBlank { "?" }}@${e.host}:${e.port}" +
+                                (e.identityFile?.let { "  [$it]" } ?: ""),
+                            fontFamily = LocalMonoFont.current,
+                            fontSize = 11.sp,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                ConsoleButton(onClick = {
+                    scope.launch {
+                        entries.forEach { e ->
+                            runCatching { repo.upsert(dev.pocketagent.transport.SshConfig.toConnection(e), null) }
+                        }
+                        notice = "${entries.size} host içe aktarıldı"
+                        importPreview = null
+                    }
+                }) { Text("İçe aktar") }
+            },
+            dismissButton = { TextButton(onClick = { importPreview = null }) { Text("Vazgeç") } },
+        )
+    }
+
+    // Bilgi mesajı (import sonucu, dosya hatası)
+    notice?.let {
+        AlertDialog(
+            onDismissRequest = { notice = null },
+            confirmButton = { TextButton(onClick = { notice = null }) { Text("Tamam") } },
+            text = { Text(it) },
+        )
+    }
+}
+
+// İlk kurulum adımı: numaralı başlık + açıklama + içerik.
+@Composable
+private fun WizardStep(n: Int, title: String, subtitle: String, content: @Composable () -> Unit) {
+    Column(Modifier.padding(vertical = Space.sm)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(22.dp).clip(MaterialTheme.shapes.extraSmall)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("$n", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            }
+            Spacer(Modifier.width(Space.sm))
+            Column {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.height(Space.sm))
+        content()
+    }
 }
 
 @Composable
@@ -289,80 +447,79 @@ private fun ConnectionCard(
     onDelete: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    Card(
-        Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.small,
-        colors = CardDefaults.cardColors(
-            containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceContainer,
-        ),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-            else MaterialTheme.colorScheme.outline,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ConsoleCard(
+        containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+        else MaterialTheme.colorScheme.surfaceContainer,
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(conn.name, style = MaterialTheme.typography.titleMedium)
-                        if (isActive) {
-                            Spacer(Modifier.width(8.dp))
-                            StateDot(ConnectionState.ACTIVE)
-                        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(
+                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    conn.name.trim().take(1).uppercase().ifBlank { "?" },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(Space.md))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(conn.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    if (isActive) {
+                        Spacer(Modifier.width(Space.sm))
+                        StateDot(ConnectionState.ACTIVE, size = 7.dp)
                     }
-                    Text(
-                        "${conn.user}@${conn.host}:${conn.port}",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = TerminalFont),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                }
+                Spacer(Modifier.height(1.dp))
+                Text(
+                    "${conn.user}@${conn.host}:${conn.port}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+            Box {
+                IconButton(onClick = { menu = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Menü")
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Düzenle") },
+                        leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                        onClick = { menu = false; onEdit() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sil", color = MaterialTheme.colorScheme.error) },
+                        onClick = { menu = false; onDelete() },
                     )
                 }
-                Box {
-                    IconButton(onClick = { menu = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "Menü")
-                    }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Düzenle") },
-                            leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
-                            onClick = { menu = false; onEdit() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Sil", color = MaterialTheme.colorScheme.error) },
-                            onClick = { menu = false; onDelete() },
-                        )
-                    }
-                }
             }
+        }
+        Spacer(Modifier.height(Space.md))
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 conn.transportOrder.forEach { t ->
-                    Text(
-                        t.name,
-                        fontFamily = TerminalFont,
-                        fontSize = 10.sp,
-                        color = if (t == TerminalTransport.SSH) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .background(
-                                MaterialTheme.colorScheme.surfaceVariant,
-                                MaterialTheme.shapes.extraSmall,
-                            )
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
+                    TagPill(t.name, active = t == TerminalTransport.SSH)
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Son: ${relativeTime(conn.lastConnectedAt)}" + if (hasSecret) " • secret kayıtlı" else "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.weight(1f))
-                Button(onClick = onConnect) {
-                    Text(if (isActive) "Terminale git" else "Bağlan")
-                }
+            Spacer(Modifier.weight(1f))
+            Text(
+                "Son: ${relativeTime(conn.lastConnectedAt)}" + if (hasSecret) " · kayıtlı" else "",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(Space.md))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            ConsoleButton(onClick = onConnect) {
+                Text(if (isActive) "Terminale git" else "Bağlan")
             }
         }
     }
@@ -383,10 +540,29 @@ private fun ConnectionDialog(
     var remember by remember { mutableStateOf(false) }
     var autoTmux by remember { mutableStateOf(initial?.autoTmux ?: false) }
     var errors by remember { mutableStateOf<List<String>>(emptyList()) }
+    // Bağlantıyı sına + üretilen anahtarın public parçası diyalogda gösterilir.
+    var probing by remember { mutableStateOf(false) }
+    var probeResult by remember { mutableStateOf<String?>(null) }
+    var generatedPub by remember { mutableStateOf<String?>(null) }
+    val dlgScope = rememberCoroutineScope()
+    val dlgContext = androidx.compose.ui.platform.LocalContext.current
+    val dlgClipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+
+    // PEM dosyası seçici (SAF) — içerik alana okunur, dosya referansı tutulmaz.
+    val pemPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            dlgContext.contentResolver.openInputStream(uri)?.use { s ->
+                secretText = s.readBytes().decodeToString()
+            }
+        }.onFailure { probeResult = "dosya okunamadı: ${it.message}" }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "Yeni host" else "Hostu düzenle") },
+        title = { Text(if (initial?.id.isNullOrBlank()) "Yeni host" else "Hostu düzenle") },
         text = {
             Column(
                 Modifier.verticalScroll(rememberScrollState()),
@@ -404,31 +580,69 @@ private fun ConnectionDialog(
                         label = { Text("Kullanıcı") }, singleLine = true, modifier = Modifier.weight(1f),
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = authKind == "password",
-                        onClick = { authKind = "password"; secretText = "" },
-                        label = { Text("Parola") },
-                    )
-                    FilterChip(
-                        selected = authKind == "pem",
-                        onClick = { authKind = "pem"; secretText = "" },
-                        label = { Text("PEM anahtarı") },
-                    )
-                }
+                SegmentedControl(
+                    options = listOf(Segment("password", "Parola"), Segment("pem", "PEM anahtarı")),
+                    selected = authKind,
+                    onSelect = { authKind = it; secretText = "" },
+                )
                 if (authKind == "password") {
                     OutlinedTextField(
                         secretText, { secretText = it },
-                        label = { Text(if (initial == null) "Parola" else "Parola (boş = değişme)") },
+                        label = { Text(if (initial?.id.isNullOrBlank()) "Parola" else "Parola (boş = değişme)") },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                     )
                 } else {
                     OutlinedTextField(
                         secretText, { secretText = it },
-                        label = { Text(if (initial == null) "PEM içeriği" else "PEM (boş = değişme)") },
+                        label = { Text(if (initial?.id.isNullOrBlank()) "PEM içeriği" else "PEM (boş = değişme)") },
                         minLines = 3, maxLines = 5,
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // id_ed25519 vb. dosyadan içe aktar
+                        ConsoleOutlinedButton(onClick = { pemPicker.launch(arrayOf("*/*")) }) {
+                            Text("Dosyadan al", fontSize = 12.sp)
+                        }
+                        ConsoleOutlinedButton(onClick = {
+                            val g = dev.pocketagent.security.KeyGen.ed25519()
+                            secretText = g.privatePem
+                            generatedPub = g.publicOpenSsh
+                        }) {
+                            Text("Anahtar üret", fontSize = 12.sp)
+                        }
+                    }
+                }
+                // Kaydetmeden ağ + auth'u probe et (TOFU pin'ine dokunmaz).
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ConsoleOutlinedButton(
+                        enabled = !probing && host.isNotBlank() && user.isNotBlank(),
+                        onClick = {
+                            val probe = SavedConnection(
+                                name = name.ifBlank { "probe" }, host = host.trim(),
+                                port = port.toIntOrNull() ?: 22, user = user.trim(),
+                                credentialRef = "ram:test",
+                            )
+                            probing = true; probeResult = null
+                            dlgScope.launch {
+                                val sec = if (secretText.isBlank()) null
+                                else if (authKind == "password") Secret.Password(secretText)
+                                else Secret.PemKey(secretText)
+                                probeResult = when (val r = dev.pocketagent.transport.SshProbe.run(probe, sec)) {
+                                    is dev.pocketagent.transport.SshProbe.Result.Ok -> "✓ bağlantı + auth başarılı"
+                                    is dev.pocketagent.transport.SshProbe.Result.AuthRejected -> "✗ ${r.detail}"
+                                    is dev.pocketagent.transport.SshProbe.Result.Net -> "✗ ağ: ${r.detail}"
+                                }
+                                probing = false
+                            }
+                        },
+                    ) { Text(if (probing) "Sınanıyor…" else "Bağlantıyı sına", fontSize = 12.sp) }
+                    probeResult?.let {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            it, fontSize = 11.sp, fontFamily = LocalMonoFont.current,
+                            color = if (it.startsWith("✓")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = remember, onCheckedChange = { remember = it })
@@ -475,7 +689,7 @@ private fun ConnectionDialog(
                 )
                 val errs = conn.validate().toMutableList()
                 val secretBlank = secretText.isBlank()
-                if (initial == null && secretBlank) errs += "secret"
+                if (initial?.id.isNullOrBlank() && secretBlank) errs += "secret"
                 if (errs.isEmpty()) {
                     val secret = if (secretBlank) null
                     else if (authKind == "password") Secret.Password(secretText)
@@ -488,6 +702,38 @@ private fun ConnectionDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
     )
+
+    // Üretilen anahtarın public parçası: host'ta authorized_keys'e eklenecek.
+    generatedPub?.let { pub ->
+        AlertDialog(
+            onDismissRequest = { generatedPub = null },
+            title = { Text("Public anahtar") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Bunu host'ta ~/.ssh/authorized_keys'e ekle. Private anahtar PEM alanına yazıldı — Kaydet de, sonra Bağlan.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        pub,
+                        fontFamily = LocalMonoFont.current,
+                        fontSize = 10.sp,
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.extraSmall)
+                            .padding(8.dp),
+                    )
+                }
+            },
+            confirmButton = {
+                ConsoleButton(onClick = {
+                    dlgClipboard.setText(androidx.compose.ui.text.AnnotatedString(pub))
+                    generatedPub = null
+                }) { Text("Kopyala") }
+            },
+            dismissButton = { TextButton(onClick = { generatedPub = null }) { Text("Kapat") } },
+        )
+    }
 }
 
 // P04: backend'den claim → bağlantıyı Keystore'lu kaydet → oturum aç.

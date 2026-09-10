@@ -44,8 +44,9 @@ class PanelsTest {
     }
     @Test fun themeAndShortcuts() {
         val s = SettingsViewModel()
-        val wasDark = s.theme.dark
-        s.toggleDark(); assertNotEquals(wasDark, s.theme.dark)
+        val wasTheme = s.theme.themeId
+        s.setThemeId("dracula"); assertNotEquals(wasTheme, s.theme.themeId)
+        s.setFontId("plex"); assertEquals("plex", s.theme.fontId)
         s.setFontScale(5f); assertEquals(2.0f, s.theme.fontScale)
         val sc = ShortcutModel()
         assertTrue(sc.add("htop", "Ctrl-t"))

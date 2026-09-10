@@ -62,7 +62,18 @@ func Merge(existing, block string) string {
 		out = append(out, l)
 	}
 	_ = begin
-	out = append(out, block)
 	_ = found
-	return strings.Join(out, "\n")
+	// Kalan içerik yalnız boş satırsa (dosya sadece bizim bloktu) bloğu
+	// başa "\n" eklemeden yaz — tekrar koşuda çıktı birebir aynı kalsın.
+	allEmpty := true
+	for _, l := range out {
+		if strings.TrimSpace(l) != "" {
+			allEmpty = false
+			break
+		}
+	}
+	if allEmpty {
+		return block + "\n"
+	}
+	return strings.TrimRight(strings.Join(out, "\n"), "\n") + "\n" + block + "\n"
 }

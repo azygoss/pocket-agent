@@ -56,10 +56,11 @@ class TerminalScreenUiTest {
         val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
         m.open(conn, Secret.Password("pw"))
         rule.waitForIdle()
-        // oturum çipi + durum çubuğu render edildi
+        // oturum çipi + terminal yüzeyi + alt tuş şeridi render edildi
         rule.onNodeWithText("sunucu").assertIsDisplayed()
         rule.onNodeWithContentDescription("Terminal çıktısı").assertIsDisplayed()
-        rule.onNodeWithContentDescription("Terminal girişi").assertIsDisplayed()
+        rule.onNodeWithText("ctrl").assertIsDisplayed()
+        rule.onNodeWithText("esc").assertIsDisplayed()
         m.closeAll()
     }
 }

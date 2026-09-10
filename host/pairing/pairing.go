@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	QRVersion   = 1
-	PairTTL     = 5 * time.Minute
+	QRVersion    = 1
+	PairTTL      = 5 * time.Minute
 	MarkerPrefix = "# pocket-agent:"
 )
 

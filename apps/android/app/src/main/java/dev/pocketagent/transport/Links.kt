@@ -15,6 +15,28 @@ fun parseDeepLink(uri: String): DeepLink? {
     }
 }
 
+// pocketagent://add?host=h&user=u&port=p&name=n — dokümandan/host listesinden
+// tek dokunuşla host ekleme. Parametreler URL-encoded; yalnız alan doldurur,
+// asla bağlanmaz ya da komut çalıştırmaz.
+fun parseAddHostLink(uri: String): SavedConnection? {
+    if (!uri.startsWith("pocketagent://add")) return null
+    val q = uri.substringAfter('?', "")
+    val params = q.split('&').mapNotNull {
+        val i = it.indexOf('=')
+        if (i <= 0) null else it.take(i) to java.net.URLDecoder.decode(it.substring(i + 1), "UTF-8")
+    }.toMap()
+    val host = params["host"] ?: return null
+    val c = SavedConnection(
+        name = params["name"]?.ifBlank { null } ?: "$host",
+        host = host,
+        port = params["port"]?.toIntOrNull() ?: 22,
+        user = params["user"] ?: "",
+        credentialRef = "ram:password",
+        transportOrder = listOf(TerminalTransport.SSH),
+    )
+    return c.takeIf { it.host.isNotBlank() }
+}
+
 // P11 parity: strict jail (any ".." rejected), loopback-only preview host.
 fun jailOk(rel: String): Boolean {
     if (rel.startsWith("/")) return false

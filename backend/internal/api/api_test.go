@@ -2,9 +2,9 @@
 package api
 
 import (
+	"net/http/httptest"
 	"strings"
 	"testing"
-	"net/http/httptest"
 
 	"github.com/pocket-agent/pocket-agent/backend/internal/store"
 )

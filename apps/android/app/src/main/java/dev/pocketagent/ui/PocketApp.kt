@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
@@ -52,17 +53,22 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.ui.theme.TermRed
-import dev.pocketagent.ui.theme.TerminalFont
+import dev.pocketagent.ui.theme.LocalMonoFont
+import dev.pocketagent.ui.theme.consoleTheme
+import dev.pocketagent.ui.theme.consoleFont
 import androidx.core.content.ContextCompat
 import dev.pocketagent.android.App
 import dev.pocketagent.service.TerminalService
 import dev.pocketagent.ui.theme.PocketAgentTheme
+import dev.pocketagent.ui.theme.Space
 import kotlinx.coroutines.flow.MutableStateFlow
 
 enum class AppTab(val label: String, val short: String, val icon: ImageVector) {
@@ -76,7 +82,11 @@ enum class AppTab(val label: String, val short: String, val icon: ImageVector) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = MutableStateFlow(null)) {
+fun PocketAgentApp(
+    app: App,
+    deepLinkAction: MutableStateFlow<String?> = MutableStateFlow(null),
+    addHostLink: MutableStateFlow<dev.pocketagent.transport.SavedConnection?> = MutableStateFlow(null),
+) {
     val settings = remember { SettingsViewModel(app.settingsStore, app.appScope) }
     val inbox = app.inbox
     val approval = remember { ApprovalViewModel() }
@@ -122,6 +132,11 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
         }
     }
 
+    // pocketagent://add?host=… → Bağlantılar sekmesi (diyalog ekranda açılır).
+    LaunchedEffect(Unit) {
+        addHostLink.collect { c -> if (c != null) tab = AppTab.Connections }
+    }
+
     // Backend ayarı değişince client'ı yeniden kur, poller'ı başlat.
     LaunchedEffect(settings.backendUrl, settings.tenantToken) {
         app.configureBackend(settings.backendUrl, settings.tenantToken)
@@ -151,7 +166,10 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
         if (anyActive) snackbar.showSnackbar("Oturum bağlandı")
     }
 
-    PocketAgentTheme(dark = settings.theme.dark, amoled = settings.theme.amoled) {
+    PocketAgentTheme(
+        theme = consoleTheme(settings.theme.themeId),
+        mono = consoleFont(settings.theme.fontId).family,
+    ) {
         Scaffold(
             topBar = { ConsoleTopBar(tab, activeCount) },
             snackbarHost = { SnackbarHost(snackbar) },
@@ -170,6 +188,7 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
                         sessions = sessions,
                         app = app,
                         settings = settings,
+                        pendingAdd = addHostLink,
                         onConnected = { tab = AppTab.Terminal },
                     )
                     AppTab.Terminal -> TerminalScreen(
@@ -215,45 +234,54 @@ fun PocketAgentApp(app: App, deepLinkAction: MutableStateFlow<String?> = Mutable
 
 // ── Console chrome ──────────────────────────────────────────────────────────
 
-// İnce üst bar: prompt glifi + uygulama adı + aktif sekme + oturum sayısı.
+// İnce üst bar: marka glifi + ekran başlığı + sağda oturum durumu.
 @Composable
 private fun ConsoleTopBar(tab: AppTab, activeSessions: Int) {
+    val mono = LocalMonoFont.current
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column {
             Row(
-                Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 14.dp),
+                Modifier.fillMaxWidth().height(52.dp).padding(horizontal = Space.lg),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Box(
+                    Modifier
+                        .size(26.dp)
+                        .clip(MaterialTheme.shapes.extraSmall)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "❯",
+                        fontFamily = mono,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.width(Space.md))
                 Text(
-                    "❯",
-                    fontFamily = TerminalFont,
-                    fontSize = 15.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "pocket-agent",
-                    fontFamily = TerminalFont,
-                    fontSize = 13.sp,
+                    tab.label,
+                    style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    " / ${tab.label}",
-                    fontFamily = TerminalFont,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
                 Spacer(Modifier.weight(1f))
                 if (activeSessions > 0) {
-                    StateDot(ConnectionState.ACTIVE)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "$activeSessions oturum",
-                        fontFamily = TerminalFont,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Row(
+                        Modifier
+                            .clip(MaterialTheme.shapes.extraSmall)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        StateDot(ConnectionState.ACTIVE, size = 6.dp)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "$activeSessions oturum",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
             ConsoleDivider()
@@ -261,59 +289,64 @@ private fun ConsoleTopBar(tab: AppTab, activeSessions: Int) {
     }
 }
 
-// Sade alt bar: ikon + kısa mono etiket; aktif sekme üstte ince yeşil çizgi.
+// Alt bar: ikon + mono etiket. Aktif sekme yuvarlatılmış vurgu kutusunda
+// (üst çizgi yerine dolgu — daha modern, daha net vurgu).
 @Composable
 private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) -> Unit) {
+    val mono = LocalMonoFont.current
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column {
             ConsoleDivider()
-            Row(Modifier.fillMaxWidth().height(54.dp)) {
+            Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 4.dp)) {
                 AppTab.entries.forEach { t ->
                     val selected = current == t
-                    val tint = if (selected) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant
+                    val tint by animateColorAsState(
+                        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        label = "nav-tint",
+                    )
+                    val pill by animateColorAsState(
+                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
+                        label = "nav-pill",
+                    )
                     Column(
                         Modifier
                             .weight(1f)
                             .fillMaxHeight()
                             .clickable(onClick = { onSelect(t) }),
                         horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                     ) {
                         Box(
-                            Modifier.fillMaxWidth().height(2.dp).background(
-                                if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                            ),
-                        )
-                        Spacer(Modifier.height(7.dp))
-                        Box {
-                            Icon(
-                                t.icon,
-                                contentDescription = t.label,
-                                tint = tint,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            if (t == AppTab.Agents && agentUnread > 0) {
-                                Text(
-                                    "$agentUnread",
-                                    fontFamily = TerminalFont,
-                                    fontSize = 8.sp,
-                                    color = Color(0xFF04150C),
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .offset(x = 8.dp, y = (-4).dp)
-                                        .background(TermRed, CircleShape)
-                                        .padding(horizontal = 3.dp),
+                            Modifier
+                                .clip(MaterialTheme.shapes.small)
+                                .background(pill)
+                                .padding(horizontal = 14.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box {
+                                Icon(
+                                    t.icon,
+                                    contentDescription = t.label,
+                                    tint = tint,
+                                    modifier = Modifier.size(20.dp),
                                 )
+                                if (t == AppTab.Agents && agentUnread > 0) {
+                                    Text(
+                                        "$agentUnread",
+                                        fontFamily = mono,
+                                        fontSize = 8.sp,
+                                        color = Color(0xFF04160D),
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .offset(x = 8.dp, y = (-4).dp)
+                                            .background(TermRed, CircleShape)
+                                            .padding(horizontal = 3.dp),
+                                    )
+                                }
                             }
                         }
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            t.short,
-                            fontFamily = TerminalFont,
-                            fontSize = 9.sp,
-                            color = tint,
-                            maxLines = 1,
-                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(t.short, fontFamily = mono, fontSize = 9.sp, color = tint, maxLines = 1)
                     }
                 }
             }
