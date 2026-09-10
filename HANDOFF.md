@@ -1,6 +1,6 @@
 # HANDOFF — Pocket Agent
 
-Tarih: 2026-09-10 (v0.15.4). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
+Tarih: 2026-09-10 (v0.15.6). Kaynak: `/root/dev/projects/pocket-agent`. Tek doğruluk kaynağı: `plan.md` (v2).
 Hedef tamamlama: ~%94 (headless tavan: ekran-modeli terminal + SFTP + gateway tüneli + mosh bootstrap + backend sync + kullanılabilirlik paketi). Emülatör/cihaz gerektiren işler açıkta (bkz. §7).
 
 ## 1. Proje özeti
@@ -45,7 +45,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 | P17 sertleştirme | ⚠️ kısmi | fuzz seed corpus, canary, threat-model iskeleti; cihaz perf/a11y yok |
 | P18 dağıtım | ⚠️ büyük ölçüde | 4-arch CLI tarball, SBOM (go+android), Dockerfile, operasyon belgeleri + **env-driven imzalı release APK+AAB, R8 proguard, REPRODUCING.md, CCS paketi (package-ccs.sh), build-release.sh tam kapı (apksigner verify + release-checksums)**; cosign/SLSA/CI yok |
 
-## 4. Test raporu (son yeşil koşu, v0.15.4)
+## 4. Test raporu (son yeşil koşu, v0.15.6)
 
 - Go: 18 paket `ok`, 0 FAIL (`go test ./...`), `go vet` + `go build ./...` temiz, `buf lint` temiz.
 - Kapılar: `secret-scan`, `license-check`, `check-packaging`, `privacy-schema`, `canary`, `tests/e2e/p04-flow.sh` — hepsi yeşil.
@@ -57,7 +57,7 @@ Sözleşmeler: `protocol/` (Buf v2, `host.proto` + `control.proto` v1 donduruldu
 - Canlı SFTP kanıtı: `PA_LIVE_SSH=1 … ./gradlew :app:testDebugUnitTest --tests dev.pocketagent.SftpLiveTest` → list `/` + write/read `/tmp` + kota kesme + dizin-önce sıralama.
 - Canlı gateway tüneli: gateway çalışırken (`POCKET_GATEWAY_TOKEN=tok123 pocket-agent gateway serve --root /tmp/pa-workspace`) `PA_LIVE_GW=1 PA_LIVE_SSH=1 … --tests dev.pocketagent.GatewayTunnelLiveTest` → SSH direct-tcpip → ls/file/401/traversal + preview (127.0.0.1:8899 marker).
 - Canlı mosh bootstrap: `PA_LIVE_SSH=1 … --tests dev.pocketagent.MoshBootstrapTest` → SSH exec → `mosh-server new` → MOSH CONNECT port+key parse (anahtar yalnız RAM).
-- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` + kopya `dist/pocket-agent-0.15.4-debug.apk` (77.5MB v0.15.4 / versionCode 10, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI + 3 gömülü font dahil; sha256: `61eb262b…2c33`, tam değer `dist/` içinde `sha256sum` ile doğrulanır). İndirilebilir sayfa: `http://<vps>:8090/` (`/srv/pocket-agent-apk`, ufw'da 8090 açık).
+- Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk` + kopya `dist/pocket-agent-0.15.6-debug.apk` (77.5MB v0.15.6 / versionCode 12, debug imzalı; SSHJ+bcprov+icons+mosh 3 ABI + 3 gömülü font dahil; sha256: `b0c10cd7…13b6`, tam değer `dist/` içinde `sha256sum` ile doğrulanır). İndirilebilir sayfa: `http://<vps>:8090/` (`/srv/pocket-agent-apk`, ufw'da 8090 açık).
 - CLI: `dist/` git-dışı (tarballs + `SHA256SUMS` + `sbom-go.json`).
 
 ## 5. Derleme komutları
@@ -157,6 +157,7 @@ cd apps/android && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/an
 - **Agents teşhis satırı (0.15.5)**: Agents ekranında poll edilen backend URL + tenant görünür — "boş akış" durumunda kullanıcı `backend.local` gibi eski QR'dan kalma yanlış URL'yi hemen fark eder. Not: pair `--backend` verilmezse config'teki `backend_url` kullanılır; config boşken QR'a `https://backend.local` yazılır ve uygulama EventSync'i oraya bağlar (sessiz hata) — bu yaygın boş-akış nedenidir. Çözüm: Ayarlar → Backend = gerçek backend + tenant = host `tenant` config'i (varsayılan `default`).
 - **Aktif agent listesi + oturuma git (0.15.5 devamı)**: Agents ekranı artık "aktif agent'lar" bölümü gösterir — `activeSessions(rows)`: sessionId başına son olay SESSION_STARTED ise aktif (ended aynı session'ı kapatır). Dokun → `onOpenAgent`: opaque host `h:sha256(...)` kayıtlı bağlantıya eşleştirilir (Kotlin `shortHash` Go ile birebir), yoksa en son kullanılan bağlantı → `sessions.open` → tmux oturumuysa `tmux attach -t <ad>` gönderilir. Host tarafında watcher agent'ın ppid zincirini tırmanıp tmux pane'inden oturum adını bulur (`SessionFor`), session alanı `tmux:<ad>` RAW gider (`opaqueSess` kuralı: tmux:/proc: raw, diğerleri hash). Tracker ended olayı aynı session'ı hatırlar. Canlı: tmux'ta `exec -a claude sleep` → `sess:tmux:agenttest` STARTED/ENDED backend'de göründü.
 - **Terminal üst şeridi birleşmesi (0.15.5 devamı)**: terminali örten yüzen aksiyon overlay'i kaldırıldı; ara/paylaş/tam-ekran/yeniden-bağlan/kapat düğmeleri + durum metni (badge·pencere başlığı, ellipsis) artık en üstteki SABİT oturum şeridiyle aynı satırda — pill'ler `weight(1f)` kaydırılabilir, aksiyonlar sağa sabit. `SessionPillsRow` composable'a çıkarıldı; `active==null` dalında aynı şerit tek başına kalır. Hata banner'ı/arama çubuğu overlay offset'i 40→8dp (artık yüzen bar yok).
+- **Paralel oturumlar + ikon (0.15.6)**: `SessionManager.open(conn, secret, forceNew=true)` — aynı host'ta dedupe'siz paralel terminaller; bağlantı kartında "Yeni oturum" düğmesi (isActive iken) + menü maddesi; pill'ler aynı conn.id'de `ad·1`/`ad·2` etiketlenir. Launcher ikonu yenilendi: düz `>_` yerine terminal penceresi (rounded gövde + başlık çubuğu + 3 nokta) içinde `>_` — `ic_launcher_foreground.xml` vector, monochrome da aynı drawable. (Not: Grok Imagine'a bu makineden erişim yok — ikon vektörel olarak üretildi; Grok'ta üretilen bir asset verilirse `drawable/` altına alınabilir.)
 
 ### CLI (host tarafı)
 

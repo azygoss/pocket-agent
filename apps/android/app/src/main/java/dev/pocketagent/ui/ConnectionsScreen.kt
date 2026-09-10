@@ -279,6 +279,16 @@ fun ConnectionsScreen(
                                     onConnected()
                                 }
                             },
+                            onNewSession = {
+                                // Aynı host'ta paralel terminal: dedupe atlanır.
+                                val secret = repo.secret(c.id)
+                                if (secret == null) {
+                                    editing = c
+                                } else {
+                                    sessions.open(c, secret, forceNew = true)
+                                    onConnected()
+                                }
+                            },
                             onEdit = { editing = c },
                             onDelete = { scope.launch { repo.delete(c.id) } },
                         )
@@ -445,6 +455,7 @@ private fun ConnectionCard(
     isActive: Boolean,
     hasSecret: Boolean,
     onConnect: () -> Unit,
+    onNewSession: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -497,6 +508,13 @@ private fun ConnectionCard(
                     Icon(Icons.Filled.MoreVert, contentDescription = "Menü")
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (isActive) {
+                        DropdownMenuItem(
+                            text = { Text("Yeni oturum aç") },
+                            leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                            onClick = { menu = false; onNewSession() },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Düzenle") },
                         leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
@@ -525,6 +543,10 @@ private fun ConnectionCard(
         }
         Spacer(Modifier.height(Space.md))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            if (isActive) {
+                // Aynı host'ta paralel terminal — mevcut oturum korunur.
+                ConsoleTextButton(onClick = onNewSession) { Text("Yeni oturum") }
+            }
             ConsoleButton(onClick = onConnect) {
                 Text(if (isActive) "Terminale git" else "Bağlan")
             }

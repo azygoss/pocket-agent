@@ -1,21 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Pocket Agent launcher foreground: terminal prompt glyph (">_") -->
+<!-- Pocket Agent launcher foreground: terminal penceresi + ">_" prompt -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- pencere gövdesi -->
+    <path
+        android:pathData="M26,30 L82,30 Q86,30 86,34 L86,78 Q86,82 82,82 L26,82 Q22,82 22,78 L22,34 Q22,30 26,30 Z"
+        android:fillColor="#161B22"
+        android:strokeColor="#30363D"
+        android:strokeWidth="2" />
+    <!-- başlık çubuğu ayırıcısı -->
+    <path
+        android:pathData="M22,40 L86,40"
+        android:strokeColor="#30363D"
+        android:strokeWidth="1.5" />
+    <!-- pencere noktaları -->
+    <path android:pathData="M30,35 m-1.6,0 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0" android:fillColor="#484F58" />
+    <path android:pathData="M37,35 m-1.6,0 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0" android:fillColor="#484F58" />
+    <path android:pathData="M44,35 m-1.6,0 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0" android:fillColor="#484F58" />
     <!-- chevron ">" -->
     <path
-        android:pathData="M38,41 L56,54 L38,67"
+        android:pathData="M35,50 L52,60 L35,70"
         android:strokeColor="#3FB950"
-        android:strokeWidth="7"
+        android:strokeWidth="6"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
-    <!-- underscore "_" (blinking cursor) -->
+    <!-- underscore "_" imleç -->
     <path
-        android:pathData="M60,68 L78,68"
+        android:pathData="M57,70 L72,70"
         android:strokeColor="#58A6FF"
-        android:strokeWidth="7"
+        android:strokeWidth="6"
         android:strokeLineCap="round" />
 </vector>
