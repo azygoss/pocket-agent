@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -32,7 +33,10 @@ Eşleştirme:
   gateway serve [--root dir] [--addr a]  Dosya/diff sunucusu (yalnız loopback:24543)
   servers                                Aktif tmux oturumlarını listele
   servers kill <ad>                      Oturum kapat (kill-server asla)
-  hooks install|uninstall                Claude/Codex hook bloklarını config'e işle
+  hooks install|uninstall                Claude/Codex hook'larını config'e işle/söyle
+  emit <src> <cat> <id> <mesaj>          Agent olayı üret (journal → backend)
+  emit-hook <src> <cat> [json]           Agent hook'larının çağırdığı komut (stdin/arg JSON)
+  daemon                                 Event flusher daemon'ı (systemd unit çalıştırır)
   logs [n]                               Journal'ın son n satırı
 
 Tanı:
@@ -43,7 +47,8 @@ Tanı:
   service status [--json]                Unit durumları
 
 Yapılandırma:
-  set <key> <value>                      backend_url | host_id
+  set <key> <value>                      backend_url | host_id | tenant
+                                           (tenant = uygulamadaki tenant token, varsayılan "default")
   completion bash|zsh|fish               Kabuk tamamlama script'i üret
 
 Diğer:
@@ -63,7 +68,8 @@ func printHelp() { fmt.Print(helpText) }
 // Kabuk tamamlamaları: komut listesi tek kaynaktan üretilir.
 var topCommands = []string{
 	"onboard", "service", "pair", "unpair", "host", "gateway", "servers",
-	"hooks", "logs", "doctor", "probe", "status", "set", "completion",
+	"hooks", "emit", "emit-hook", "daemon", "logs", "doctor", "probe",
+	"status", "set", "completion",
 	"diff", "update", "version", "help", "usage", "context", "cwd-list",
 }
 
@@ -73,7 +79,7 @@ var subCommands = map[string][]string{
 	"gateway":    {"serve"},
 	"hooks":      {"install", "uninstall"},
 	"servers":    {"kill"},
-	"set":        {"backend_url", "host_id"},
+	"set":        {"backend_url", "host_id", "tenant"},
 	"completion": {"bash", "zsh", "fish"},
 	"diff":       {"staged", "unstaged", "untracked", "working", "last"},
 }
@@ -206,7 +212,15 @@ func cmdOnboard(args []string) {
 	})
 	// 4) agent hook'ları
 	step("agent hooks (claude/codex)", func() error {
-		return installHooks(h)
+		return installHooks(h, exe)
+	})
+	// 4b) daemon'ı hemen başlat (systemd varsa) — event akışı bununla canlanır.
+	step("daemon start (systemctl --user)", func() error {
+		if _, err := exec.LookPath("systemctl"); err != nil {
+			fmt.Println("    systemctl yok — daemon'ı elle: pocket-agent daemon")
+			return nil
+		}
+		return exec.Command("systemctl", "--user", "enable", "--now", "pocket-agent.service").Run()
 	})
 	// 5) sshd + authorized_keys hazırlığı
 	ak := filepath.Join(h, ".ssh", "authorized_keys")

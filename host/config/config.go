@@ -13,6 +13,9 @@ type Config struct {
 	BackendURL  string `toml:"backend_url"`
 	HostID      string `toml:"host_id"`
 	GatewayPort int    `toml:"gateway_port"`
+	// Tenant: backend'deki X-Tenant değeri — uygulamadaki "tenant token" ile
+	// aynı olmalı (uygulama onboarding'i varsayılanı "default" yapar).
+	Tenant string `toml:"tenant"`
 }
 
 func DefaultPath() string {
@@ -48,6 +51,8 @@ func Load(path string) (Config, error) {
 			c.BackendURL = v
 		case "host_id":
 			c.HostID = v
+		case "tenant":
+			c.Tenant = v
 		case "gateway_port":
 			var p int
 			fmt.Sscanf(v, "%d", &p)
@@ -64,8 +69,8 @@ func Save(path string, c Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	out := fmt.Sprintf("# pocket-agent config (managed)\nbackend_url = %q\nhost_id = %q\ngateway_port = %d\n",
-		c.BackendURL, c.HostID, c.GatewayPort)
+	out := fmt.Sprintf("# pocket-agent config (managed)\nbackend_url = %q\nhost_id = %q\ngateway_port = %d\ntenant = %q\n",
+		c.BackendURL, c.HostID, c.GatewayPort, c.Tenant)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(out), 0o600); err != nil {
 		return err

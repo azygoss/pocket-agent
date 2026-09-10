@@ -16,7 +16,9 @@ func All() []Agent {
 		return "# pocket-agent begin (" + tool + ")\n# managed hook — pocket-agent\n# pocket-agent end (" + tool + ")"
 	}
 	return []Agent{
-		{"claude", ".claude.json", hook("claude")},
+		// claude hook'ları ~/.claude/settings.json'a yazılır; .claude.json'a
+		// yazılan '#' marker'lar JSON'u bozuyordu (eski kurulumlar onarılır).
+		{"claude", ".claude/settings.json", hook("claude")},
 		{"codex", ".codex/config.toml", hook("codex")},
 		{"opencode", ".config/opencode/config.json", hook("opencode")},
 		{"cursor", ".cursor/hooks.json", hook("cursor")},
