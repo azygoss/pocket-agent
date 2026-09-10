@@ -9,4 +9,6 @@
         <item name="android:navigationBarColor">@color/term_bg</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
+    <!-- API &lt;31'de splash yok; aynı görünüm (term_bg) zaten windowBackground. -->
+    <style name="Theme.PocketAgent.Splash" parent="Theme.PocketAgent" />
 </resources>

@@ -371,7 +371,15 @@ private fun PathBar(files: FilesViewModel, modifier: Modifier = Modifier) {
     val segments = rel.split('/').filter { it.isNotEmpty() }
     val scroll = rememberScrollState()
     LaunchedEffect(rel) { scroll.scrollTo(scroll.maxValue) }
-    Row(modifier.horizontalScroll(scroll), verticalAlignment = Alignment.CenterVertically) {
+    // Kapsayıcı, kontrol olduğunu gösterir — yüzen metin değil.
+    Row(
+        modifier
+            .clip(MaterialTheme.shapes.extraSmall)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .horizontalScroll(scroll)
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
             "/",
             style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),

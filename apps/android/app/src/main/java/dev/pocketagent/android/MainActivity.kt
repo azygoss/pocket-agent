@@ -18,6 +18,16 @@ class MainActivity : ComponentActivity() {
     val addHostLink = MutableStateFlow<SavedConnection?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Edge-to-edge: içerik sistem çubuklarının altına çizilir; barlar
+        // kendi inset padding'ini uygular, ikon kontrastı tema bazlı ayarlanır.
+        // enableEdgeToEdge()'in elle eşdeğeri — activity-ktx bağımlılığı yok.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        @Suppress("DEPRECATION")
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        // Gesture nav'da nav bar üstüne kontrast scrim'i basılmasın.
+        window.isNavigationBarContrastEnforced = false
         super.onCreate(savedInstanceState)
         handleIntent(intent)
         setContent { PocketAgentApp(application as App, deepLinkAction, addHostLink) }

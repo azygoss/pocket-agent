@@ -55,7 +55,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -66,6 +70,7 @@ import dev.pocketagent.ui.theme.LocalMonoFont
 import dev.pocketagent.ui.theme.consoleTheme
 import dev.pocketagent.ui.theme.consoleFont
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import dev.pocketagent.android.App
 import dev.pocketagent.service.TerminalService
 import dev.pocketagent.ui.theme.PocketAgentTheme
@@ -172,13 +177,31 @@ fun PocketAgentApp(
         if (anyActive) snackbar.showSnackbar("Oturum bağlandı")
     }
 
+    val console = consoleTheme(settings.theme.themeId)
+    // Sistem çubuğu ikon kontrastı temayı takip eder — açık temada koyu ikon.
+    val barView = androidx.compose.ui.platform.LocalView.current
+    LaunchedEffect(console.dark) {
+        val w = (context as? android.app.Activity)?.window ?: return@LaunchedEffect
+        WindowCompat.getInsetsController(w, barView).apply {
+            isAppearanceLightStatusBars = !console.dark
+            isAppearanceLightNavigationBars = !console.dark
+        }
+    }
     PocketAgentTheme(
-        theme = consoleTheme(settings.theme.themeId),
+        theme = console,
         mono = consoleFont(settings.theme.fontId).family,
     ) {
         Scaffold(
-            topBar = { ConsoleTopBar(tab, activeCount) },
+            topBar = {
+                // Terminal tam ekrandayken üst bar da gizlenir — gerçek immersive.
+                if (!(tab == AppTab.Terminal && termFullscreen)) {
+                    ConsoleTopBar(tab, activeCount)
+                }
+            },
             snackbarHost = { SnackbarHost(snackbar) },
+            // Bar'lar kendi inset'lerini uygular; fullscreen'de (bar yokken)
+            // status/nav boşluğu içerikte kalmasın diye sıfırlanır.
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
                 // Terminal tam ekrandayken ana menü barı yerine terminalin
                 // kendi tuş şeridi görünür (TerminalScreen içinde render edilir).
@@ -248,10 +271,14 @@ fun PocketAgentApp(
 // ── Console chrome ──────────────────────────────────────────────────────────
 
 // İnce üst bar: marka glifi + ekran başlığı + sağda oturum durumu.
+// Edge-to-edge'de status bar altına kaymaması için kendi inset'ini uygular.
 @Composable
 private fun ConsoleTopBar(tab: AppTab, activeSessions: Int) {
     val mono = LocalMonoFont.current
-    Surface(color = MaterialTheme.colorScheme.surface) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
+    ) {
         Column {
             Row(
                 Modifier.fillMaxWidth().height(56.dp).padding(horizontal = Space.lg),
@@ -307,7 +334,10 @@ private fun ConsoleTopBar(tab: AppTab, activeSessions: Int) {
 @Composable
 private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) -> Unit) {
     val mono = LocalMonoFont.current
-    Surface(color = MaterialTheme.colorScheme.surface) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
+    ) {
         Column {
             ConsoleDivider()
             Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp)) {

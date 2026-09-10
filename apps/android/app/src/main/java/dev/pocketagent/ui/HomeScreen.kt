@@ -54,7 +54,10 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(Space.md),
     ) {
         // ── Durum hero'u: bir bakışta bağlantı durumu ──────────────────────
-        ConsoleCard {
+        ConsoleCard(
+            borderColor = if (state == ConnectionState.ACTIVE) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+            else MaterialTheme.colorScheme.outline,
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StateDot(state, size = 10.dp)
                 Spacer(Modifier.width(Space.md))

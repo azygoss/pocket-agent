@@ -54,18 +54,21 @@ import dev.pocketagent.ui.theme.LocalMonoFont
 // (yuvarlak tonal kart, pill buton, FilterChip) kullanılmaz.
 
 // Düz, ince-border'lı kart. Varsayılan 16dp iç boşluk, 8dp köşe.
+// borderColor: vurgu gereken kartlarda (aktif bağlantı, bağlı oturum)
+// primary geçilir — tarama hızı için kenarlık tek görsel ipucudur.
 @Composable
 fun ConsoleCard(
     modifier: Modifier = Modifier,
     padding: Dp = Space.lg,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
+    borderColor: Color = MaterialTheme.colorScheme.outline,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
         modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small,
         colors = CardDefaults.cardColors(containerColor = containerColor),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        border = BorderStroke(1.dp, borderColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(Modifier.padding(padding), content = content)
