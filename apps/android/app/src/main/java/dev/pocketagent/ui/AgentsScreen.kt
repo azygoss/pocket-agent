@@ -71,7 +71,12 @@ private fun categoryColor(cat: String) = when (cat) {
 }
 
 @Composable
-fun AgentsScreen(inbox: InboxViewModel, approval: ApprovalViewModel, app: App) {
+fun AgentsScreen(
+    inbox: InboxViewModel,
+    approval: ApprovalViewModel,
+    app: App,
+    backendInfo: String = "",
+) {
     var filter by remember { mutableStateOf("Tümü") }
     val scope = rememberCoroutineScope()
     val syncStatus by app.eventSync.status.collectAsState()
@@ -100,6 +105,13 @@ fun AgentsScreen(inbox: InboxViewModel, approval: ApprovalViewModel, app: App) {
                 ) { Text("Şimdi senkronla") }
             }
         }
+        // Teşhis: hangi backend'e poll edildiği görünür olsun — "boş akış"
+        // şikayetlerinde ilk kontrol edilecek yer burası.
+        Text(
+            "backend: ${backendInfo.ifBlank { "ayarlanmadı" }}",
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         val shown = inbox.rows.filter { if (filter == "Okunmamış") it.unread else true }
         if (shown.isEmpty()) {
