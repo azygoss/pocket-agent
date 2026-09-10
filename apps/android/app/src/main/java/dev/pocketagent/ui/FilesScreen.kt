@@ -374,10 +374,10 @@ private fun PathBar(files: FilesViewModel, modifier: Modifier = Modifier) {
     // Kapsayıcı, kontrol olduğunu gösterir — yüzen metin değil.
     Row(
         modifier
-            .clip(MaterialTheme.shapes.extraSmall)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .horizontalScroll(scroll)
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(

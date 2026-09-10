@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -260,7 +261,7 @@ fun ConnectionsScreen(
                     }
                 LazyColumn(
                     Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(Space.md),
                     contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),
                 ) {
                     items(filtered, key = { it.id }) { c ->
@@ -463,26 +464,24 @@ private fun ConnectionCard(
     ConsoleCard(
         // Kartın tamamı bağlanma hedefi — kullanıcı küçük "Bağlan" düğmesini
         // aramak zorunda kalmaz; düğme görünür ipucu olarak kalır.
-        modifier = Modifier.clip(MaterialTheme.shapes.small).clickable(onClick = onConnect),
-        containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+        modifier = Modifier.clip(MaterialTheme.shapes.medium).clickable(onClick = onConnect),
+        containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
         else MaterialTheme.colorScheme.surfaceContainer,
-        borderColor = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-        else MaterialTheme.colorScheme.outline,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
-                    .size(40.dp)
-                    .clip(MaterialTheme.shapes.small)
+                    .size(44.dp)
+                    .clip(CircleShape)
                     .background(
-                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                        else MaterialTheme.colorScheme.surfaceVariant,
+                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        else MaterialTheme.colorScheme.surfaceContainerHigh,
                     ),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     conn.name.trim().take(1).uppercase().ifBlank { "?" },
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
