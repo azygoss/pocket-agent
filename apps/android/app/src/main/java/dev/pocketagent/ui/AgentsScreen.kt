@@ -124,10 +124,10 @@ fun AgentsScreen(
                 active.forEach { r ->
                     ConsoleCard(
                         padding = Space.md,
-                        borderColor = TermGreen.copy(alpha = 0.4f),
+                        containerColor = TermGreen.copy(alpha = 0.10f),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(MaterialTheme.shapes.small)
+                            .clip(MaterialTheme.shapes.medium)
                             .clickable { onOpenAgent(r) },
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -211,7 +211,7 @@ fun AgentsScreen(
                                 Box(
                                     Modifier
                                         .size(7.dp)
-                                        .clip(MaterialTheme.shapes.extraSmall)
+                                        .clip(androidx.compose.foundation.shape.CircleShape)
                                         .background(MaterialTheme.colorScheme.primary),
                                 )
                             }

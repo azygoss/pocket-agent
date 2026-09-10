@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -47,35 +49,34 @@ import dev.pocketagent.ui.theme.TermAmber
 import dev.pocketagent.ui.theme.TermGreen
 import dev.pocketagent.ui.theme.TermRed
 import dev.pocketagent.ui.theme.LocalMonoFont
+import java.util.Locale
 
-// ── Console bileşen kütüphanesi ─────────────────────────────────────────────
-// Tüm ekranlar buradan beslenir. Kural: shadow yok, hairline border, yüzey
-// katmanı + tipografi ile hiyerarşi, tek yeşil vurgu. Material varsayılanı
-// (yuvarlak tonal kart, pill buton, FilterChip) kullanılmaz.
+// ── Bileşen kütüphanesi ─────────────────────────────────────────────────────
+// Tüm ekranlar buradan beslenir. Kural: hiyerarşi tonal katmanlarla kurulur
+// (border istisna), köşeler yumuşak, tek vurgu rengi tutumlu kullanılır.
 
-// Düz, ince-border'lı kart. Varsayılan 16dp iç boşluk, 8dp köşe.
-// borderColor: vurgu gereken kartlarda (aktif bağlantı, bağlı oturum)
-// primary geçilir — tarama hızı için kenarlık tek görsel ipucudur.
+// Tonal kart: border'suz, surfaceContainer dolgu, 16dp köşe.
+// borderColor yalnız vurgu gereken kartlarda (aktif bağlantı) geçilir.
 @Composable
 fun ConsoleCard(
     modifier: Modifier = Modifier,
     padding: Dp = Space.lg,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
-    borderColor: Color = MaterialTheme.colorScheme.outline,
+    borderColor: Color = Color.Transparent,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
         modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.small,
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = containerColor),
-        border = BorderStroke(1.dp, borderColor),
+        border = if (borderColor == Color.Transparent) null else BorderStroke(1.dp, borderColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(Modifier.padding(padding), content = content)
     }
 }
 
-// Kart başlığı: mono title + sağda isteğe bağlı aksiyon.
+// Kart başlığı: semibold sans başlık + sağda isteğe bağlı aksiyon.
 @Composable
 fun CardHeader(
     title: String,
@@ -83,7 +84,7 @@ fun CardHeader(
     trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
         if (trailing != null) {
             Spacer(Modifier.weight(1f))
             trailing()
@@ -91,12 +92,13 @@ fun CardHeader(
     }
 }
 
-// Bölüm etiketi: mono, dim, hafif letterspacing.
+// Bölüm etiketi: küçük caps "eyebrow" stili — modern listelerin standart
+// gruplama ipucu.
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
-        text,
-        style = MaterialTheme.typography.labelMedium,
+        text.uppercase(Locale("tr")),
+        style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier,
     )
@@ -116,7 +118,7 @@ fun StateDot(state: ConnectionState, size: Dp = 8.dp) {
 // İnce ayırıcı çizgi (border rengi).
 @Composable
 fun ConsoleDivider(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outline))
+    Box(modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
 }
 
 // Daha yumuşak ayırıcı (liste içi).
@@ -140,7 +142,7 @@ fun ListRow(
         modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .defaultMinSize(minHeight = 56.dp)
+            .defaultMinSize(minHeight = 60.dp)
             .padding(horizontal = Space.lg, vertical = Space.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -152,11 +154,11 @@ fun ListRow(
             Text(
                 title,
                 style = if (titleMono) MaterialTheme.typography.bodyMedium.copy(fontFamily = LocalMonoFont.current)
-                else MaterialTheme.typography.bodyLarge,
+                else MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
                 maxLines = 1,
             )
             if (subtitle != null) {
-                Spacer(Modifier.height(1.dp))
+                Spacer(Modifier.height(2.dp))
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
@@ -172,7 +174,7 @@ fun ListRow(
     }
 }
 
-// Küçük etiket (transport, kategori, durum): mono, köşeli, tek renk.
+// Küçük etiket (transport, kategori, durum): mono, tam yuvarlak, tek renk.
 @Composable
 fun TagPill(
     text: String,
@@ -183,13 +185,13 @@ fun TagPill(
     val color = tone ?: MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier
-            .clip(MaterialTheme.shapes.extraSmall)
-            .background(if (active) color.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .clip(CircleShape)
+            .background(if (active) color.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
     ) {
         Text(
             text,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
             color = if (active) color else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -211,12 +213,12 @@ fun EmptyState(
     ) {
         Box(
             Modifier
-                .size(52.dp)
-                .clip(MaterialTheme.shapes.medium)
-                .background(tint.copy(alpha = 0.10f)),
+                .size(56.dp)
+                .clip(MaterialTheme.shapes.large)
+                .background(tint.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(26.dp))
         }
         Spacer(Modifier.height(Space.lg))
         Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
@@ -236,8 +238,8 @@ fun EmptyState(
 
 data class Segment<T>(val value: T, val label: String)
 
-// Segmentli geçiş kontrolü (FilterChip yerine): tek kap, eşit genişlik,
-// seçili segment vurgu rengiyle dolar.
+// Segmentli geçiş kontrolü: tek kap, eşit genişlik, seçili segment vurgu
+// rengiyle dolar.
 @Composable
 fun <T> SegmentedControl(
     options: List<Segment<T>>,
@@ -248,14 +250,14 @@ fun <T> SegmentedControl(
     Row(
         modifier
             .clip(MaterialTheme.shapes.small)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         options.forEach { option ->
             val isSelected = option.value == selected
             val bg by animateColorAsState(
-                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent,
+                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent,
                 label = "segment-bg",
             )
             val fg by animateColorAsState(
@@ -268,7 +270,7 @@ fun <T> SegmentedControl(
                     .clip(MaterialTheme.shapes.extraSmall)
                     .background(bg)
                     .selectable(selected = isSelected, role = Role.Tab, onClick = { onSelect(option.value) })
-                    .padding(vertical = 7.dp),
+                    .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(option.label, style = MaterialTheme.typography.labelLarge, color = fg, maxLines = 1)
@@ -305,7 +307,9 @@ fun SettingRow(
     }
 }
 
-// ── Butonlar: pill yerine 8dp köşe, tutarlı iç boşluk ve mono label ─────────
+// ── Butonlar: 14dp köşe, 46dp dokunma hedefi, sans etiket ───────────────────
+
+private val ButtonShape = RoundedCornerShape(14.dp)
 
 @Composable
 fun ConsoleButton(
@@ -316,10 +320,10 @@ fun ConsoleButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.defaultMinSize(minHeight = 46.dp),
         enabled = enabled,
-        shape = MaterialTheme.shapes.small,
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+        shape = ButtonShape,
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
         content = content,
     )
 }
@@ -333,11 +337,11 @@ fun ConsoleOutlinedButton(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.defaultMinSize(minHeight = 46.dp),
         enabled = enabled,
-        shape = MaterialTheme.shapes.small,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        shape = ButtonShape,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
         content = content,
     )

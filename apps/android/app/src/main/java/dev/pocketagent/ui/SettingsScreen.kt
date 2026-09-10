@@ -251,15 +251,15 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
 // Tema kartı: temanın zemin/vurgu renkleriyle mini önizleme.
 @Composable
 private fun ThemeCard(t: ConsoleTheme, selected: Boolean, onTap: () -> Unit) {
-    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
     Column(
         Modifier
             .width(124.dp)
-            .clip(MaterialTheme.shapes.small)
+            .clip(MaterialTheme.shapes.medium)
             .background(Color(t.background))
-            .border(if (selected) 2.dp else 1.dp, borderColor, MaterialTheme.shapes.small)
+            .border(if (selected) 2.dp else 1.dp, borderColor, MaterialTheme.shapes.medium)
             .clickable(onClick = onTap)
-            .padding(horizontal = Space.sm, vertical = Space.sm),
+            .padding(horizontal = Space.md, vertical = Space.sm),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             SwatchDot(Color(t.term.background), MaterialTheme.colorScheme.outline)

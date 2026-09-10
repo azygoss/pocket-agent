@@ -55,8 +55,9 @@ fun HomeScreen(
     ) {
         // ── Durum hero'u: bir bakışta bağlantı durumu ──────────────────────
         ConsoleCard(
-            borderColor = if (state == ConnectionState.ACTIVE) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-            else MaterialTheme.colorScheme.outline,
+            containerColor = if (state == ConnectionState.ACTIVE)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            else MaterialTheme.colorScheme.surfaceContainer,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StateDot(state, size = 10.dp)
@@ -168,7 +169,7 @@ fun HomeScreen(
                     Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             Modifier.size(5.dp)
-                                .background(MaterialTheme.colorScheme.primary, MaterialTheme.shapes.extraSmall),
+                                .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape),
                         )
                         Spacer(Modifier.width(Space.sm))
                         Text(r.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1)

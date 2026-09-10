@@ -59,10 +59,10 @@ private fun theme(
 // ── Katalog ────────────────────────────────────────────────────────────────
 
 val PocketConsoleTheme = theme(
-    "pocket", "Pocket Console", true,
-    background = 0xFF06080C, surface = 0xFF10141C, surfaceHigh = 0xFF161C26, border = 0xFF242D3A,
-    text = 0xFFE4EAF2, dim = 0xFF8A95A7, accent = 0xFF41D892, accentAlt = 0xFF63A9F5, error = 0xFFE86A6E, warning = 0xFFE7B76C,
-    termBg = 0xFF06080C, termFg = 0xFFD9E1EA, cursor = 0xFF41D892,
+    "pocket", "Pocket", true,
+    background = 0xFF0B0E13, surface = 0xFF141924, surfaceHigh = 0xFF1C2331, border = 0xFF2A3242,
+    text = 0xFFE7EBF2, dim = 0xFF8D97A8, accent = 0xFF3ED598, accentAlt = 0xFF6AA8F0, error = 0xFFE86A6E, warning = 0xFFE7B76C,
+    termBg = 0xFF090C10, termFg = 0xFFD9E1EA, cursor = 0xFF3ED598,
     ansi = a16(
         0xFF3A4552, 0xFFE6676B, 0xFF3FD68F, 0xFFE5B567, 0xFF5FA8F5, 0xFFB48CE8, 0xFF4FD0C5, 0xFFC6D0DC,
         0xFF5C6B7E, 0xFFF08589, 0xFF6FE3AC, 0xFFEECA8A, 0xFF83BCF7, 0xFFC9A6EF, 0xFF7ADED5, 0xFFFFFFFF,
@@ -287,7 +287,7 @@ fun ConsoleTheme.colorScheme(): ColorScheme {
     return base.copy(
         primary = Color(accent),
         onPrimary = onColor(accent),
-        primaryContainer = blend(background, accent, 0.24f),
+        primaryContainer = blend(background, accent, 0.26f),
         onPrimaryContainer = Color(text),
         secondary = Color(accentAlt),
         onSecondary = onColor(accentAlt),
@@ -301,13 +301,22 @@ fun ConsoleTheme.colorScheme(): ColorScheme {
         onSurface = Color(text),
         surfaceVariant = Color(surfaceHigh),
         onSurfaceVariant = Color(dim),
-        surfaceContainer = Color(surface),
-        surfaceContainerHigh = Color(surfaceHigh),
-        surfaceContainerLow = blend(background, surface, 0.55f),
         surfaceContainerLowest = Color(background),
+        surfaceContainerLow = blend(background, surface, 0.45f),
+        surfaceContainer = Color(surface),
+        surfaceContainerHigh = blend(surface, surfaceHigh, 0.6f),
+        surfaceContainerHighest = Color(surfaceHigh),
+        surfaceTint = Color(accent),
         error = Color(error),
         onError = onColor(error),
+        errorContainer = blend(background, error, 0.22f),
+        onErrorContainer = Color(text),
+        inverseSurface = Color(text),
+        inverseOnSurface = Color(background),
+        inversePrimary = blend(background, accent, 0.5f),
+        // Modern dilde border istisna: outline yalnız kontrol çerçeveleri için,
+        // kart hiyerarşisi tonal katmanlarla kurulur.
         outline = Color(border),
-        outlineVariant = blend(background, border, 0.55f),
+        outlineVariant = blend(background, border, 0.45f),
     )
 }

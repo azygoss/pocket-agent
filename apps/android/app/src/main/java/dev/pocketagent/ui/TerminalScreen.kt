@@ -264,25 +264,25 @@ private fun SessionPillsRow(
     }
 }
 
-// Oturum pill'i: ● ad (durum rengi), aktifte yeşil border; retry rozeti inline.
+// Oturum pill'i: ● ad (durum rengi), aktifte tonal vurgu kapsülü; retry
+// rozeti inline.
 @Composable
 private fun SessionPill(name: String, state: ConnectionState, retry: Int, active: Boolean, onClick: () -> Unit) {
-    val borderColor = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
     Surface(
-        color = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent,
-        shape = MaterialTheme.shapes.extraSmall,
-        border = BorderStroke(1.dp, borderColor),
+        color = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+        else MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = CircleShape,
     ) {
         Row(
-            Modifier.clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 5.dp),
+            Modifier.clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             StateDot(state)
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(7.dp))
             Text(
                 if (retry > 0) "$name ↻$retry/${TerminalController.MAX_RETRY}" else name,
                 fontFamily = LocalMonoFont.current,
-                fontSize = 11.sp,
+                fontSize = 11.5.sp,
                 color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
             )
@@ -538,9 +538,9 @@ private fun ActiveTerminal(
         ) {
             Surface(
                 color = termBg,
-                shape = if (fullscreen) RoundedCornerShape(0.dp) else MaterialTheme.shapes.small,
+                shape = if (fullscreen) RoundedCornerShape(0.dp) else MaterialTheme.shapes.medium,
                 border = if (fullscreen) null
-                else BorderStroke(1.dp, if (typing) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline),
+                else BorderStroke(1.dp, if (typing) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 Column(Modifier.fillMaxSize()) {
@@ -652,14 +652,7 @@ private fun ActiveTerminal(
                                 LazyColumn(
                                     state = listState,
                                     modifier = Modifier.fillMaxSize(),
-                                    // Üstteki yarı saydam aksiyon çubuğu çıktının ilk
-                                    // satırlarını gizlemesin diye üst boşluk.
-                                    contentPadding = PaddingValues(
-                                        start = 8.dp,
-                                        end = 8.dp,
-                                        bottom = 8.dp,
-                                        top = 40.dp,
-                                    ),
+                                    contentPadding = PaddingValues(8.dp),
                                 ) {
                                     itemsIndexed(lines) { idx, line ->
                                         val isMatch = currentMatch == idx
@@ -688,9 +681,9 @@ private fun ActiveTerminal(
                         // Alta-in FAB (çıktı alanı içinde; tuş şeridiyle çakışmaz)
                         if (!atBottom && lines.size > 1) {
                             Surface(
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 shape = CircleShape,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                shadowElevation = 6.dp,
                                 modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
                             ) {
                                 IconButton(onClick = { scope.launch { listState.scrollToItem(lines.size - 1) } }) {
@@ -731,15 +724,14 @@ private fun ActiveTerminal(
             // Hata banner'ı (overlay): mesaj + yapılabilir aksiyon.
             if (state == ConnectionState.FAILED && failure != null) {
                 Surface(
-                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.94f),
-                    shape = MaterialTheme.shapes.extraSmall,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp).fillMaxWidth(0.94f),
                 ) {
-                    Column(Modifier.padding(10.dp)) {
+                    Column(Modifier.padding(12.dp)) {
                         Text(
                             failureText(failure!!),
-                            color = MaterialTheme.colorScheme.error,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
                             fontFamily = LocalMonoFont.current,
                             fontSize = 11.sp,
                         )
@@ -761,9 +753,9 @@ private fun ActiveTerminal(
             // Arama çubuğu (overlay)
             if (searchOpen) {
                 Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
-                    shape = MaterialTheme.shapes.extraSmall,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = MaterialTheme.shapes.medium,
+                    shadowElevation = 8.dp,
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp).fillMaxWidth(0.94f),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 4.dp)) {
@@ -982,7 +974,7 @@ private fun TermKeyDivider() {
             .padding(horizontal = 5.dp)
             .width(1.dp)
             .height(18.dp)
-            .background(MaterialTheme.colorScheme.outline),
+            .background(MaterialTheme.colorScheme.outlineVariant),
     )
 }
 
