@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -198,46 +199,62 @@ fun TerminalScreen(
     val activeId by manager.activeId.collectAsState()
 
     Column(Modifier.fillMaxSize()) {
-        // Oturum şeridi: durum entegre mono pill'ler (+ her zaman görünür)
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 10.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            sessionList.forEach { h ->
-                val st by h.controller.state.collectAsState()
-                val retry by h.controller.retryAttempt.collectAsState()
-                SessionPill(
-                    name = h.conn.name,
-                    state = st,
-                    retry = retry,
-                    active = h.id == activeId,
-                    onClick = { manager.setActive(h.id) },
-                )
-            }
-            IconButton(onClick = onNewConnection, modifier = Modifier.size(36.dp)) {
-                Icon(
-                    Icons.Filled.Add,
-                    contentDescription = "Yeni bağlantı",
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
         val active = sessionList.firstOrNull { it.id == activeId }
         if (active == null) {
+            // Oturum yokken şerit burada kalır (yeni bağlantı + geçiş).
+            SessionPillsRow(
+                manager = manager,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                onNewConnection = onNewConnection,
+            )
             EmptyTerminal(onNewConnection)
         } else {
             ActiveTerminal(
                 controller = active.controller,
+                manager = manager,
                 settings = settings,
                 onClose = { manager.close(active.id) },
                 onNewConnection = onNewConnection,
                 onFullscreenChange = onFullscreenChange,
+            )
+        }
+    }
+}
+
+// Oturum şeridi: durum entegre mono pill'ler + yeni-bağlantı düğmesi.
+// Kaydırılabilir — çağıran weight/padding'i belirler.
+@Composable
+private fun SessionPillsRow(
+    manager: SessionManager,
+    modifier: Modifier = Modifier,
+    onNewConnection: () -> Unit,
+) {
+    val sessionList by manager.sessions.collectAsState()
+    val activeId by manager.activeId.collectAsState()
+    Row(
+        modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        sessionList.forEach { h ->
+            val st by h.controller.state.collectAsState()
+            val retry by h.controller.retryAttempt.collectAsState()
+            SessionPill(
+                name = h.conn.name,
+                state = st,
+                retry = retry,
+                active = h.id == activeId,
+                onClick = { manager.setActive(h.id) },
+            )
+        }
+        IconButton(onClick = onNewConnection, modifier = Modifier.size(36.dp)) {
+            Icon(
+                Icons.Filled.Add,
+                contentDescription = "Yeni bağlantı",
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -300,6 +317,7 @@ private fun EmptyTerminal(onNewConnection: () -> Unit) {
 @Composable
 private fun ActiveTerminal(
     controller: TerminalController,
+    manager: SessionManager,
     settings: SettingsViewModel,
     onClose: () -> Unit,
     onNewConnection: () -> Unit,
@@ -428,6 +446,78 @@ private fun ActiveTerminal(
     }
 
     Column(Modifier.fillMaxSize()) {
+        // ── Üst sabit şerit: oturum pill'leri + durum + aksiyonlar ──
+        // Yüzen overlay yok — hiçbir şey terminal çıktısını örtmez.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 10.dp, top = 2.dp, bottom = 2.dp, end = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SessionPillsRow(manager, Modifier.weight(1f), onNewConnection)
+            // Durum metni (mono, dim): transport • pencere başlığı — dar, ellipsis.
+            Text(
+                buildString {
+                    append(vm.badge)
+                    if (windowTitle.isNotBlank()) append(" · $windowTitle")
+                    if (state == ConnectionState.CONNECTING) append(" · bağlanıyor…")
+                },
+                fontFamily = LocalMonoFont.current,
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .widthIn(max = 110.dp)
+                    .padding(start = 6.dp),
+            )
+            OverlayAction("Scrollback'te ara", { searchOpen = !searchOpen; if (!searchOpen) query = "" }) {
+                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            OverlayAction("Scrollback'i paylaş", {
+                val dump = lines.joinToString("\n") { it.text }
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
+                    val f = java.io.File(dir, "scrollback.txt")
+                    f.writeText(dump)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                            context, context.packageName + ".fileprovider", f,
+                        )
+                        val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(share, "Scrollback"))
+                    }
+                }
+            }) {
+                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            OverlayAction(
+                if (fullscreen) "Tam ekrandan çık" else "Tam ekran",
+                { fullscreen = !fullscreen },
+            ) {
+                Icon(
+                    if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (state == ConnectionState.CLOSED || state == ConnectionState.FAILED) {
+                if (controller.canReconnect()) {
+                    OverlayAction("Yeniden bağlan", { controller.reconnect() }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+            OverlayAction("Oturumu kapat", onClose) {
+                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
+            }
+        }
+
         val console = LocalConsoleTheme.current
         val termBg = Color(console.term.background)
         val termFg = Color(console.term.foreground)
@@ -634,83 +724,13 @@ private fun ActiveTerminal(
                 }
             }
 
-            // ── Overlay: üst-sağ aksiyon çubuğu (yarı saydam, içeriğin üstünde) ──
-            // Tam ekranda da görünür — ara/paylaş/kapat erişilebilir kalır.
-            Row(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(6.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f), MaterialTheme.shapes.extraSmall),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Durum metni (mono, dim): transport • host • pencere başlığı
-                Text(
-                    buildString {
-                        append(vm.badge)
-                        active?.let { append(" · ${it.host}") }
-                        if (windowTitle.isNotBlank()) append(" · $windowTitle")
-                        if (state == ConnectionState.CONNECTING) append(" · bağlanıyor…")
-                    },
-                    fontFamily = LocalMonoFont.current,
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-                OverlayAction("Scrollback'te ara", { searchOpen = !searchOpen; if (!searchOpen) query = "" }) {
-                    Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                OverlayAction("Scrollback'i paylaş", {
-                    val dump = lines.joinToString("\n") { it.text }
-                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                        val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
-                        val f = java.io.File(dir, "scrollback.txt")
-                        f.writeText(dump)
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            val uri = androidx.core.content.FileProvider.getUriForFile(
-                                context, context.packageName + ".fileprovider", f,
-                            )
-                            val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(android.content.Intent.createChooser(share, "Scrollback"))
-                        }
-                    }
-                }) {
-                    Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                OverlayAction(
-                    if (fullscreen) "Tam ekrandan çık" else "Tam ekran",
-                    { fullscreen = !fullscreen },
-                ) {
-                    Icon(
-                        if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                        contentDescription = null,
-                        modifier = Modifier.size(15.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (state == ConnectionState.CLOSED || state == ConnectionState.FAILED) {
-                    if (controller.canReconnect()) {
-                        OverlayAction("Yeniden bağlan", { controller.reconnect() }) {
-                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-                OverlayAction("Oturumu kapat", onClose) {
-                    Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
-                }
-            }
-
             // Hata banner'ı (overlay): mesaj + yapılabilir aksiyon.
             if (state == ConnectionState.FAILED && failure != null) {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.94f),
                     shape = MaterialTheme.shapes.extraSmall,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp).fillMaxWidth(0.94f),
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp).fillMaxWidth(0.94f),
                 ) {
                     Column(Modifier.padding(10.dp)) {
                         Text(
@@ -740,7 +760,7 @@ private fun ActiveTerminal(
                     color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
                     shape = MaterialTheme.shapes.extraSmall,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp).fillMaxWidth(0.94f),
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp).fillMaxWidth(0.94f),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 4.dp)) {
                         TextField(
