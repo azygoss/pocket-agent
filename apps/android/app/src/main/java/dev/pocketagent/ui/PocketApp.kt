@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.pocketagent.transport.ConnectionState
+import dev.pocketagent.transport.shortHash
 import dev.pocketagent.ui.theme.TermRed
 import dev.pocketagent.ui.theme.LocalMonoFont
 import dev.pocketagent.ui.theme.consoleTheme
@@ -76,6 +77,8 @@ import dev.pocketagent.service.TerminalService
 import dev.pocketagent.ui.theme.PocketAgentTheme
 import dev.pocketagent.ui.theme.Space
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 enum class AppTab(val label: String, val short: String, val icon: ImageVector) {
     Home("Ana Sayfa", "ana", Icons.Filled.Home),
@@ -177,6 +180,32 @@ fun PocketAgentApp(
         if (anyActive) snackbar.showSnackbar("Oturum bağlandı")
     }
 
+    // Agents → "oturuma git": opaque host'u kayıtlı bağlantıya eşle (emit.go
+    // h:sha256(hostID)[0:16] ile aynı kural), oturumu aç/odakla, tmux
+    // oturumuysa attach et.
+    val openAgent: (InboxRow) -> Unit = { row ->
+        tab = AppTab.Terminal
+        app.appScope.launch {
+            val conns = connections2.value
+            val conn = conns.firstOrNull { c ->
+                listOf(c.host, "host:${c.host}", "${c.user}@${c.host}", c.name, "host:${c.name}")
+                    .any { "h:" + shortHash(it) == row.host }
+            } ?: conns.maxByOrNull { it.lastConnectedAt }
+            if (conn == null) {
+                snackbar.showSnackbar("Agent host'u için kayıtlı bağlantı yok")
+                return@launch
+            }
+            val ctl = sessions.open(conn, app.connections.secret(conn.id))
+            if (row.sessionId.startsWith("tmux:")) {
+                val name = row.sessionId.removePrefix("tmux:")
+                kotlinx.coroutines.withTimeoutOrNull(15_000) {
+                    ctl.state.first { it == dev.pocketagent.transport.ConnectionState.ACTIVE }
+                } ?: return@launch
+                ctl.send(dev.pocketagent.transport.TerminalInput.Text("tmux attach -t $name\r"))
+            }
+        }
+    }
+
     val console = consoleTheme(settings.theme.themeId)
     // Sistem çubuğu ikon kontrastı temayı takip eder — açık temada koyu ikon.
     val barView = androidx.compose.ui.platform.LocalView.current
@@ -235,6 +264,7 @@ fun PocketAgentApp(
                     AppTab.Agents -> AgentsScreen(
                         inbox = inbox, approval = approval, app = app,
                         backendInfo = "${settings.backendUrl.ifBlank { "ayarlanmadı" }} · tenant: ${settings.tenantToken.ifBlank { "—" }}",
+                        onOpenAgent = openAgent,
                     )
                     AppTab.Files -> FilesScreen(files = files)
                     AppTab.Settings -> SettingsScreen(

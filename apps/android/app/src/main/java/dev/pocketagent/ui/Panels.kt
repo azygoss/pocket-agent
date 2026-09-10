@@ -20,7 +20,16 @@ data class InboxRow(
     val createdAt: String = "",
     val digest: String = "",
     val revision: String = "",
+    // opaque_host_id ("h:<hash>") — bağlantı eşleşmesi için; kalıcı değil.
+    val host: String = "",
 )
+
+// Aktif agent oturumları: sessionId başına son olay SESSION_STARTED ise aktif.
+// (ended olayı aynı sessionId ile gelir; hook'lu agent'larda da aynı kural.)
+fun activeSessions(rows: List<InboxRow>): List<InboxRow> =
+    rows.groupBy { it.sessionId }
+        .mapNotNull { (_, rs) -> rs.maxByOrNull { it.createdAt } }
+        .filter { it.category == "SESSION_STARTED" }
 
 // Inbox: in-memory satırlar + isteğe bağlı Room kalıcılığı (dao/scope verilirse).
 // Uygulama yeniden başlasa bile 24s TTL içindeki olaylar geri yüklenir;
@@ -105,6 +114,7 @@ class InboxViewModel(
                     createdAt = e.createdAt,
                     digest = e.digest,
                     revision = e.revision,
+                    host = e.host,
                 ),
             )
             persist(_rows.first { it.eventId == e.eventId })

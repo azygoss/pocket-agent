@@ -8,6 +8,7 @@ package watch
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -22,8 +23,55 @@ var Agents = map[string]bool{
 }
 
 type Proc struct {
-	PID   int
-	Agent string
+	PID     int
+	Agent   string
+	Session string // "tmux:<ad>" veya "proc:<pid>" — ended olayı aynısını taşır
+}
+
+// TmuxPanes: pane_pid -> session_name. tmux yoksa/komut hata verirse boş map.
+// Agent process'inin pane'i üzerinden tmux oturumu bulunur — uygulama
+// "oturuma git" özelliğinde bu ada attach eder.
+func TmuxPanes() map[int]string {
+	out, err := exec.Command("tmux", "list-panes", "-a", "-F", "#{pane_pid} #{session_name}").Output()
+	panes := map[int]string{}
+	if err != nil {
+		return panes
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 2 {
+			if pid, err := strconv.Atoi(f[0]); err == nil {
+				panes[pid] = f[1]
+			}
+		}
+	}
+	return panes
+}
+
+// SessionFor: pid'in ppid zincirini tırmanıp tmux pane'ine denk gelen atayı
+// bulur; bulursa "tmux:<oturum>" döner. Bulunamazsa "".
+func SessionFor(procRoot string, pid int, panes map[int]string) string {
+	for depth := 0; pid > 1 && depth < 16; depth++ {
+		if s, ok := panes[pid]; ok {
+			return "tmux:" + s
+		}
+		b, err := os.ReadFile(filepath.Join(procRoot, strconv.Itoa(pid), "status"))
+		if err != nil {
+			return ""
+		}
+		next := 0
+		for _, l := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(l, "PPid:") {
+				next, _ = strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(l, "PPid:")))
+				break
+			}
+		}
+		if next <= 1 {
+			return ""
+		}
+		pid = next
+	}
+	return ""
 }
 
 // Scan: procRoot altındaki çalışan agent process'lerini döner
@@ -64,22 +112,22 @@ func agentOf(pdir string) string {
 
 // Tracker: daemon yaşamı boyunca geçişleri takip eder.
 type Tracker struct {
-	live map[int]string // pid -> agent
+	live map[int]Proc // pid -> proc (ended olayı session'ı buradan hatırlar)
 }
 
-func NewTracker() *Tracker { return &Tracker{live: map[int]string{}} }
+func NewTracker() *Tracker { return &Tracker{live: map[int]Proc{}} }
 
 // Diff: yeni taramayı önceki durumla karşılaştırır; (başlayan, biten)
 // process'leri döner ve iç durumu günceller.
-func (t *Tracker) Diff(cur map[int]string) (started, ended []Proc) {
-	for pid, agent := range cur {
+func (t *Tracker) Diff(cur map[int]Proc) (started, ended []Proc) {
+	for pid, p := range cur {
 		if _, ok := t.live[pid]; !ok {
-			started = append(started, Proc{PID: pid, Agent: agent})
+			started = append(started, p)
 		}
 	}
-	for pid, agent := range t.live {
+	for pid, p := range t.live {
 		if _, ok := cur[pid]; !ok {
-			ended = append(ended, Proc{PID: pid, Agent: agent})
+			ended = append(ended, p)
 		}
 	}
 	t.live = cur
