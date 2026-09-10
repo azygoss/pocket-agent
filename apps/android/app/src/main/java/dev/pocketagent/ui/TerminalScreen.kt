@@ -190,6 +190,7 @@ fun TerminalScreen(
     manager: SessionManager,
     settings: SettingsViewModel,
     onNewConnection: () -> Unit,
+    onFullscreenChange: (Boolean) -> Unit = {},
 ) {
     val sessionList by manager.sessions.collectAsState()
     val activeId by manager.activeId.collectAsState()
@@ -234,6 +235,7 @@ fun TerminalScreen(
                 settings = settings,
                 onClose = { manager.close(active.id) },
                 onNewConnection = onNewConnection,
+                onFullscreenChange = onFullscreenChange,
             )
         }
     }
@@ -299,6 +301,7 @@ private fun ActiveTerminal(
     settings: SettingsViewModel,
     onClose: () -> Unit,
     onNewConnection: () -> Unit,
+    onFullscreenChange: (Boolean) -> Unit = {},
 ) {
     val vm = controller.vm
     val lines by vm.lines.collectAsState()
@@ -312,6 +315,9 @@ private fun ActiveTerminal(
     var searchOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var fullscreen by remember { mutableStateOf(false) }
+    // Tam ekran durumunu üst katmana bildir — PocketApp nav bar'ı gizler,
+    // yerine terminal kendi tuş şeridini gösterir.
+    LaunchedEffect(fullscreen) { onFullscreenChange(fullscreen) }
     // Görünmez IME alanı: alanın gerçek içeriği (delta hesabı için).
     var imeBuf by remember { mutableStateOf("") }
     var typing by remember { mutableStateOf(false) }
@@ -599,27 +605,26 @@ private fun ActiveTerminal(
                     }
 
                     // ── Alt tuş şeridi: terminal yüzeyine bitişik, ince ayırıcı ──
-                    if (!fullscreen) {
-                        ConsoleDivider()
-                        TerminalKeyBar(
-                            ctrl = ctrl,
-                            enabled = connected,
-                            typing = typing,
-                            snippets = settings.snippetList(),
-                            onCtrl = { ctrl = !ctrl },
-                            onKey = { sendText(it) },
-                            onPaste = {
-                                val clip = clipboard.getText()?.text ?: ""
-                                if (clip.isNotEmpty()) emit(clip)
-                            },
-                            onKeyboard = {
-                                // clearFocus, sistem geri tuşuyla kapatılmış IME'de de
-                                // durumu sıfırlar (hide() no-op kalıyordu).
-                                if (typing) focusManager.clearFocus()
-                                else { inputFocus.requestFocus(); keyboard?.show() }
-                            },
-                        )
-                    }
+                    // Tam ekranda da gösterilir — Scaffold nav bar'ının yerini alır.
+                    if (!fullscreen) ConsoleDivider()
+                    TerminalKeyBar(
+                        ctrl = ctrl,
+                        enabled = connected,
+                        typing = typing,
+                        snippets = settings.snippetList(),
+                        onCtrl = { ctrl = !ctrl },
+                        onKey = { sendText(it) },
+                        onPaste = {
+                            val clip = clipboard.getText()?.text ?: ""
+                            if (clip.isNotEmpty()) emit(clip)
+                        },
+                        onKeyboard = {
+                            // clearFocus, sistem geri tuşuyla kapatılmış IME'de de
+                            // durumu sıfırlar (hide() no-op kalıyordu).
+                            if (typing) focusManager.clearFocus()
+                            else { inputFocus.requestFocus(); keyboard?.show() }
+                        },
+                    )
                 }
             }
 

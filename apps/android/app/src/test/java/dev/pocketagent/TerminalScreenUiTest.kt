@@ -4,6 +4,7 @@ package dev.pocketagent
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithText
 import dev.pocketagent.transport.FakeSshTransport
 import dev.pocketagent.transport.SavedConnection
@@ -42,7 +43,7 @@ class TerminalScreenUiTest {
 
     @Test fun emptyTerminalShowsHint() {
         rule.setContent {
-            TerminalScreen(manager(), SettingsViewModel()) {}
+            TerminalScreen(manager(), SettingsViewModel(), onNewConnection = {})
         }
         rule.onNodeWithText("açık oturum yok", substring = true).assertIsDisplayed()
         rule.onNodeWithContentDescription("Yeni bağlantı").assertIsDisplayed()
@@ -51,7 +52,7 @@ class TerminalScreenUiTest {
     @Test fun sessionChipAppearsOnConnect() {
         val m = manager()
         rule.setContent {
-            TerminalScreen(m, SettingsViewModel()) {}
+            TerminalScreen(m, SettingsViewModel(), {}){}
         }
         val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
         m.open(conn, Secret.Password("pw"))
@@ -61,6 +62,28 @@ class TerminalScreenUiTest {
         rule.onNodeWithContentDescription("Terminal çıktısı").assertIsDisplayed()
         rule.onNodeWithText("ctrl").assertIsDisplayed()
         rule.onNodeWithText("esc").assertIsDisplayed()
+        m.closeAll()
+    }
+
+    @Test fun fullscreenKeepsKeyBarAndNotifies() {
+        val m = manager()
+        var fullscreenSeen: Boolean? = null
+        rule.setContent {
+            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = { fullscreenSeen = it })
+        }
+        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
+        m.open(conn, Secret.Password("pw"))
+        rule.waitForIdle()
+        // Tam ekrana geç → üst katman bilgilendirilir, tuş şeridi görünür kalır.
+        rule.onNodeWithContentDescription("Tam ekran").performClick()
+        rule.waitForIdle()
+        org.junit.Assert.assertEquals(true, fullscreenSeen)
+        rule.onNodeWithText("ctrl").assertIsDisplayed()
+        rule.onNodeWithText("esc").assertIsDisplayed()
+        // Çıkış → bildirim false, normal görünüm.
+        rule.onNodeWithContentDescription("Tam ekrandan çık").performClick()
+        rule.waitForIdle()
+        org.junit.Assert.assertEquals(false, fullscreenSeen)
         m.closeAll()
     }
 }
