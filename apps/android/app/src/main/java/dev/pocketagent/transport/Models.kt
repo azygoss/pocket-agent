@@ -58,3 +58,14 @@ fun validateEventSummary(source: String, category: String, message: String): Boo
     val cats = setOf("APPROVAL_REQUIRED","TASK_COMPLETE","SESSION_STARTED","SESSION_ENDED","TOOL_RUNNING","TOOL_FINISHED","ERROR")
     return source in sources && category in cats && message.length <= 256
 }
+
+// emit.go shortHash ile aynı: her part'a sha256 yazılır, araya \x00 konur,
+// ilk 16 hex karakter alınır. Opaque host eşleşmesi ("h:<hash>") için.
+fun shortHash(vararg parts: String): String {
+    val md = java.security.MessageDigest.getInstance("SHA-256")
+    for (p in parts) {
+        md.update(p.toByteArray())
+        md.update(0)
+    }
+    return md.digest().joinToString("") { "%02x".format(it) }.take(16)
+}

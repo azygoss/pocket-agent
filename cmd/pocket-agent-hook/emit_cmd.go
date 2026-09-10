@@ -186,13 +186,22 @@ func cmdDaemon(_ []string) {
 	// session_started/ended üretir (PID ilk görülme/kaybolma geçişleri).
 	tracker := watch.NewTracker()
 	scan := func() {
-		if cur, err := watch.Scan("/proc"); err == nil {
+		if scanned, err := watch.Scan("/proc"); err == nil {
+			panes := watch.TmuxPanes()
+			cur := map[int]watch.Proc{}
+			for pid, agent := range scanned {
+				sess := watch.SessionFor("/proc", pid, panes)
+				if sess == "" {
+					sess = "proc:" + strconv.Itoa(pid)
+				}
+				cur[pid] = watch.Proc{PID: pid, Agent: agent, Session: sess}
+			}
 			started, ended := tracker.Diff(cur)
 			for _, p := range started {
-				_ = emitEvent(p.Agent, "session_started", "proc:"+strconv.Itoa(p.PID), "", p.Agent+" başladı")
+				_ = emitEvent(p.Agent, "session_started", "proc:"+strconv.Itoa(p.PID), p.Session, p.Agent+" başladı")
 			}
 			for _, p := range ended {
-				_ = emitEvent(p.Agent, "session_ended", "proc:"+strconv.Itoa(p.PID)+":end", "", p.Agent+" kapandı")
+				_ = emitEvent(p.Agent, "session_ended", "proc:"+strconv.Itoa(p.PID)+":end", p.Session, p.Agent+" kapandı")
 			}
 		}
 	}

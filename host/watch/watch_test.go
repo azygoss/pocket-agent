@@ -48,18 +48,33 @@ func TestScanArgv0Match(t *testing.T) {
 
 func TestTrackerDiff(t *testing.T) {
 	tr := NewTracker()
-	started, ended := tr.Diff(map[int]string{1: "claude"})
+	started, ended := tr.Diff(map[int]Proc{1: {PID: 1, Agent: "claude", Session: "tmux:main"}})
 	if len(started) != 1 || started[0].Agent != "claude" || len(ended) != 0 {
 		t.Fatalf("%v %v", started, ended)
 	}
 	// Aynı taramada geçiş yok.
-	started, ended = tr.Diff(map[int]string{1: "claude"})
+	started, ended = tr.Diff(map[int]Proc{1: {PID: 1, Agent: "claude", Session: "tmux:main"}})
 	if len(started) != 0 || len(ended) != 0 {
 		t.Fatal("stabil durumda geçiş olmamalı")
 	}
-	// Process kaybolur → ended.
-	started, ended = tr.Diff(map[int]string{})
-	if len(ended) != 1 || ended[0].PID != 1 {
+	// Process kaybolur → ended, session hatırlanır.
+	started, ended = tr.Diff(map[int]Proc{})
+	if len(ended) != 1 || ended[0].PID != 1 || ended[0].Session != "tmux:main" {
 		t.Fatalf("ended=%v", ended)
+	}
+}
+
+func TestSessionFor(t *testing.T) {
+	// Sahte /proc: 300(claude) -> 200(shell, pane) -> 1(init)
+	root := fakeProc(t, map[int]string{200: "bash", 300: "claude"})
+	os.WriteFile(filepath.Join(root, "300", "status"), []byte("Name: claude\nPPid:\t200\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "200", "status"), []byte("Name: bash\nPPid:\t1\n"), 0o644)
+	panes := map[int]string{200: "work"}
+	if s := SessionFor(root, 300, panes); s != "tmux:work" {
+		t.Fatalf("session=%q", s)
+	}
+	// tmux'da olmayan process → ""
+	if s := SessionFor(root, 200, map[int]string{}); s != "" {
+		t.Fatalf("session=%q", s)
 	}
 }

@@ -43,12 +43,22 @@ func shortHash(parts ...string) string {
 // Build: normalize edilmiş bir olayı wire özetine çevirir. Aynı
 // (source, sourceEventID) aynı event_id'yi üretir — backend'de idempotent.
 // Host/session kimlikleri hash'lenir (opaque) — plaintext hostname gitmez.
+// opaqueSess: tmux:/proc: şemalı session kimlikleri RAW gider — uygulama
+// "oturuma git" için tmux adına ihtiyaç duyar (telefon zaten SSH sahibi).
+// Hook'lardan gelen keyfî session_id'ler hash'lenir.
+func opaqueSess(session string) string {
+	if strings.HasPrefix(session, "tmux:") || strings.HasPrefix(session, "proc:") {
+		return session
+	}
+	return "s:" + shortHash(session)
+}
+
 func Build(hostID, source, category, sourceEventID, session, message string, now time.Time) Summary {
 	created := now.UTC().Truncate(time.Second)
 	return Summary{
 		EventID:   "event:" + shortHash(source, sourceEventID),
 		OpaqueH:   "h:" + shortHash(hostID),
-		OpaqueS:   "s:" + shortHash(session),
+		OpaqueS:   opaqueSess(session),
 		Source:    source,
 		Category:  strings.ToUpper(category),
 		Message:   message,

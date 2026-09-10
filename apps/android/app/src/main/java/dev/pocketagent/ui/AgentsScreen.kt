@@ -2,6 +2,7 @@
 package dev.pocketagent.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,6 +77,7 @@ fun AgentsScreen(
     approval: ApprovalViewModel,
     app: App,
     backendInfo: String = "",
+    onOpenAgent: (InboxRow) -> Unit = {},
 ) {
     var filter by remember { mutableStateOf("Tümü") }
     val scope = rememberCoroutineScope()
@@ -112,6 +114,46 @@ fun AgentsScreen(
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        // Aktif agent'lar: sessionId başına son olay SESSION_STARTED olanlar.
+        // Dokun → o host'un terminaline düş; tmux oturumuysa attach et.
+        val active = activeSessions(inbox.rows)
+        if (active.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+                SectionLabel("aktif agent'lar")
+                active.forEach { r ->
+                    ConsoleCard(
+                        padding = Space.md,
+                        borderColor = TermGreen.copy(alpha = 0.4f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable { onOpenAgent(r) },
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            StateDot(dev.pocketagent.transport.ConnectionState.ACTIVE, 10.dp)
+                            Spacer(Modifier.width(Space.md))
+                            Column(Modifier.weight(1f)) {
+                                Text(r.source, style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    listOf(r.sessionId, eventTime(r.createdAt))
+                                        .filter { it.isNotBlank() }
+                                        .joinToString(" · "),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                            Text(
+                                "oturuma git ›",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         val shown = inbox.rows.filter { if (filter == "Okunmamış") it.unread else true }
         if (shown.isEmpty()) {
