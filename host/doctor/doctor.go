@@ -52,7 +52,29 @@ func Run() []Check {
 	checks = append(checks, sshdProbe())
 	checks = append(checks, diskFree(home))
 	checks = append(checks, systemdUser())
+	checks = append(checks, daemonSocket(home))
 	return checks
+}
+
+// daemonSocket: event akışının canlı olduğunun sondası — daemon.sock ping.
+// Daemon yoksa agent olayları backend'e akmaz (Agents sekmesi boş kalır).
+func daemonSocket(home string) Check {
+	if h := os.Getenv("POCKET_HOME"); h != "" {
+		home = h
+	}
+	sock := home + "/.local/state/pocket-agent/daemon.sock"
+	c, err := net.DialTimeout("unix", sock, 500*time.Millisecond)
+	if err != nil {
+		return Check{Name: "daemon", OK: false, Info: "daemon.sock yok — 'pocket-agent daemon' veya 'service install' + systemctl --user start"}
+	}
+	defer c.Close()
+	_ = c.SetDeadline(time.Now().Add(500 * time.Millisecond))
+	fmt.Fprint(c, "ping\n")
+	buf := make([]byte, 16)
+	if _, err := c.Read(buf); err != nil {
+		return Check{Name: "daemon", OK: false, Info: "socket var ama yanıt yok"}
+	}
+	return Check{Name: "daemon", OK: true, Info: "daemon.sock yanıt veriyor"}
 }
 
 // gatewayPort: 24543 ya boş (serve edilebilir) ya zaten gateway dinliyor.

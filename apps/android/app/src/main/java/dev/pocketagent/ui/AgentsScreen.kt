@@ -108,9 +108,10 @@ fun AgentsScreen(inbox: InboxViewModel, approval: ApprovalViewModel, app: App) {
                     icon = Icons.Filled.SmartToy,
                     title = "Aktif agent olayı yok",
                     body = if (syncStatus == "bağlı") {
-                        "Hook'lar olay ürettikçe burada birleşir; 24 saat sonra düşer."
+                        "Host'ta daemon + hook'lar kurulu olmalı: pocket-agent hooks install, " +
+                            "ardından daemon'ı başlat (onboard bunu yapar). Olaylar 15s içinde akar."
                     } else {
-                        "Ayarlar → Backend ile sunucunu bağla; hook olayları 15s içinde akar."
+                        "Ayarlar → Backend ile sunucunu bağla; host'ta da pocket-agent onboard çalıştır."
                     },
                 )
             }

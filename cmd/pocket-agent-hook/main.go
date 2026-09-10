@@ -86,6 +86,12 @@ func main() {
 		cmdGateway(os.Args[2:])
 	case "hooks":
 		cmdHooks(os.Args[2:])
+	case "emit":
+		cmdEmit(os.Args[2:])
+	case "emit-hook":
+		cmdEmitHook(os.Args[2:])
+	case "daemon":
+		cmdDaemon(os.Args[2:])
 	case "service":
 		cmdService(os.Args[2:])
 	case "servers":
@@ -195,22 +201,30 @@ func cmdHooks(args []string) {
 		os.Exit(2)
 	}
 	h := home()
+	exe, _ := os.Executable()
+	claudeCfg := filepath.Join(h, ".claude", "settings.json")
+	codexCfg := filepath.Join(h, ".codex", "config.toml")
 	switch args[0] {
 	case "install":
-		if err := installHooks(h); err != nil {
+		if err := installHooks(h, exe); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 	case "uninstall":
-		for _, a := range hooks.All() {
-			p := filepath.Join(h, a.ConfigFile)
-			cur, _ := os.ReadFile(p)
-			if cur == nil {
-				continue
+		if ok, _ := hooks.UninstallClaude(claudeCfg); ok {
+			fmt.Println("temizlendi " + claudeCfg)
+		}
+		if ok, _ := hooks.UninstallCodex(codexCfg); ok {
+			fmt.Println("temizlendi " + codexCfg)
+		}
+		// Diğer config'lerdeki (JSON dahil) eski marker'ları da söker.
+		for _, p := range markerPaths(h) {
+			if b, err := os.ReadFile(p); err == nil {
+				if cleaned := hooks.StripMarkers(string(b)); cleaned != string(b) {
+					_ = os.WriteFile(p, []byte(cleaned), 0o600)
+					fmt.Println("marker temizlendi " + p)
+				}
 			}
-			cleaned := hooks.Merge(string(cur), "")
-			_ = cleaned
-			fmt.Println("kept user content in " + p + " (owned block removed on next slice)")
 		}
 	default:
 		fmt.Fprintln(os.Stderr, "unknown hooks subcommand")
@@ -283,11 +297,13 @@ func cmdServers(args []string) {
 	}
 }
 
+func cfgLoad() (config.Config, error) { return config.Load(config.DefaultPath()) }
+
 func backendURL() string {
 	if u := os.Getenv("POCKET_BACKEND"); u != "" {
 		return u
 	}
-	cfg, _ := config.Load(config.DefaultPath())
+	cfg, _ := cfgLoad()
 	if cfg.BackendURL != "" {
 		return cfg.BackendURL
 	}
@@ -310,7 +326,7 @@ func gatewayDiff(dir, kind string) (string, error) { return gateway.GitDiff(dir,
 
 func cmdSet(args []string) {
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: set <key> <value>  (keys: backend_url, host_id)")
+		fmt.Fprintln(os.Stderr, "usage: set <key> <value>  (keys: backend_url, host_id, tenant)")
 		os.Exit(2)
 	}
 	p := config.DefaultPath()
@@ -320,6 +336,8 @@ func cmdSet(args []string) {
 		c.BackendURL = args[1]
 	case "host_id":
 		c.HostID = args[1]
+	case "tenant":
+		c.Tenant = args[1]
 	default:
 		fmt.Fprintln(os.Stderr, "unknown key")
 		os.Exit(2)
@@ -331,21 +349,44 @@ func cmdSet(args []string) {
 	fmt.Println("saved " + p)
 }
 
-// installHooks: 12 agent hook bloğunu config dosyalarına merge eder.
-// Tekrar kurulumda dubl olmaz (P12 gate).
-func installHooks(h string) error {
+// markerPaths: eski sürümlerin yorum-marker yazmış olabileceği tüm config
+// yolları (onarım için; .claude.json dahil — hook'lar artık settings.json'da).
+func markerPaths(h string) []string {
+	paths := []string{filepath.Join(h, ".claude.json")}
 	for _, a := range hooks.All() {
-		p := filepath.Join(h, a.ConfigFile)
-		cur, _ := os.ReadFile(p)
-		merged := hooks.Merge(string(cur), a.Block)
-		if merged != string(cur) {
-			if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-				return err
+		paths = append(paths, filepath.Join(h, a.ConfigFile))
+	}
+	return paths
+}
+
+// installHooks: gerçek wiring — claude settings.json hooks objesi, codex
+// notify satırı. Diğer agent'ların config formatı henüz wire edilmediğinden
+// marker YAZILMAZ (yorum satırları JSON config'leri bozuyordu); eski
+// kurulumlardan kalan marker'lar onarım için temizlenir.
+func installHooks(h, exe string) error {
+	claudeCfg := filepath.Join(h, ".claude", "settings.json")
+	if ok, err := hooks.InstallClaude(claudeCfg, exe); err != nil {
+		return err
+	} else if ok {
+		fmt.Println("wired " + claudeCfg + " (session/notification/stop)")
+	}
+	codexCfg := filepath.Join(h, ".codex", "config.toml")
+	if ok, err := hooks.InstallCodex(codexCfg, exe); err != nil {
+		return err
+	} else if ok {
+		fmt.Println("wired " + codexCfg + " (notify)")
+	}
+	for _, p := range markerPaths(h) {
+		if p == claudeCfg || p == codexCfg {
+			continue
+		}
+		if b, err := os.ReadFile(p); err == nil {
+			if cleaned := hooks.StripMarkers(string(b)); cleaned != string(b) {
+				if err := os.WriteFile(p, []byte(cleaned), 0o600); err != nil {
+					return err
+				}
+				fmt.Println("repaired " + p + " (marker comments removed)")
 			}
-			if err := os.WriteFile(p, []byte(merged), 0o600); err != nil {
-				return err
-			}
-			fmt.Println("patched " + p)
 		}
 	}
 	return nil

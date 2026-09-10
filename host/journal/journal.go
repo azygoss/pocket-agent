@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -24,6 +25,9 @@ type Journal struct {
 
 func Open(path string) (*Journal, error) {
 	j := &Journal{path: path, seen: map[string]string{}}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDONLY, 0o600)
 	if err != nil {
 		return nil, err
