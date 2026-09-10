@@ -12,18 +12,19 @@ import (
 	"strings"
 )
 
-// Claude Code: ~/.claude/settings.json "hooks" objesi.
+// settings.json "hooks" objesi şemasını paylaşan agent'lar (claude, gemini,
+// qwen — hepsi aynı matcher/hooks/command yapısını kullanır).
 // Olay → kategori eşlemesi (yüksek-sinyal, düşük-gürültü):
-var claudeHooks = map[string]string{
+var jsonHookEvents = map[string]string{
 	"SessionStart": "session_started",
 	"SessionEnd":   "session_ended",
 	"Stop":         "task_complete",
 	"Notification": "approval_required",
 }
 
-// InstallClaude: settings.json'daki mevcut anahtarları koruyarak hooks
+// InstallJSONHooks: settings.json'daki mevcut anahtarları koruyarak hooks
 // objesine komutlarımızı ekler. Idempotent — bizim komut varsa dokunmaz.
-func InstallClaude(path, exe string) (bool, error) {
+func InstallJSONHooks(path, exe, source string) (bool, error) {
 	var cfg map[string]any
 	if b, err := os.ReadFile(path); err == nil {
 		if json.Unmarshal(b, &cfg) != nil {
@@ -38,8 +39,8 @@ func InstallClaude(path, exe string) (bool, error) {
 		hooksObj = map[string]any{}
 	}
 	changed := false
-	for event, cat := range claudeHooks {
-		cmd := exe + " emit-hook claude " + cat
+	for event, cat := range jsonHookEvents {
+		cmd := exe + " emit-hook " + source + " " + cat
 		arr, _ := hooksObj[event].([]any)
 		present := false
 		for _, e := range arr {
@@ -47,7 +48,7 @@ func InstallClaude(path, exe string) (bool, error) {
 				if hs, ok := m["hooks"].([]any); ok {
 					for _, hh := range hs {
 						if hm, ok := hh.(map[string]any); ok &&
-							strings.Contains(fmt.Sprint(hm["command"]), "emit-hook") {
+							strings.Contains(fmt.Sprint(hm["command"]), "emit-hook "+source) {
 							present = true
 						}
 					}
@@ -76,8 +77,112 @@ func InstallClaude(path, exe string) (bool, error) {
 	return true, os.WriteFile(path, append(out, '\n'), 0o600)
 }
 
-// UninstallClaude: bizim emit-hook komutlarını hooks objesinden söker.
-func UninstallClaude(path string) (bool, error) {
+func InstallClaude(path, exe string) (bool, error) {
+	return InstallJSONHooks(path, exe, "claude")
+}
+func InstallGemini(path, exe string) (bool, error) {
+	return InstallJSONHooks(path, exe, "gemini")
+}
+func InstallQwen(path, exe string) (bool, error) {
+	return InstallJSONHooks(path, exe, "qwen")
+}
+
+// Cursor: ~/.cursor/hooks.json — düz komut dizisi şeması:
+// {"version":1,"hooks":{"sessionStart":[{"command":"..."}], ...}}.
+var cursorEvents = map[string]string{
+	"sessionStart": "session_started",
+	"sessionEnd":   "session_ended",
+	"stop":         "task_complete",
+}
+
+func InstallCursor(path, exe string) (bool, error) {
+	var cfg map[string]any
+	if b, err := os.ReadFile(path); err == nil {
+		if json.Unmarshal(b, &cfg) != nil {
+			cfg = nil
+		}
+	}
+	if cfg == nil {
+		cfg = map[string]any{"version": 1}
+	}
+	hooksObj, _ := cfg["hooks"].(map[string]any)
+	if hooksObj == nil {
+		hooksObj = map[string]any{}
+	}
+	changed := false
+	for event, cat := range cursorEvents {
+		cmd := exe + " emit-hook cursor " + cat
+		arr, _ := hooksObj[event].([]any)
+		present := false
+		for _, e := range arr {
+			if m, ok := e.(map[string]any); ok &&
+				strings.Contains(fmt.Sprint(m["command"]), "emit-hook cursor") {
+				present = true
+			}
+		}
+		if !present {
+			hooksObj[event] = append(arr, map[string]any{"command": cmd})
+			changed = true
+		}
+	}
+	if !changed {
+		return false, nil
+	}
+	cfg["hooks"] = hooksObj
+	out, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return false, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return false, err
+	}
+	return true, os.WriteFile(path, append(out, '\n'), 0o600)
+}
+
+func UninstallCursor(path string) (bool, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false, nil
+	}
+	var cfg map[string]any
+	if json.Unmarshal(b, &cfg) != nil {
+		return false, nil
+	}
+	hooksObj, _ := cfg["hooks"].(map[string]any)
+	if hooksObj == nil {
+		return false, nil
+	}
+	changed := false
+	for event, v := range hooksObj {
+		arr, _ := v.([]any)
+		var keep []any
+		for _, e := range arr {
+			if m, ok := e.(map[string]any); ok &&
+				strings.Contains(fmt.Sprint(m["command"]), "emit-hook cursor") {
+				changed = true
+				continue
+			}
+			keep = append(keep, e)
+		}
+		if len(keep) == 0 {
+			delete(hooksObj, event)
+		} else {
+			hooksObj[event] = keep
+		}
+	}
+	if !changed {
+		return false, nil
+	}
+	out, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return false, err
+	}
+	return true, os.WriteFile(path, append(out, '\n'), 0o600)
+}
+
+// UninstallJSONHooks: bu source'a ait emit-hook komutlarını hooks objesinden
+// söker; kullanıcının diğer hook'larına dokunmaz.
+func UninstallJSONHooks(path, source string) (bool, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return false, nil
@@ -100,7 +205,7 @@ func UninstallClaude(path string) (bool, error) {
 				if hs, ok := m["hooks"].([]any); ok {
 					for _, hh := range hs {
 						if hm, ok := hh.(map[string]any); ok &&
-							strings.Contains(fmt.Sprint(hm["command"]), "emit-hook") {
+							strings.Contains(fmt.Sprint(hm["command"]), "emit-hook "+source) {
 							ours = true
 						}
 					}
@@ -131,6 +236,10 @@ func UninstallClaude(path string) (bool, error) {
 	}
 	return true, os.WriteFile(path, append(out, '\n'), 0o600)
 }
+
+func UninstallClaude(path string) (bool, error) { return UninstallJSONHooks(path, "claude") }
+func UninstallGemini(path string) (bool, error) { return UninstallJSONHooks(path, "gemini") }
+func UninstallQwen(path string) (bool, error)   { return UninstallJSONHooks(path, "qwen") }
 
 // Codex: ~/.codex/config.toml — `notify` tek komut dizisi alır, tur sonunda
 // JSON argümanla çağrılır. Marker blok içinde tutulur (TOML '#' yorumu OK).

@@ -202,8 +202,6 @@ func cmdHooks(args []string) {
 	}
 	h := home()
 	exe, _ := os.Executable()
-	claudeCfg := filepath.Join(h, ".claude", "settings.json")
-	codexCfg := filepath.Join(h, ".codex", "config.toml")
 	switch args[0] {
 	case "install":
 		if err := installHooks(h, exe); err != nil {
@@ -211,11 +209,19 @@ func cmdHooks(args []string) {
 			os.Exit(1)
 		}
 	case "uninstall":
-		if ok, _ := hooks.UninstallClaude(claudeCfg); ok {
-			fmt.Println("temizlendi " + claudeCfg)
-		}
-		if ok, _ := hooks.UninstallCodex(codexCfg); ok {
-			fmt.Println("temizlendi " + codexCfg)
+		for _, w := range wiredConfigs(h) {
+			var ok bool
+			switch w.source {
+			case "codex":
+				ok, _ = hooks.UninstallCodex(w.path)
+			case "cursor":
+				ok, _ = hooks.UninstallCursor(w.path)
+			default:
+				ok, _ = hooks.UninstallJSONHooks(w.path, w.source)
+			}
+			if ok {
+				fmt.Println("temizlendi " + w.path)
+			}
 		}
 		// Diğer config'lerdeki (JSON dahil) eski marker'ları da söker.
 		for _, p := range markerPaths(h) {
@@ -359,25 +365,48 @@ func markerPaths(h string) []string {
 	return paths
 }
 
-// installHooks: gerçek wiring — claude settings.json hooks objesi, codex
-// notify satırı. Diğer agent'ların config formatı henüz wire edilmediğinden
-// marker YAZILMAZ (yorum satırları JSON config'leri bozuyordu); eski
-// kurulumlardan kalan marker'lar onarım için temizlenir.
-func installHooks(h, exe string) error {
-	claudeCfg := filepath.Join(h, ".claude", "settings.json")
-	if ok, err := hooks.InstallClaude(claudeCfg, exe); err != nil {
-		return err
-	} else if ok {
-		fmt.Println("wired " + claudeCfg + " (session/notification/stop)")
+type wiredCfg struct {
+	source, path string
+}
+
+// wiredConfigs: gerçek hook wiring'i desteklenen agent config'leri.
+// Geri kalan agent'lar daemon'un /proc watcher'ı ile izlenir.
+func wiredConfigs(h string) []wiredCfg {
+	return []wiredCfg{
+		{"claude", filepath.Join(h, ".claude", "settings.json")},
+		{"gemini", filepath.Join(h, ".gemini", "settings.json")},
+		{"qwen", filepath.Join(h, ".qwen", "settings.json")},
+		{"cursor", filepath.Join(h, ".cursor", "hooks.json")},
+		{"codex", filepath.Join(h, ".codex", "config.toml")},
 	}
-	codexCfg := filepath.Join(h, ".codex", "config.toml")
-	if ok, err := hooks.InstallCodex(codexCfg, exe); err != nil {
-		return err
-	} else if ok {
-		fmt.Println("wired " + codexCfg + " (notify)")
+}
+
+// installHooks: gerçek wiring — claude/gemini/qwen settings.json hooks objesi,
+// cursor hooks.json, codex notify satırı. Diğer agent'lar process watcher
+// ile izlenir (daemon); eski marker kalıntıları onarılır.
+func installHooks(h, exe string) error {
+	wired := map[string]bool{}
+	for _, w := range wiredConfigs(h) {
+		var ok bool
+		var err error
+		switch w.source {
+		case "codex":
+			ok, err = hooks.InstallCodex(w.path, exe)
+		case "cursor":
+			ok, err = hooks.InstallCursor(w.path, exe)
+		default:
+			ok, err = hooks.InstallJSONHooks(w.path, exe, w.source)
+		}
+		if err != nil {
+			return err
+		}
+		if ok {
+			fmt.Println("wired " + w.path + " (" + w.source + ")")
+		}
+		wired[w.path] = true
 	}
 	for _, p := range markerPaths(h) {
-		if p == claudeCfg || p == codexCfg {
+		if wired[p] {
 			continue
 		}
 		if b, err := os.ReadFile(p); err == nil {
@@ -389,6 +418,7 @@ func installHooks(h, exe string) error {
 			}
 		}
 	}
+	fmt.Println("opencode/kimi/grok/pi/omp/hermes/antigravity: process watcher izler (config şeması wire edilmedi)")
 	return nil
 }
 
