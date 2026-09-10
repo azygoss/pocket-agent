@@ -7,7 +7,7 @@
     "event_id": {"type": "string", "pattern": "^event:.+"},
     "opaque_host_id": {"type": "string", "minLength": 1},
     "opaque_session_id": {"type": "string", "minLength": 1},
-    "source": {"enum": ["claude","codex","opencode","cursor","kimi","grok","pi","omp","hermes","gemini","antigravity","qwen"]},
+    "source": {"enum": ["claude","codex","opencode","cursor","kimi","grok","pi","omp","hermes","gemini","antigravity","qwen","devin"]},
     "category": {"enum": ["APPROVAL_REQUIRED","TASK_COMPLETE","SESSION_STARTED","SESSION_ENDED","TOOL_RUNNING","TOOL_FINISHED","ERROR"]},
     "title": {"type": "string"},
     "message": {"type": "string", "maxLength": 256},

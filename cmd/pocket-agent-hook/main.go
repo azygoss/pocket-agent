@@ -418,7 +418,7 @@ func installHooks(h, exe string) error {
 			}
 		}
 	}
-	fmt.Println("opencode/kimi/grok/pi/omp/hermes/antigravity: process watcher izler (config şeması wire edilmedi)")
+	fmt.Println("opencode/kimi/grok/pi/omp/hermes/antigravity/devin: process watcher izler (config şeması wire edilmedi)")
 	return nil
 }
 

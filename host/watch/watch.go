@@ -18,7 +18,7 @@ var Agents = map[string]bool{
 	"claude": true, "codex": true, "opencode": true, "cursor-agent": true,
 	"cursor": true, "kimi": true, "grok": true, "pi": true, "omp": true,
 	"hermes": true, "gemini": true, "antigravity": true, "qwen": true,
-	"qwen-code": true,
+	"qwen-code": true, "devin": true,
 }
 
 type Proc struct {

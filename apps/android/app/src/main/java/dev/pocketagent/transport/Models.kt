@@ -54,7 +54,7 @@ fun selectNext(current: TerminalTransport?, failure: TransportFailure, policy: T
 
 // P01 golden parity: message<=256, whitelist source/category (same lists as Go).
 fun validateEventSummary(source: String, category: String, message: String): Boolean {
-    val sources = setOf("claude","codex","opencode","cursor","kimi","grok","pi","omp","hermes","gemini","antigravity","qwen")
+    val sources = setOf("claude","codex","opencode","cursor","kimi","grok","pi","omp","hermes","gemini","antigravity","qwen","devin")
     val cats = setOf("APPROVAL_REQUIRED","TASK_COMPLETE","SESSION_STARTED","SESSION_ENDED","TOOL_RUNNING","TOOL_FINISHED","ERROR")
     return source in sources && category in cats && message.length <= 256
 }

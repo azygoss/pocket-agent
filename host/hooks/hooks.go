@@ -17,7 +17,7 @@ var categories = map[string]bool{
 var sources = map[string]bool{
 	"claude": true, "codex": true, "opencode": true, "cursor": true, "kimi": true,
 	"grok": true, "pi": true, "omp": true, "hermes": true,
-	"gemini": true, "antigravity": true, "qwen": true,
+	"gemini": true, "antigravity": true, "qwen": true, "devin": true,
 }
 
 type Bus struct {
