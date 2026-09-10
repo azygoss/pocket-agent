@@ -232,7 +232,10 @@ fun PocketAgentApp(
                         onNewConnection = { tab = AppTab.Connections },
                         onFullscreenChange = { termFullscreen = it },
                     )
-                    AppTab.Agents -> AgentsScreen(inbox = inbox, approval = approval, app = app)
+                    AppTab.Agents -> AgentsScreen(
+                        inbox = inbox, approval = approval, app = app,
+                        backendInfo = "${settings.backendUrl.ifBlank { "ayarlanmadı" }} · tenant: ${settings.tenantToken.ifBlank { "—" }}",
+                    )
                     AppTab.Files -> FilesScreen(files = files)
                     AppTab.Settings -> SettingsScreen(
                         settings = settings,
