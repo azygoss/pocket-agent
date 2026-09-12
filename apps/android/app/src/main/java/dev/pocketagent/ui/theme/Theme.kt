@@ -41,6 +41,7 @@ private val PocketShapes = Shapes(
 // (hostname, oturum pill'i, tuş şeridi, kod) LocalMonoFont ile açıkça
 // uygulanır. Başlıklar semibold — sıkı letter-spacing ile.
 private fun pocketTypography() = Typography(
+    headlineMedium = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 28.sp, letterSpacing = (-0.5).sp),
     headlineSmall = TextStyle(fontWeight = FontWeight.Bold, fontSize = 22.sp, letterSpacing = (-0.3).sp),
     titleLarge = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 19.sp, letterSpacing = (-0.2).sp),
     titleMedium = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 15.sp, letterSpacing = (-0.1).sp),
