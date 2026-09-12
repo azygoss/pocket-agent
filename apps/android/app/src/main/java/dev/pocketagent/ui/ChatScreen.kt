@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package dev.pocketagent.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -26,13 +26,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.pocketagent.net.ChatBlockDto
 import dev.pocketagent.ui.theme.LocalMonoFont
+import dev.pocketagent.ui.theme.TermGreen
+import dev.pocketagent.ui.theme.TermRed
 
 // P14: agent transcript sohbet görünümü. Bloklar gateway /chat üzerinden gelir
 // (tam içerik yalnız SSH tünelinde; backend yalnız ≤256 karakter özet görür).
+// Sunum: transcript hissi — sol kenarda rol işaretli satırlar, balon yok.
 @Composable
 fun ChatDialog(title: String, blocks: List<ChatBlockDto>, onClose: () -> Unit) {
     Dialog(
@@ -41,10 +45,19 @@ fun ChatDialog(title: String, blocks: List<ChatBlockDto>, onClose: () -> Unit) {
     ) {
         Card(
             Modifier.fillMaxWidth(0.94f).padding(vertical = 24.dp),
+            shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "❯",
+                        fontFamily = LocalMonoFont.current,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                    )
+                    Spacer(Modifier.width(6.dp))
                     Text(
                         title,
                         style = MaterialTheme.typography.titleSmall,
@@ -56,6 +69,7 @@ fun ChatDialog(title: String, blocks: List<ChatBlockDto>, onClose: () -> Unit) {
                         Icon(Icons.Filled.Close, contentDescription = "Kapat")
                     }
                 }
+                ConsoleDivider()
                 if (blocks.isEmpty()) {
                     Text(
                         "Blok yok — transcript boş ya da tanınmadı.",
@@ -72,56 +86,47 @@ fun ChatDialog(title: String, blocks: List<ChatBlockDto>, onClose: () -> Unit) {
     }
 }
 
+// Rol işareti: sol kenarda 2dp renk şeridi + mono rol etiketi.
 @Composable
 private fun ChatBlockRow(b: ChatBlockDto) {
-    when (b.role) {
-        "tool" -> {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            ) {
-                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.Build, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        b.text.removePrefix("tool:"),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = LocalMonoFont.current,
-                    )
-                }
-            }
-        }
-        "result", "error" -> {
-            val err = b.role == "error"
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    if (err) Icons.Filled.ErrorOutline else Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    tint = if (err) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    b.text.removePrefix("result:"),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (err) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        else -> {
-            // message: agent balonu (sola yaslı, max %85 genişlik)
-            Card(
-                Modifier.widthIn(max = 340.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-            ) {
-                Text(
-                    b.text,
-                    Modifier.padding(10.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
+    val (marker, tint) = when (b.role) {
+        "tool" -> "tool" to MaterialTheme.colorScheme.onSurfaceVariant
+        "result" -> "ok" to TermGreen
+        "error" -> "err" to TermRed
+        else -> "msg" to MaterialTheme.colorScheme.primary
+    }
+    Row {
+        Box(
+            Modifier
+                .width(2.dp)
+                .height(34.dp)
+                .align(Alignment.CenterVertically)
+                .background(tint.copy(alpha = 0.7f)),
+        )
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(
+                marker,
+                fontFamily = LocalMonoFont.current,
+                fontSize = 9.sp,
+                color = tint,
+                letterSpacing = androidx.compose.ui.unit.TextUnit(1f, androidx.compose.ui.unit.TextUnitType.Sp),
+            )
+            Text(
+                when (b.role) {
+                    "tool" -> b.text.removePrefix("tool:")
+                    "result", "error" -> b.text.removePrefix("result:")
+                    else -> b.text
+                },
+                style = if (b.role == "tool" || b.role == "result" || b.role == "error")
+                    MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current)
+                else MaterialTheme.typography.bodyMedium,
+                color = when (b.role) {
+                    "error" -> MaterialTheme.colorScheme.error
+                    "tool", "result" -> MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
+            )
         }
     }
 }

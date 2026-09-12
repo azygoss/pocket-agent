@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -345,9 +346,10 @@ private fun RemoteFileRow(f: RemoteFile, onClick: () -> Unit) {
                     .size(34.dp)
                     .clip(MaterialTheme.shapes.small)
                     .background(
-                        if (f.isDir) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                        else MaterialTheme.colorScheme.surfaceVariant,
-                    ),
+                        if (f.isDir) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                        else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    )
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -375,11 +377,17 @@ private fun PathBar(files: FilesViewModel, modifier: Modifier = Modifier) {
     Row(
         modifier
             .clip(MaterialTheme.shapes.small)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
             .horizontalScroll(scroll)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Text(
+            "❯",
+            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(end = 4.dp),
+        )
         Text(
             "/",
             style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),

@@ -2,6 +2,7 @@
 package dev.pocketagent.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -124,7 +125,7 @@ fun AgentsScreen(
                 active.forEach { r ->
                     ConsoleCard(
                         padding = Space.md,
-                        containerColor = TermGreen.copy(alpha = 0.10f),
+                        borderColor = TermGreen.copy(alpha = 0.5f),
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(MaterialTheme.shapes.medium)
@@ -146,7 +147,7 @@ fun AgentsScreen(
                             }
                             Text(
                                 "oturuma git ›",
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
                                 color = MaterialTheme.colorScheme.primary,
                             )
                         }
@@ -176,15 +177,16 @@ fun AgentsScreen(
                     val tint = categoryColor(r.category)
                     ConsoleCard(
                         padding = Space.md,
-                        containerColor = if (r.unread) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.30f)
-                        else MaterialTheme.colorScheme.surfaceContainer,
+                        borderColor = if (r.unread) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                        else MaterialTheme.colorScheme.outlineVariant,
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 Modifier
                                     .size(38.dp)
                                     .clip(MaterialTheme.shapes.small)
-                                    .background(tint.copy(alpha = 0.14f)),
+                                    .background(tint.copy(alpha = 0.12f))
+                                    .border(1.dp, tint.copy(alpha = 0.35f), MaterialTheme.shapes.small),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
