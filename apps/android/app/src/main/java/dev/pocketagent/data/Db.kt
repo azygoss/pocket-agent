@@ -21,6 +21,26 @@ data class ConnectionEntity(
     val sortOrder: Int = 0,
 )
 
+// Hazır terminal profili: bağlanınca çalışan kayıtlı komut. Host silinirse
+// connectionId SET_NULL olur — profil "açılışta host sor" moduna düşer.
+@Entity(
+    tableName = "profiles",
+    foreignKeys = [ForeignKey(
+        entity = ConnectionEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["connectionId"],
+        onDelete = ForeignKey.SET_NULL,
+    )],
+    indices = [Index("connectionId")],
+)
+data class ProfileEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val command: String,
+    val connectionId: String? = null,
+    val sortOrder: Int = 0,
+)
+
 @Entity(tableName = "agent_events")
 data class AgentEventEntity(
     @PrimaryKey val eventId: String,
@@ -49,6 +69,16 @@ interface ConnectionDao {
 }
 
 @Dao
+interface ProfileDao {
+    @Query("SELECT * FROM profiles ORDER BY sortOrder, name")
+    suspend fun all(): List<ProfileEntity>
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(e: ProfileEntity)
+    @Query("DELETE FROM profiles WHERE id = :id")
+    suspend fun delete(id: String)
+}
+
+@Dao
 interface AgentEventDao {
     @Query("SELECT * FROM agent_events WHERE expiresAt > :now ORDER BY createdAt DESC")
     suspend fun active(now: Long): List<AgentEventEntity>
@@ -62,8 +92,9 @@ interface AgentEventDao {
     suspend fun markRead(id: String)
 }
 
-@Database(entities = [ConnectionEntity::class, AgentEventEntity::class], version = 5, exportSchema = false)
+@Database(entities = [ConnectionEntity::class, AgentEventEntity::class, ProfileEntity::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun connections(): ConnectionDao
     abstract fun events(): AgentEventDao
+    abstract fun profiles(): ProfileDao
 }

@@ -158,6 +158,53 @@ class AutoTmuxTest {
         assertTrue(transport.sent.none { it is TerminalInput.Text })
         c.disconnect()
     }
+
+    // Hazır profiller: açılış komutu bağlanınca otomatik gönderilir.
+    @Test fun startupCommandSendsAfterConnect() = runBlocking {
+        val transport = FakeSshTransport()
+        val connector = object : SshConnector {
+            override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport {
+                transport.openPty("xterm-256color", size)
+                return transport
+            }
+        }
+        val store = TofuHostKeyStore(File.createTempFile("khst", null).apply { delete() })
+        val c = TerminalController(scope, connector, store)
+        c.connect(
+            SavedConnection("t", "h", 22, "u", "ram:password", id = "c3"),
+            Secret.Password("pw"),
+            startupCommand = "codex",
+        )
+        withTimeout(5000) {
+            while (transport.sent.none { it is TerminalInput.Text && it.s.contains("codex\n") }) delay(20)
+        }
+        c.disconnect()
+    }
+
+    // autoTmux + profil komutu: tmux önce — komut tmux oturumunun içine düşer.
+    @Test fun startupCommandRunsInsideTmux() = runBlocking {
+        val transport = FakeSshTransport()
+        val connector = object : SshConnector {
+            override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport {
+                transport.openPty("xterm-256color", size)
+                return transport
+            }
+        }
+        val store = TofuHostKeyStore(File.createTempFile("khst", null).apply { delete() })
+        val c = TerminalController(scope, connector, store)
+        c.connect(
+            SavedConnection("t", "h", 22, "u", "ram:password", id = "c4", autoTmux = true),
+            Secret.Password("pw"),
+            startupCommand = "codex",
+        )
+        withTimeout(5000) {
+            while (transport.sent.filterIsInstance<TerminalInput.Text>().size < 2) delay(20)
+        }
+        val texts = transport.sent.filterIsInstance<TerminalInput.Text>().map { it.s }
+        assertTrue(texts[0].contains("tmux new-session -A -s main"))
+        assertTrue(texts[1].contains("codex"))
+        c.disconnect()
+    }
 }
 
 // Kopmada otomatik yeniden bağlanma (0.9.x): ağ kopması/EOF → backoff retry,
