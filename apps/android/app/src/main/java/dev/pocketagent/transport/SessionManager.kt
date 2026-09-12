@@ -45,7 +45,14 @@ class SessionManager(
 
     // Aynı profile ikinci açılış: mevcut oturuma geç; kapalıysa reconnect.
     // forceNew=true: aynı host'ta paralel oturum — dedupe atlanır.
-    fun open(conn: SavedConnection, secret: Secret?, forceNew: Boolean = false): TerminalController {
+    // startupCommand: bağlanınca gönderilecek komut (hazır profiller; dedupe
+    // dalında çalışmaz — komutla açmak için forceNew kullan).
+    fun open(
+        conn: SavedConnection,
+        secret: Secret?,
+        forceNew: Boolean = false,
+        startupCommand: String? = null,
+    ): TerminalController {
         if (!forceNew) _sessions.value.firstOrNull { it.conn.id == conn.id }?.let { h ->
             _activeId.value = h.id
             if (h.controller.canReconnect()) h.controller.reconnect()
@@ -69,7 +76,7 @@ class SessionManager(
         }
         _sessions.value = _sessions.value + handle
         _activeId.value = handle.id
-        c.connect(conn, secret)
+        c.connect(conn, secret, startupCommand)
         return c
     }
 

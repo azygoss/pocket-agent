@@ -36,6 +36,7 @@ class TerminalController(
     private var transport: SshTransport? = null
     private var lastConn: SavedConnection? = null
     private var lastSecret: Secret? = null
+    private var lastStartupCommand: String? = null
 
     // Kopmada otomatik yeniden bağlanma (SessionManager ayarından beslenir).
     // Auth/host-key hataları hard-stop kalır (P08) — yalnız ağ kopması/EOF retried edilir.
@@ -51,13 +52,14 @@ class TerminalController(
     companion object { const val MAX_RETRY = 5 }
 
     @Synchronized
-    fun connect(conn: SavedConnection, secret: Secret?) {
+    fun connect(conn: SavedConnection, secret: Secret?, startupCommand: String? = null) {
         if (_state.value == ConnectionState.CONNECTING || _state.value == ConnectionState.ACTIVE) return
         retryJob?.cancel()
         _retryAttempt.value = 0
         lastConn = conn
         lastSecret = secret
-        doConnect(conn, secret)
+        lastStartupCommand = startupCommand
+        doConnect(conn, secret, startupCommand)
     }
 
     // Son bağlantıyı (varsa) yeniden kurar; secret RAM'de tutulanla aynı.
@@ -65,14 +67,14 @@ class TerminalController(
         val c = lastConn ?: return false
         if (_state.value == ConnectionState.CONNECTING || _state.value == ConnectionState.ACTIVE) return false
         disconnect()
-        doConnect(c, lastSecret)
+        doConnect(c, lastSecret, lastStartupCommand)
         return true
     }
 
     fun canReconnect(): Boolean =
         lastConn != null && (_state.value == ConnectionState.CLOSED || _state.value == ConnectionState.FAILED)
 
-    private fun doConnect(conn: SavedConnection, secret: Secret?) {
+    private fun doConnect(conn: SavedConnection, secret: Secret?, startupCommand: String? = null) {
         manualClose = false
         _failure.value = null
         _pendingHostKey.value = null
@@ -88,11 +90,18 @@ class TerminalController(
                 _retryAttempt.value = 0
                 retryCount = 0
                 onConnected?.invoke(conn)
-                // tmux otomatik bağlanma: kabuk hazır olsun diye kısa gecikme.
-                if (conn.autoTmux) {
+                // Açılış komutları: kabuk hazır olsun diye kısa gecikme.
+                // autoTmux önce gelir — profil komutu tmux oturumunun içine düşer.
+                val startupCmds = buildList {
+                    if (conn.autoTmux) add("tmux new-session -A -s main")
+                    startupCommand?.trim()?.takeIf { it.isNotEmpty() }?.let { add(it) }
+                }
+                if (startupCmds.isNotEmpty()) {
                     scope.launch {
-                        kotlinx.coroutines.delay(600)
-                        runCatching { t.send(TerminalInput.Text("tmux new-session -A -s main\n")) }
+                        startupCmds.forEach { cmd ->
+                            kotlinx.coroutines.delay(600)
+                            runCatching { t.send(TerminalInput.Text("$cmd\n")) }
+                        }
                     }
                 }
                 readLoop(t)
@@ -131,7 +140,7 @@ class TerminalController(
         val c = lastConn ?: return
         val s = lastSecret
         _state.value = ConnectionState.CLOSED
-        connect(c, s)
+        connect(c, s, lastStartupCommand)
     }
 
     fun rejectHostKey() {
@@ -177,7 +186,7 @@ class TerminalController(
                 _retryAttempt.value = retryCount
                 kotlinx.coroutines.delay(delayMs)
                 if (manualClose || _state.value != ConnectionState.CLOSED) break
-                doConnect(c, s)
+                doConnect(c, s, lastStartupCommand)
                 // CONNECTING çözümlenene kadar bekle (maks 15s)
                 var waited = 0L
                 while (_state.value == ConnectionState.CONNECTING && waited < 15_000) {

@@ -7,6 +7,7 @@ import androidx.room.Room
 import dev.pocketagent.data.AppDatabase
 import dev.pocketagent.data.ConnectionRepository
 import dev.pocketagent.data.DataStoreSettingsStore
+import dev.pocketagent.data.ProfileRepository
 import dev.pocketagent.net.BackendClient
 import dev.pocketagent.net.EventSync
 import dev.pocketagent.security.KeystoreSecretStore
@@ -36,6 +37,9 @@ class App : Application() {
     val secretStore by lazy { KeystoreSecretStore(File(filesDir, "secrets")) }
 
     val connections: ConnectionRepository by lazy { ConnectionRepository(db.connections(), secretStore) }
+
+    // Hazır terminal profilleri (komut + opsiyonel host).
+    val profiles: ProfileRepository by lazy { ProfileRepository(db.profiles()) }
 
     val hostKeys: TofuHostKeyStore by lazy { TofuHostKeyStore(File(filesDir, "known_hosts")) }
 
