@@ -2,10 +2,23 @@
 package dev.pocketagent.ui
 
 import android.content.Intent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
@@ -14,21 +27,14 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -36,31 +42,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.shortHash
 import dev.pocketagent.ui.theme.consoleTheme
 import dev.pocketagent.ui.theme.consoleFont
+import dev.pocketagent.ui.theme.LocalMonoFont
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import dev.pocketagent.android.App
@@ -107,7 +104,7 @@ fun PocketAgentApp(
     val anyActive by sessions.anyActive.collectAsState()
     val unread = inbox.rows.count { it.unread }
 
-    LaunchedEffect(Unit) { app.connections.refresh() }
+    LaunchedEffect(Unit) { app.connections.refresh(); app.profiles.refresh() }
 
     // Açılışta otomatik reconnect (opt-in): yalnız Keystore'da secret saklıysa.
     var autoReconnectTried by remember { mutableStateOf(false) }
@@ -240,6 +237,7 @@ fun PocketAgentApp(
                     )
                     AppTab.Connections -> ConnectionsScreen(
                         repo = app.connections,
+                        profiles = app.profiles,
                         sessions = sessions,
                         app = app,
                         settings = settings,
@@ -292,87 +290,115 @@ fun PocketAgentApp(
     }
 }
 
-// ── Uygulama chrome'u ───────────────────────────────────────────────────────
+// ── Uygulama chrome'u — "status-line" dili ───────────────────────────────────
+// Üst bar bir kabuk prompt'u, alt bar bir tmux window-list'tir. Seçim
+// her yerde "reverse video" ile gösterilir: accent zemin + onPrimary metin.
 
-// Üst bar: uygulama ikonu + ekran başlığı + sağda oturum durumu.
+// Üst bar: `❯ pocket-agent  ~/sekme` prompt'u + sağda canlı oturum sayacı.
 // Edge-to-edge'de status bar altına kaymaması için kendi inset'ini uygular.
 @Composable
 private fun ConsoleTopBar(tab: AppTab, activeSessions: Int) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
-    ) {
+    Column(Modifier.windowInsetsPadding(WindowInsets.statusBars).background(MaterialTheme.colorScheme.surface)) {
         Row(
-            Modifier.fillMaxWidth().height(64.dp).padding(horizontal = Space.lg),
+            Modifier.fillMaxWidth().height(48.dp).padding(horizontal = Space.lg),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Image(
-                painter = painterResource(dev.pocketagent.android.R.drawable.ic_launcher_fg),
-                contentDescription = null,
-                modifier = Modifier.size(30.dp).clip(MaterialTheme.shapes.small),
-            )
-            Spacer(Modifier.width(Space.md))
             Text(
-                tab.label,
-                style = MaterialTheme.typography.titleLarge,
+                "❯",
+                fontFamily = LocalMonoFont.current,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(
+                "pocket-agent",
+                fontFamily = LocalMonoFont.current,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.5.sp,
                 color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+            )
+            Text(
+                "  ~/${tab.short}",
+                fontFamily = LocalMonoFont.current,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
             )
             Spacer(Modifier.weight(1f))
             if (activeSessions > 0) {
                 Row(
                     Modifier
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                        .clip(MaterialTheme.shapes.extraSmall)
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant,
+                            MaterialTheme.shapes.extraSmall,
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    StateDot(ConnectionState.ACTIVE, size = 7.dp)
+                    StateDot(ConnectionState.ACTIVE, size = 6.dp)
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "$activeSessions oturum",
-                        style = MaterialTheme.typography.labelSmall,
+                        "$activeSessions sess",
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         }
+        ConsoleDivider()
     }
 }
 
-// Alt bar: M3 pill göstergeli navigasyon. Aktif sekme ikonun arkasında
-// yatay pill ile vurgulanır; Agents'ta okunmamış sayısı badge olarak durur.
+// Alt bar: tmux status-line. Her sekme `i:ad` hücresi; aktif pencere `*`
+// ile reverse-video blokta, Agents'ta okunmamış `#n` bayrağıyla durur.
 @Composable
 private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) -> Unit) {
-    NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
-    ) {
-        AppTab.entries.forEach { t ->
-            val selected = current == t
-            NavigationBarItem(
-                selected = selected,
-                onClick = { onSelect(t) },
-                icon = {
-                    BadgedBox(
-                        badge = {
-                            if (t == AppTab.Agents && agentUnread > 0) {
-                                Badge { Text("$agentUnread") }
-                            }
-                        },
-                    ) {
-                        Icon(t.icon, contentDescription = t.label)
-                    }
-                },
-                label = { Text(t.short, style = MaterialTheme.typography.labelSmall) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                ),
-            )
+    Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
+        ConsoleDivider()
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .height(50.dp),
+        ) {
+            AppTab.entries.forEachIndexed { i, t ->
+                val selected = current == t
+                val label = buildString {
+                    append(i)
+                    append(':')
+                    append(t.short)
+                    if (selected) append('*')
+                    if (t == AppTab.Agents && agentUnread > 0) append('#').append(agentUnread)
+                }
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .semantics { contentDescription = t.label }
+                        .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(t) }),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        label,
+                        fontFamily = LocalMonoFont.current,
+                        fontSize = 10.5.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = if (selected) {
+                            Modifier
+                                .clip(MaterialTheme.shapes.extraSmall)
+                                .background(MaterialTheme.colorScheme.primary)
+                                .padding(horizontal = 7.dp, vertical = 3.dp)
+                        } else Modifier,
+                    )
+                }
+            }
         }
     }
 }

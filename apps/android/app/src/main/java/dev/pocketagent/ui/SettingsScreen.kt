@@ -14,10 +14,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.pocketagent.android.App
 import dev.pocketagent.transport.TofuHostKeyStore
 import dev.pocketagent.ui.theme.ConsoleFont
@@ -248,50 +248,57 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
     }
 }
 
-// Tema kartı: temanın zemin/vurgu renkleriyle mini önizleme.
+// Tema kartı: mini terminal önizlemesi — tema zemininde prompt satırı +
+// ANSI renkli örnek çıktı. Palet noktaları yerine gerçek terminal görünümü.
 @Composable
 private fun ThemeCard(t: ConsoleTheme, selected: Boolean, onTap: () -> Unit) {
     val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+    val mono = dev.pocketagent.ui.theme.LocalMonoFont.current
     Column(
         Modifier
-            .width(124.dp)
-            .clip(MaterialTheme.shapes.medium)
-            .background(Color(t.background))
-            .border(if (selected) 2.dp else 1.dp, borderColor, MaterialTheme.shapes.medium)
-            .clickable(onClick = onTap)
-            .padding(horizontal = Space.md, vertical = Space.sm),
+            .width(136.dp)
+            .clip(MaterialTheme.shapes.small)
+            .border(if (selected) 1.5.dp else 1.dp, borderColor, MaterialTheme.shapes.small)
+            .clickable(onClick = onTap),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            SwatchDot(Color(t.term.background), MaterialTheme.colorScheme.outline)
-            SwatchDot(Color(t.accent), null)
-            SwatchDot(Color(t.accentAlt), null)
-            SwatchDot(Color(t.term.foreground), null)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(Color(t.term.background))
+                .padding(horizontal = 9.dp, vertical = 8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("❯", color = Color(t.accent), fontFamily = mono, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text(" ls -la", color = Color(t.term.foreground), fontFamily = mono, fontSize = 9.sp)
+            }
+            Spacer(Modifier.height(3.dp))
+            Text("drwx src/", color = Color(t.term.ansi[4]), fontFamily = mono, fontSize = 8.sp, lineHeight = 11.sp)
+            Text("-rw- notes.md", color = Color(t.term.ansi[2]), fontFamily = mono, fontSize = 8.sp, lineHeight = 11.sp)
+            Text("-rw- main.go", color = Color(t.term.foreground), fontFamily = mono, fontSize = 8.sp, lineHeight = 11.sp)
         }
-        Spacer(Modifier.height(Space.sm))
-        Text(t.name, style = MaterialTheme.typography.labelSmall, color = Color(t.text), maxLines = 1)
+        Text(
+            t.name,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+        )
     }
 }
 
-@Composable
-private fun SwatchDot(color: Color, border: Color?) {
-    Box(
-        Modifier
-            .size(14.dp)
-            .clip(CircleShape)
-            .background(color)
-            .then(if (border != null) Modifier.border(1.dp, border, CircleShape) else Modifier),
-    )
-}
-
-// Font çipi: adı kendi fontuyla render eder (canlı önizleme).
+// Font çipi: adı kendi fontuyla render eder (canlı önizleme). Seçili çip
+// accent hairline alır — dolgusuz.
 @Composable
 private fun FontChip(f: ConsoleFont, selected: Boolean, onTap: () -> Unit) {
-    val bg = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant
-    val fg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+    val fg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         Modifier
-            .clip(MaterialTheme.shapes.small)
-            .background(bg)
+            .clip(MaterialTheme.shapes.extraSmall)
+            .border(
+                1.dp,
+                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                MaterialTheme.shapes.extraSmall,
+            )
             .clickable(onClick = onTap)
             .padding(horizontal = Space.md, vertical = Space.sm),
     ) {

@@ -16,16 +16,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
@@ -57,12 +56,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.pocketagent.data.ConnectionRepository
+import dev.pocketagent.data.ProfileRepository
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.SavedConnection
+import dev.pocketagent.transport.SavedProfile
 import dev.pocketagent.transport.Secret
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalTransport
@@ -73,6 +75,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ConnectionsScreen(
     repo: ConnectionRepository,
+    profiles: ProfileRepository,
     sessions: SessionManager,
     app: dev.pocketagent.android.App? = null,
     settings: SettingsViewModel? = null,
@@ -80,9 +83,14 @@ fun ConnectionsScreen(
     onConnected: () -> Unit,
 ) {
     val items by repo.items.collectAsState()
+    val profileList by profiles.items.collectAsState()
     val sessionList by sessions.sessions.collectAsState()
     var editing by remember { mutableStateOf<SavedConnection?>(null) }
     var showAdd by remember { mutableStateOf(false) }
+    // Hazır profiller: düzenlenen profil (null id = yeni) + açılışta host seçimi.
+    var editingProfile by remember { mutableStateOf<SavedProfile?>(null) }
+    var showAddProfile by remember { mutableStateOf(false) }
+    var profileHostPick by remember { mutableStateOf<SavedProfile?>(null) }
     var query by remember { mutableStateOf("") }
     var showPair by remember { mutableStateOf(false) }
     var pairBusy by remember { mutableStateOf(false) }
@@ -155,6 +163,22 @@ fun ConnectionsScreen(
         }
     }
 
+    // Profil açılışı: bağlı host varsa doğrudan, yoksa host seçtir.
+    // Her zaman yeni oturum — mevcut kabuğun içine komut yazılmaz.
+    fun openProfileSession(conn: SavedConnection, p: SavedProfile) {
+        val secret = repo.secret(conn.id)
+        if (secret == null) {
+            editing = conn // secret sor: diyalog düzenleme modunda açılır
+        } else {
+            sessions.open(conn, secret, forceNew = true, startupCommand = p.command)
+            onConnected()
+        }
+    }
+    val launchProfile: (SavedProfile) -> Unit = { p ->
+        val conn = p.connectionId?.let { cid -> items.firstOrNull { it.id == cid } }
+        if (conn == null) profileHostPick = p else openProfileSession(conn, p)
+    }
+
     Scaffold(
         floatingActionButton = {
             // Dikey speed-dial: ana aksiyon ("Host ekle") en altta, yardımcılar üstte.
@@ -164,27 +188,29 @@ fun ConnectionsScreen(
             ) {
                 SmallFloatingActionButton(
                     onClick = { sshConfigPicker.launch(arrayOf("*/*")) },
-                    shape = MaterialTheme.shapes.medium,
+                    shape = MaterialTheme.shapes.small,
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     contentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small),
                 ) {
                     Icon(Icons.Filled.AttachFile, contentDescription = "~/.ssh/config içe aktar")
                 }
                 SmallFloatingActionButton(
                     onClick = { pairError = null; showPair = true },
-                    shape = MaterialTheme.shapes.medium,
+                    shape = MaterialTheme.shapes.small,
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     contentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small),
                 ) {
                     Icon(Icons.Filled.QrCodeScanner, contentDescription = "QR ile bağlan")
                 }
                 ExtendedFloatingActionButton(
                     onClick = { showAdd = true },
-                    shape = MaterialTheme.shapes.medium,
+                    shape = MaterialTheme.shapes.small,
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                    text = { Text("Host ekle") },
+                    text = { Text("Host ekle", fontFamily = LocalMonoFont.current, fontWeight = FontWeight.Bold) },
                 )
             }
         },
@@ -225,7 +251,8 @@ fun ConnectionsScreen(
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.extraSmall)
+                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.extraSmall)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.shapes.extraSmall)
                                     .padding(8.dp),
                             ) {
                                 Text(
@@ -253,9 +280,16 @@ fun ConnectionsScreen(
                         OutlinedTextField(
                             value = query,
                             onValueChange = { query = it },
-                            placeholder = { Text("Host ara…") },
+                            placeholder = { Text("Host ara…", fontFamily = LocalMonoFont.current) },
+                            prefix = {
+                                Text(
+                                    "❯ ",
+                                    fontFamily = LocalMonoFont.current,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            },
                             singleLine = true,
-                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                            shape = MaterialTheme.shapes.small,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                         )
                     }
@@ -264,6 +298,17 @@ fun ConnectionsScreen(
                     verticalArrangement = Arrangement.spacedBy(Space.md),
                     contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),
                 ) {
+                    // Hazır profiller: kayıtlı komutla tek dokunuşta oturum.
+                    item(key = "profiles") {
+                        ProfilesCard(
+                            profiles = profileList,
+                            conns = items,
+                            onOpen = launchProfile,
+                            onAdd = { showAddProfile = true },
+                            onEdit = { editingProfile = it },
+                            onDelete = { p -> scope.launch { profiles.delete(p.id) } },
+                        )
+                    }
                     items(filtered, key = { it.id }) { c ->
                         val openSession = sessionList.firstOrNull { it.conn.id == c.id }
                         val sessionState = openSession?.controller?.state?.collectAsState()?.value
@@ -380,6 +425,53 @@ fun ConnectionsScreen(
         )
     }
 
+    // Profil ekle/düzenle diyaloğu.
+    if (showAddProfile || editingProfile != null) {
+        ProfileDialog(
+            initial = editingProfile,
+            conns = items,
+            onDismiss = { showAddProfile = false; editingProfile = null },
+            onSave = { p ->
+                scope.launch {
+                    profiles.upsert(p)
+                    showAddProfile = false
+                    editingProfile = null
+                }
+            },
+        )
+    }
+
+    // Host'suz profil açılınca host seçtir.
+    profileHostPick?.let { p ->
+        AlertDialog(
+            onDismissRequest = { profileHostPick = null },
+            title = { Text(p.name) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        "Bu profil hangi host'ta açılsın?",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    items.forEach { c ->
+                        ListRow(
+                            title = c.name,
+                            titleMono = true,
+                            subtitle = "${c.user}@${c.host}:${c.port}",
+                            onClick = {
+                                profileHostPick = null
+                                openProfileSession(c, p)
+                            },
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { profileHostPick = null }) { Text("Vazgeç") }
+            },
+        )
+    }
+
     // ~/.ssh/config içe aktarım önizlemesi: hangi host'lar eklenecek göster.
     importPreview?.let { entries ->
         AlertDialog(
@@ -427,6 +519,163 @@ fun ConnectionsScreen(
     }
 }
 
+// Hazır profiller kartı: ad + komut (+ opsiyonel host). Dokun → oturum açılır
+// ve komut otomatik çalışır; ⋮ → düzenle/sil.
+@Composable
+private fun ProfilesCard(
+    profiles: List<SavedProfile>,
+    conns: List<SavedConnection>,
+    onOpen: (SavedProfile) -> Unit,
+    onAdd: () -> Unit,
+    onEdit: (SavedProfile) -> Unit,
+    onDelete: (SavedProfile) -> Unit,
+) {
+    ConsoleCard(padding = Space.sm) {
+        Box(Modifier.padding(start = Space.lg, top = Space.sm, end = Space.lg)) {
+            CardHeader("Profiller") {
+                ConsoleTextButton(onClick = onAdd) { Text("Yeni profil") }
+            }
+        }
+        if (profiles.isEmpty()) {
+            Text(
+                "Kayıtlı komutla oturum aç — örn. ad \"Codex\", komut \"codex\".",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = Space.lg, end = Space.lg, bottom = Space.sm),
+            )
+        }
+        profiles.forEach { p ->
+            ProfileRow(
+                p = p,
+                hostName = conns.firstOrNull { it.id == p.connectionId }?.name,
+                onOpen = { onOpen(p) },
+                onEdit = { onEdit(p) },
+                onDelete = { onDelete(p) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileRow(
+    p: SavedProfile,
+    hostName: String?,
+    onOpen: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    ListRow(
+        title = p.name,
+        subtitle = p.command + (hostName?.let { " · $it" } ?: " · host seçilecek"),
+        leading = {
+            Box(
+                Modifier.size(34.dp).clip(MaterialTheme.shapes.small)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "❯",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontFamily = LocalMonoFont.current,
+                )
+            }
+        },
+        trailing = {
+            Box {
+                IconButton(onClick = { menu = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Profil menüsü")
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Düzenle") },
+                        leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                        onClick = { menu = false; onEdit() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sil", color = MaterialTheme.colorScheme.error) },
+                        onClick = { menu = false; onDelete() },
+                    )
+                }
+            }
+        },
+        onClick = onOpen,
+    )
+}
+
+// Profil ekle/düzenle: ad + komut + opsiyonel host bağlama.
+@Composable
+private fun ProfileDialog(
+    initial: SavedProfile?,
+    conns: List<SavedConnection>,
+    onDismiss: () -> Unit,
+    onSave: (SavedProfile) -> Unit,
+) {
+    var name by remember { mutableStateOf(initial?.name ?: "") }
+    var command by remember { mutableStateOf(initial?.command ?: "") }
+    var connId by remember { mutableStateOf(initial?.connectionId) }
+    var hostMenu by remember { mutableStateOf(false) }
+    val bound = conns.firstOrNull { it.id == connId }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (initial == null) "Yeni profil" else "Profili düzenle") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    name, { name = it },
+                    label = { Text("Ad") }, placeholder = { Text("Codex") }, singleLine = true,
+                )
+                OutlinedTextField(
+                    command, { command = it },
+                    label = { Text("Komut") }, placeholder = { Text("codex") }, singleLine = true,
+                )
+                Box {
+                    ConsoleOutlinedButton(onClick = { hostMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            bound?.let { "${it.name} (${it.user}@${it.host})" } ?: "Her seferinde host sor",
+                            fontSize = 13.sp, maxLines = 1,
+                        )
+                    }
+                    DropdownMenu(expanded = hostMenu, onDismissRequest = { hostMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Her seferinde host sor") },
+                            onClick = { hostMenu = false; connId = null },
+                        )
+                        conns.forEach { c ->
+                            DropdownMenuItem(
+                                text = { Text("${c.name} — ${c.user}@${c.host}") },
+                                onClick = { hostMenu = false; connId = c.id },
+                            )
+                        }
+                    }
+                }
+                Text(
+                    "Oturum açılınca komut otomatik çalışır.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank() && command.isNotBlank(),
+                onClick = {
+                    onSave(
+                        SavedProfile(
+                            name = name.trim(),
+                            command = command.trim(),
+                            connectionId = connId,
+                            id = initial?.id ?: "",
+                        ),
+                    )
+                },
+            ) { Text("Kaydet") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+    )
+}
+
 // İlk kurulum adımı: numaralı başlık + açıklama + içerik.
 @Composable
 private fun WizardStep(n: Int, title: String, subtitle: String, content: @Composable () -> Unit) {
@@ -434,10 +683,14 @@ private fun WizardStep(n: Int, title: String, subtitle: String, content: @Compos
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(22.dp).clip(MaterialTheme.shapes.extraSmall)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.extraSmall),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("$n", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    "$n",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
             Spacer(Modifier.width(Space.sm))
             Column {
@@ -464,24 +717,31 @@ private fun ConnectionCard(
     ConsoleCard(
         // Kartın tamamı bağlanma hedefi — kullanıcı küçük "Bağlan" düğmesini
         // aramak zorunda kalmaz; düğme görünür ipucu olarak kalır.
+        // Aktif kart: accent hairline — "seçili satır" işareti.
         modifier = Modifier.clip(MaterialTheme.shapes.medium).clickable(onClick = onConnect),
-        containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-        else MaterialTheme.colorScheme.surfaceContainer,
+        borderColor = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+        else MaterialTheme.colorScheme.outlineVariant,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
+                    .size(42.dp)
+                    .clip(MaterialTheme.shapes.small)
                     .background(
-                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                         else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    )
+                    .border(
+                        1.dp,
+                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                        else MaterialTheme.colorScheme.outlineVariant,
+                        MaterialTheme.shapes.small,
                     ),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     conn.name.trim().take(1).uppercase().ifBlank { "?" },
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.copy(fontFamily = LocalMonoFont.current),
                     color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -748,7 +1008,8 @@ private fun ConnectionDialog(
                         fontFamily = LocalMonoFont.current,
                         fontSize = 10.sp,
                         modifier = Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.extraSmall)
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.extraSmall)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.shapes.extraSmall)
                             .padding(8.dp),
                     )
                 }

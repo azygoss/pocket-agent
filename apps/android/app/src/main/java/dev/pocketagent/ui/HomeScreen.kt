@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package dev.pocketagent.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +17,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.pocketagent.data.ConnectionRepository
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.SessionManager
@@ -53,14 +51,14 @@ fun HomeScreen(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Space.lg),
         verticalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        // ── Durum hero'u: bir bakışta bağlantı durumu ──────────────────────
+        // ── Durum paneli: tek bakışta bağlantı okuması ─────────────────────
         ConsoleCard(
-            containerColor = if (state == ConnectionState.ACTIVE)
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-            else MaterialTheme.colorScheme.surfaceContainer,
+            borderColor = if (state == ConnectionState.ACTIVE)
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+            else MaterialTheme.colorScheme.outlineVariant,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StateDot(state, size = 10.dp)
+                StateDot(state, size = 9.dp)
                 Spacer(Modifier.width(Space.md))
                 Column(Modifier.weight(1f)) {
                     Text(stateText(state, sessionList.size), style = MaterialTheme.typography.titleMedium)
@@ -80,7 +78,9 @@ fun HomeScreen(
             }
             if (state == ConnectionState.ACTIVE && active != null) {
                 Spacer(Modifier.height(Space.md))
-                Row(horizontalArrangement = Arrangement.spacedBy(Space.lg)) {
+                ConsoleDivider()
+                Spacer(Modifier.height(Space.md))
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.xl)) {
                     Metric("pty", "${active.controller.vm.size.cols}×${active.controller.vm.size.rows}")
                     Metric("oturum", "${sessionList.size}")
                 }
@@ -113,6 +113,8 @@ fun HomeScreen(
         if (saved.isEmpty()) {
             ConsoleCard {
                 CardHeader("Başlangıç")
+                Spacer(Modifier.height(Space.sm))
+                ConsoleDivider()
                 Spacer(Modifier.height(Space.md))
                 StepRow(1, "Host'ta çalıştır: pocket-agent pair")
                 StepRow(2, "QR'ı tara ya da XXXX-XXXX kodunu gir")
@@ -134,11 +136,11 @@ fun HomeScreen(
                             StateDot(open?.controller?.state?.collectAsState()?.value ?: ConnectionState.CLOSED)
                         },
                         trailing = {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp),
+                            Text(
+                                "›",
+                                fontFamily = LocalMonoFont.current,
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
                         onClick = {
@@ -167,9 +169,10 @@ fun HomeScreen(
             } else {
                 inbox.rows.take(3).forEach { r ->
                     Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(5.dp)
-                                .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape),
+                        Text(
+                            "·",
+                            fontFamily = LocalMonoFont.current,
+                            color = MaterialTheme.colorScheme.primary,
                         )
                         Spacer(Modifier.width(Space.sm))
                         Text(r.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
@@ -179,7 +182,7 @@ fun HomeScreen(
                     Spacer(Modifier.height(Space.xs))
                     Text(
                         "+${inbox.rows.size - 3} daha",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
@@ -197,23 +200,39 @@ private fun stateText(state: ConnectionState, sessionCount: Int): String = when 
     else -> if (sessionCount == 0) "Açık oturum yok" else "$sessionCount oturum askıda"
 }
 
+// İstatistik hücresi: mono etiket + değer — enstrüman okuması.
 @Composable
 private fun Metric(label: String, value: String) {
     Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.titleSmall)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.titleSmall.copy(fontFamily = LocalMonoFont.current),
+        )
     }
 }
 
+// Numaralı adım: mono sıra numarası hairline kutuda.
 @Composable
 private fun StepRow(n: Int, text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 3.dp)) {
-        Text(
-            "$n",
-            fontFamily = LocalMonoFont.current,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
-        )
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+        Box(
+            Modifier
+                .size(20.dp)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.extraSmall),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "$n",
+                fontFamily = LocalMonoFont.current,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
         Spacer(Modifier.width(Space.md))
         Text(text, style = MaterialTheme.typography.bodyMedium)
     }

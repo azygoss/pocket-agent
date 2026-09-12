@@ -4,6 +4,7 @@ package dev.pocketagent.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -238,14 +239,15 @@ private fun SessionPillsRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        sessionList.forEach { h ->
+        sessionList.forEachIndexed { idx, h ->
             val st by h.controller.state.collectAsState()
             val retry by h.controller.retryAttempt.collectAsState()
             // Aynı host'ta paralel oturumlar: ·2, ·3… ile ayırt et.
             val same = sessionList.count { it.conn.id == h.conn.id }
-            val nth = sessionList.take(sessionList.indexOf(h)).count { it.conn.id == h.conn.id }
+            val nth = sessionList.take(idx).count { it.conn.id == h.conn.id }
             val label = if (same > 1) "${h.conn.name}·${nth + 1}" else h.conn.name
             SessionPill(
+                index = idx,
                 name = label,
                 state = st,
                 retry = retry,
@@ -264,26 +266,47 @@ private fun SessionPillsRow(
     }
 }
 
-// Oturum pill'i: ● ad (durum rengi), aktifte tonal vurgu kapsülü; retry
-// rozeti inline.
+// Oturum hücresi: tmux window-list biçimi `i:ad` + durum noktası; aktif
+// pencere reverse-video blokta (accent zemin + onPrimary), retry `↻n/5`.
 @Composable
-private fun SessionPill(name: String, state: ConnectionState, retry: Int, active: Boolean, onClick: () -> Unit) {
-    Surface(
-        color = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-        else MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = CircleShape,
+private fun SessionPill(index: Int, name: String, state: ConnectionState, retry: Int, active: Boolean, onClick: () -> Unit) {
+    val fg = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        Modifier
+            .clip(MaterialTheme.shapes.extraSmall)
+            .background(if (active) MaterialTheme.colorScheme.primary else Color.Transparent)
+            .border(
+                1.dp,
+                if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                MaterialTheme.shapes.extraSmall,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 9.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier.clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            StateDot(state)
-            Spacer(Modifier.width(7.dp))
+        StateDot(state, size = 6.dp)
+        Spacer(Modifier.width(6.dp))
+        Text(
+            "$index:",
+            fontFamily = LocalMonoFont.current,
+            fontSize = 11.sp,
+            color = fg.copy(alpha = if (active) 0.75f else 0.6f),
+            maxLines = 1,
+        )
+        Text(
+            name,
+            fontFamily = LocalMonoFont.current,
+            fontSize = 11.5.sp,
+            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+            color = fg,
+            maxLines = 1,
+        )
+        if (retry > 0) {
             Text(
-                if (retry > 0) "$name ↻$retry/${TerminalController.MAX_RETRY}" else name,
+                " ↻$retry/${TerminalController.MAX_RETRY}",
                 fontFamily = LocalMonoFont.current,
-                fontSize = 11.5.sp,
-                color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 10.5.sp,
+                color = fg.copy(alpha = 0.8f),
                 maxLines = 1,
             )
         }
@@ -296,12 +319,22 @@ private fun EmptyTerminal(onNewConnection: () -> Unit) {
         Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(
-            "$ açık oturum yok",
-            color = MaterialTheme.colorScheme.primary,
-            fontFamily = LocalMonoFont.current,
-            fontSize = 14.sp,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "❯ açık oturum yok",
+                color = MaterialTheme.colorScheme.primary,
+                fontFamily = LocalMonoFont.current,
+                fontSize = 14.sp,
+            )
+            Spacer(Modifier.width(4.dp))
+            // Statik imleç bloğu — terminal motifi.
+            Box(
+                Modifier
+                    .width(8.dp)
+                    .height(15.dp)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
+            )
+        }
         Spacer(Modifier.height(8.dp))
         Text(
             "Bağlantılar sekmesinden bir host seç ya da QR ile eşle. Her host kendi oturumuyla açılır; yukarıdaki şeritle aralarında gezinebilirsin.",
@@ -633,10 +666,10 @@ private fun ActiveTerminal(
                             ) {
                                 Text(
                                     when (state) {
-                                        ConnectionState.CONNECTING -> "$ bağlanıyor…"
-                                        ConnectionState.ACTIVE -> "$ yazmaya başla"
-                                        ConnectionState.FAILED -> "$ bağlantı hatası"
-                                        else -> "$ bekleniyor"
+                                        ConnectionState.CONNECTING -> "❯ bağlanıyor…"
+                                        ConnectionState.ACTIVE -> "❯ yazmaya başla"
+                                        ConnectionState.FAILED -> "❯ bağlantı hatası"
+                                        else -> "❯ bekleniyor"
                                     },
                                     color = when (state) {
                                         ConnectionState.CONNECTING -> TermAmber
@@ -886,8 +919,9 @@ private fun TerminalKeyBar(
     }
 }
 
-// Konsol tuşu: çerçevesiz mono metin, basılıyken hafif zemin + hafif haptic;
-// ripple yok. Haptic, dokunmanın algılandığını garantiler (tuşlar ripple'sız).
+// Konsol tuşu: çerçevesiz mono metin; aktif mandal "reverse video" (accent
+// blok + onPrimary), basılıyken hafif zemin + haptic. Ripple yok — haptic
+// dokunmanın algılandığını garantiler.
 @Composable
 private fun TermKey(
     label: String,
@@ -901,11 +935,12 @@ private fun TermKey(
     Box(
         Modifier
             .fillMaxHeight()
+            .padding(horizontal = 2.dp, vertical = 5.dp)
             .clip(MaterialTheme.shapes.extraSmall)
             .background(
                 when {
-                    active -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                    pressed && enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                    active -> MaterialTheme.colorScheme.primary
+                    pressed && enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)
                     else -> Color.Transparent
                 },
             )
@@ -918,17 +953,17 @@ private fun TermKey(
                     onTap()
                 },
             )
-            .padding(horizontal = 13.dp),
+            .padding(horizontal = 11.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
             fontFamily = LocalMonoFont.current,
-            fontSize = 13.sp,
+            fontSize = 12.5.sp,
             maxLines = 1,
             color = when {
                 !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                active -> MaterialTheme.colorScheme.primary
+                active -> MaterialTheme.colorScheme.onPrimary
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             },
         )
@@ -943,8 +978,9 @@ private fun TermIconKey(icon: ImageVector, desc: String, enabled: Boolean, onTap
     Box(
         Modifier
             .fillMaxHeight()
+            .padding(horizontal = 2.dp, vertical = 5.dp)
             .clip(MaterialTheme.shapes.extraSmall)
-            .background(if (pressed && enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent)
+            .background(if (pressed && enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f) else Color.Transparent)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -954,7 +990,7 @@ private fun TermIconKey(icon: ImageVector, desc: String, enabled: Boolean, onTap
                     onTap()
                 },
             )
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 11.dp),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

@@ -27,24 +27,24 @@ object Space {
     val xxl = 32.dp
 }
 
-// Modern yumuşak köşeler: kart 16, diyalog/kontrol 20+. Keskin "kutu"
-// estetiği yerini tonal katmanlara bırakır.
+// "Status-line" dili: enstrüman paneli hissi — keskin köşeler (kart 10,
+// kontrol 6), hairline kurallar, ters-video vurgular. Blob köşeler yok.
 private val PocketShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(20.dp),
-    extraLarge = RoundedCornerShape(24.dp),
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(6.dp),
+    medium = RoundedCornerShape(10.dp),
+    large = RoundedCornerShape(14.dp),
+    extraLarge = RoundedCornerShape(20.dp),
 )
 
 // Tipografi: UI metni sistem sans; mono yalnız veri taşıyan yerlerde
 // (hostname, oturum pill'i, tuş şeridi, kod) LocalMonoFont ile açıkça
-// uygulanır. Başlıklar semibold — mono başlık dönemi bitti.
+// uygulanır. Başlıklar semibold — sıkı letter-spacing ile.
 private fun pocketTypography() = Typography(
     headlineSmall = TextStyle(fontWeight = FontWeight.Bold, fontSize = 22.sp, letterSpacing = (-0.3).sp),
-    titleLarge = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 20.sp, letterSpacing = (-0.2).sp),
-    titleMedium = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 16.sp, letterSpacing = (-0.1).sp),
-    titleSmall = TextStyle(fontWeight = FontWeight.Medium, fontSize = 14.sp),
+    titleLarge = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 19.sp, letterSpacing = (-0.2).sp),
+    titleMedium = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 15.sp, letterSpacing = (-0.1).sp),
+    titleSmall = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp),
     bodyLarge = TextStyle(fontSize = 15.sp, lineHeight = 22.sp),
     bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
     bodySmall = TextStyle(fontSize = 12.5.sp, lineHeight = 17.sp),

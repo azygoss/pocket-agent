@@ -4,6 +4,7 @@ package dev.pocketagent.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -51,18 +53,20 @@ import dev.pocketagent.ui.theme.TermRed
 import dev.pocketagent.ui.theme.LocalMonoFont
 import java.util.Locale
 
-// ── Bileşen kütüphanesi ─────────────────────────────────────────────────────
-// Tüm ekranlar buradan beslenir. Kural: hiyerarşi tonal katmanlarla kurulur
-// (border istisna), köşeler yumuşak, tek vurgu rengi tutumlu kullanılır.
+// ── Bileşen kütüphanesi — "status-line" dili ─────────────────────────────────
+// Uygulama bir multiplexer companion'ı: chrome'u iyi bir TUI gibi konuşur.
+// Kurallar: hairline çerçeveli paneller (tonal blob yok), seçim/vurgu
+// "reverse video" (vurgu zemin + onPrimary metin), mono yalnız veri/etiket
+// taşır, köşeler keskin (10/6/4dp), gölge yalnız overlay'lerde.
 
-// Tonal kart: border'suz, surfaceContainer dolgu, 16dp köşe.
-// borderColor yalnız vurgu gereken kartlarda (aktif bağlantı) geçilir.
+// Panel: hairline border + hafif dolgu + 10dp köşe. Hiyerarşi border ve
+// katman farkıyla kurulur; gölge kullanılmaz.
 @Composable
 fun ConsoleCard(
     modifier: Modifier = Modifier,
     padding: Dp = Space.lg,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
-    borderColor: Color = Color.Transparent,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    borderColor: Color = MaterialTheme.colorScheme.outlineVariant,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
@@ -92,13 +96,15 @@ fun CardHeader(
     }
 }
 
-// Bölüm etiketi: küçük caps "eyebrow" stili — modern listelerin standart
-// gruplama ipucu.
+// Bölüm etiketi: "// LABEL" — kaynak-yorumu motifi, mono + geniş tracking.
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
-        text.uppercase(Locale("tr")),
-        style = MaterialTheme.typography.labelSmall,
+        "// ${text.uppercase(Locale("tr"))}",
+        style = MaterialTheme.typography.labelSmall.copy(
+            fontFamily = LocalMonoFont.current,
+            letterSpacing = androidx.compose.ui.unit.TextUnit(1.1f, androidx.compose.ui.unit.TextUnitType.Sp),
+        ),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier,
     )
@@ -142,7 +148,7 @@ fun ListRow(
         modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .defaultMinSize(minHeight = 60.dp)
+            .defaultMinSize(minHeight = 56.dp)
             .padding(horizontal = Space.lg, vertical = Space.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -174,7 +180,8 @@ fun ListRow(
     }
 }
 
-// Küçük etiket (transport, kategori, durum): mono, tam yuvarlak, tek renk.
+// Mikro etiket (transport, kategori, durum): hairline kapsül + mono metin.
+// Aktifte accent border + accent metin — dolgusuz, enstrüman rozeti gibi.
 @Composable
 fun TagPill(
     text: String,
@@ -185,9 +192,13 @@ fun TagPill(
     val color = tone ?: MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier
-            .clip(CircleShape)
-            .background(if (active) color.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .clip(MaterialTheme.shapes.extraSmall)
+            .border(
+                1.dp,
+                if (active) color else MaterialTheme.colorScheme.outlineVariant,
+                MaterialTheme.shapes.extraSmall,
+            )
+            .padding(horizontal = 7.dp, vertical = 2.dp),
     ) {
         Text(
             text,
@@ -197,7 +208,7 @@ fun TagPill(
     }
 }
 
-// Boş durum: ikon kutusu + başlık + açıklama + isteğe bağlı aksiyon.
+// Boş durum: prompt motifi (❯ + imleç bloğu) + başlık + açıklama + aksiyon.
 @Composable
 fun EmptyState(
     icon: ImageVector,
@@ -213,12 +224,13 @@ fun EmptyState(
     ) {
         Box(
             Modifier
-                .size(56.dp)
-                .clip(MaterialTheme.shapes.large)
-                .background(tint.copy(alpha = 0.12f)),
+                .size(52.dp)
+                .clip(MaterialTheme.shapes.small)
+                .border(1.dp, tint.copy(alpha = 0.5f), MaterialTheme.shapes.small)
+                .background(tint.copy(alpha = 0.07f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(26.dp))
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
         }
         Spacer(Modifier.height(Space.lg))
         Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
@@ -238,8 +250,8 @@ fun EmptyState(
 
 data class Segment<T>(val value: T, val label: String)
 
-// Segmentli geçiş kontrolü: tek kap, eşit genişlik, seçili segment vurgu
-// rengiyle dolar.
+// Segmentli geçiş: hairline kap, seçili segment "reverse video" (accent
+// zemin + onPrimary metin) — terminaldeki inverse-video geleneği.
 @Composable
 fun <T> SegmentedControl(
     options: List<Segment<T>>,
@@ -250,18 +262,18 @@ fun <T> SegmentedControl(
     Row(
         modifier
             .clip(MaterialTheme.shapes.small)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         options.forEach { option ->
             val isSelected = option.value == selected
             val bg by animateColorAsState(
-                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent,
+                if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
                 label = "segment-bg",
             )
             val fg by animateColorAsState(
-                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                 label = "segment-fg",
             )
             Box(
@@ -270,10 +282,15 @@ fun <T> SegmentedControl(
                     .clip(MaterialTheme.shapes.extraSmall)
                     .background(bg)
                     .selectable(selected = isSelected, role = Role.Tab, onClick = { onSelect(option.value) })
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 7.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(option.label, style = MaterialTheme.typography.labelLarge, color = fg, maxLines = 1)
+                Text(
+                    option.label,
+                    style = MaterialTheme.typography.labelLarge.copy(fontFamily = LocalMonoFont.current),
+                    color = fg,
+                    maxLines = 1,
+                )
             }
         }
     }
@@ -307,9 +324,11 @@ fun SettingRow(
     }
 }
 
-// ── Butonlar: 14dp köşe, 46dp dokunma hedefi, sans etiket ───────────────────
+// ── Butonlar: 6dp köşe, 44dp hedef, mono etiket ─────────────────────────────
+// Birincil buton = "reverse video" blok (accent zemin + onPrimary) — bu
+// uygulamada seçim/aksiyon vurgusunun imzası.
 
-private val ButtonShape = RoundedCornerShape(14.dp)
+private val ButtonShape = RoundedCornerShape(6.dp)
 
 @Composable
 fun ConsoleButton(
@@ -320,12 +339,19 @@ fun ConsoleButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier.defaultMinSize(minHeight = 46.dp),
+        modifier = modifier.defaultMinSize(minHeight = 44.dp),
         enabled = enabled,
         shape = ButtonShape,
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
-        content = content,
-    )
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp),
+    ) {
+        ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontFamily = LocalMonoFont.current)) {
+            content()
+        }
+    }
 }
 
 @Composable
@@ -337,14 +363,17 @@ fun ConsoleOutlinedButton(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.defaultMinSize(minHeight = 46.dp),
+        modifier = modifier.defaultMinSize(minHeight = 44.dp),
         enabled = enabled,
         shape = ButtonShape,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-        content = content,
-    )
+    ) {
+        ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontFamily = LocalMonoFont.current)) {
+            content()
+        }
+    }
 }
 
 @Composable
@@ -359,8 +388,11 @@ fun ConsoleTextButton(
         modifier = modifier,
         enabled = enabled,
         shape = MaterialTheme.shapes.extraSmall,
-        content = content,
-    )
+    ) {
+        ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontFamily = LocalMonoFont.current)) {
+            content()
+        }
+    }
 }
 
 // "az önce / 5 dk önce / 3 sa önce / 2 g önce" — bağlantı kartlarında son
