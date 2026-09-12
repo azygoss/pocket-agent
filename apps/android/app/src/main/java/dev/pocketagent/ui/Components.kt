@@ -45,19 +45,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.ui.theme.Space
 import dev.pocketagent.ui.theme.TermAmber
 import dev.pocketagent.ui.theme.TermGreen
 import dev.pocketagent.ui.theme.TermRed
 import dev.pocketagent.ui.theme.LocalMonoFont
-import java.util.Locale
 
-// ── Bileşen kütüphanesi — "status-line" dili ─────────────────────────────────
-// Uygulama bir multiplexer companion'ı: chrome'u iyi bir TUI gibi konuşur.
-// Kurallar: hairline çerçeveli paneller (tonal blob yok), seçim/vurgu
-// "reverse video" (vurgu zemin + onPrimary metin), mono yalnız veri/etiket
-// taşır, köşeler keskin (10/6/4dp), gölge yalnız overlay'lerde.
+// ── Bileşen kütüphanesi — flat editoryal dil ─────────────────────────────────
+// İçerik düz zeminde yaşar: satırlar hairline ayırıcılarla ayrılır, kart
+// yalnız gerçek bir panel olduğunda kullanılır. Accent tutumlu — birincil
+// aksiyon, canlı durum ve seçili öğe dışında renk yok. Mono yalnız veri
+// taşır (hostname, oturum adı, yol, komut).
 
 // Panel: hairline border + hafif dolgu + 10dp köşe. Hiyerarşi border ve
 // katman farkıyla kurulur; gölge kullanılmaz.
@@ -96,15 +96,38 @@ fun CardHeader(
     }
 }
 
-// Bölüm etiketi: "// LABEL" — kaynak-yorumu motifi, mono + geniş tracking.
+// Sayfa başlığı: büyük sakin başlık + isteğe bağlı mono meta satırı.
+// Her ekran kendi başlığını taşır; üst bar ince bir şerit kalır.
+@Composable
+fun ScreenHeader(title: String, modifier: Modifier = Modifier, meta: String? = null) {
+    Column(modifier.fillMaxWidth()) {
+        Text(
+            title,
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = (-0.4).sp,
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (meta != null) {
+            Spacer(Modifier.height(3.dp))
+            Text(
+                meta,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+// Bölüm etiketi: küçük, loş, geniş tracking. Metin verildiği gibi basılır
+// (büyük harf dönüşümü çağıranın işi — test metinleri korunur).
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
-        "// ${text.uppercase(Locale("tr"))}",
-        style = MaterialTheme.typography.labelSmall.copy(
-            fontFamily = LocalMonoFont.current,
-            letterSpacing = androidx.compose.ui.unit.TextUnit(1.1f, androidx.compose.ui.unit.TextUnitType.Sp),
-        ),
+        text,
+        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.8.sp),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier,
     )
@@ -134,12 +157,14 @@ fun SoftDivider(modifier: Modifier = Modifier) {
 }
 
 // Evrensel liste satırı: leading ikon/avatar + başlık + alt satır + trailing.
+// Düz zeminde durur — kutu yok; ayırma işi çağıranın SoftDivider'ındadır.
 @Composable
 fun ListRow(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     titleMono: Boolean = false,
+    contentPadding: PaddingValues = PaddingValues(horizontal = Space.lg, vertical = Space.md),
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
@@ -148,8 +173,8 @@ fun ListRow(
         modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .defaultMinSize(minHeight = 56.dp)
-            .padding(horizontal = Space.lg, vertical = Space.md),
+            .defaultMinSize(minHeight = 52.dp)
+            .padding(contentPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leading != null) {
@@ -208,7 +233,7 @@ fun TagPill(
     }
 }
 
-// Boş durum: prompt motifi (❯ + imleç bloğu) + başlık + açıklama + aksiyon.
+// Boş durum: tek ikon + başlık + açıklama + isteğe bağlı aksiyon. Kutu yok.
 @Composable
 fun EmptyState(
     icon: ImageVector,
@@ -222,16 +247,12 @@ fun EmptyState(
         modifier.fillMaxWidth().padding(horizontal = Space.xl, vertical = Space.xxl),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            Modifier
-                .size(52.dp)
-                .clip(MaterialTheme.shapes.small)
-                .border(1.dp, tint.copy(alpha = 0.5f), MaterialTheme.shapes.small)
-                .background(tint.copy(alpha = 0.07f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
-        }
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = tint.copy(alpha = 0.8f),
+            modifier = Modifier.size(30.dp),
+        )
         Spacer(Modifier.height(Space.lg))
         Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
         Spacer(Modifier.height(Space.xs))
@@ -250,8 +271,7 @@ fun EmptyState(
 
 data class Segment<T>(val value: T, val label: String)
 
-// Segmentli geçiş: hairline kap, seçili segment "reverse video" (accent
-// zemin + onPrimary metin) — terminaldeki inverse-video geleneği.
+// Segmentli geçiş: tonal kap, seçili segment dolu accent.
 @Composable
 fun <T> SegmentedControl(
     options: List<Segment<T>>,
@@ -262,7 +282,7 @@ fun <T> SegmentedControl(
     Row(
         modifier
             .clip(MaterialTheme.shapes.small)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
@@ -287,7 +307,7 @@ fun <T> SegmentedControl(
             ) {
                 Text(
                     option.label,
-                    style = MaterialTheme.typography.labelLarge.copy(fontFamily = LocalMonoFont.current),
+                    style = MaterialTheme.typography.labelLarge,
                     color = fg,
                     maxLines = 1,
                 )
@@ -324,11 +344,9 @@ fun SettingRow(
     }
 }
 
-// ── Butonlar: 6dp köşe, 44dp hedef, mono etiket ─────────────────────────────
-// Birincil buton = "reverse video" blok (accent zemin + onPrimary) — bu
-// uygulamada seçim/aksiyon vurgusunun imzası.
+// ── Butonlar: 8dp köşe, 44dp hedef, sans etiket ─────────────────────────────
 
-private val ButtonShape = RoundedCornerShape(6.dp)
+private val ButtonShape = RoundedCornerShape(8.dp)
 
 @Composable
 fun ConsoleButton(
@@ -348,7 +366,7 @@ fun ConsoleButton(
         ),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp),
     ) {
-        ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontFamily = LocalMonoFont.current)) {
+        ProvideTextStyle(MaterialTheme.typography.labelLarge) {
             content()
         }
     }
@@ -370,7 +388,7 @@ fun ConsoleOutlinedButton(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
     ) {
-        ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontFamily = LocalMonoFont.current)) {
+        ProvideTextStyle(MaterialTheme.typography.labelLarge) {
             content()
         }
     }
@@ -389,7 +407,7 @@ fun ConsoleTextButton(
         enabled = enabled,
         shape = MaterialTheme.shapes.extraSmall,
     ) {
-        ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontFamily = LocalMonoFont.current)) {
+        ProvideTextStyle(MaterialTheme.typography.labelLarge) {
             content()
         }
     }

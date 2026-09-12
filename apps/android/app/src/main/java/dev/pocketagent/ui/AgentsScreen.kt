@@ -2,7 +2,6 @@
 package dev.pocketagent.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,7 +83,10 @@ fun AgentsScreen(
     val scope = rememberCoroutineScope()
     val syncStatus by app.eventSync.status.collectAsState()
 
-    Column(Modifier.fillMaxSize().padding(Space.lg), verticalArrangement = Arrangement.spacedBy(Space.md)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = Space.lg)) {
+        Spacer(Modifier.height(Space.lg))
+        ScreenHeader("Agentlar")
+        Spacer(Modifier.height(Space.md))
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -112,48 +114,48 @@ fun AgentsScreen(
         // şikayetlerinde ilk kontrol edilecek yer burası.
         Text(
             "backend: ${backendInfo.ifBlank { "ayarlanmadı" }}",
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = Space.xs),
         )
 
         // Aktif agent'lar: sessionId başına son olay SESSION_STARTED olanlar.
         // Dokun → o host'un terminaline düş; tmux oturumuysa attach et.
         val active = activeSessions(inbox.rows)
         if (active.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                SectionLabel("aktif agent'lar")
-                active.forEach { r ->
-                    ConsoleCard(
-                        padding = Space.md,
-                        borderColor = TermGreen.copy(alpha = 0.5f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(MaterialTheme.shapes.medium)
-                            .clickable { onOpenAgent(r) },
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            StateDot(dev.pocketagent.transport.ConnectionState.ACTIVE, 10.dp)
-                            Spacer(Modifier.width(Space.md))
-                            Column(Modifier.weight(1f)) {
-                                Text(r.source, style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    listOf(r.sessionId, eventTime(r.createdAt))
-                                        .filter { it.isNotBlank() }
-                                        .joinToString(" · "),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                )
-                            }
-                            Text(
-                                "oturuma git ›",
-                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
+            Spacer(Modifier.height(Space.md))
+            SectionLabel("aktif agent'lar")
+            Spacer(Modifier.height(Space.xs))
+            active.forEachIndexed { i, r ->
+                if (i > 0) SoftDivider()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenAgent(r) }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    StateDot(dev.pocketagent.transport.ConnectionState.ACTIVE, 8.dp)
+                    Spacer(Modifier.width(Space.md))
+                    Column(Modifier.weight(1f)) {
+                        Text(r.source, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            listOf(r.sessionId, eventTime(r.createdAt))
+                                .filter { it.isNotBlank() }
+                                .joinToString(" · "),
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
                     }
+                    Text(
+                        "oturuma git ›",
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
             }
+            Spacer(Modifier.height(Space.md))
         }
 
         val shown = inbox.rows.filter { if (filter == "Okunmamış") it.unread else true }
@@ -171,34 +173,22 @@ fun AgentsScreen(
                 )
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+            LazyColumn {
                 items(shown, key = { it.eventId }) { r ->
                     val isApproval = r.category == "APPROVAL_REQUIRED" || r.digest.isNotBlank()
                     val tint = categoryColor(r.category)
-                    ConsoleCard(
-                        padding = Space.md,
-                        borderColor = if (r.unread) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                        else MaterialTheme.colorScheme.outlineVariant,
-                    ) {
+                    SoftDivider()
+                    Column(Modifier.padding(vertical = 10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier
-                                    .size(38.dp)
-                                    .clip(MaterialTheme.shapes.small)
-                                    .background(tint.copy(alpha = 0.12f))
-                                    .border(1.dp, tint.copy(alpha = 0.35f), MaterialTheme.shapes.small),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    categoryIcon(r.category),
-                                    contentDescription = null,
-                                    tint = tint,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
+                            Icon(
+                                categoryIcon(r.category),
+                                contentDescription = null,
+                                tint = tint,
+                                modifier = Modifier.size(18.dp),
+                            )
                             Spacer(Modifier.width(Space.md))
                             Column(Modifier.weight(1f)) {
-                                Text(r.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                                Text(r.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2)
                                 Spacer(Modifier.height(2.dp))
                                 Text(
                                     listOf(r.source, r.sessionId, eventTime(r.createdAt))
@@ -219,7 +209,7 @@ fun AgentsScreen(
                             }
                         }
                         if (isApproval && r.unread) {
-                            Spacer(Modifier.height(Space.md))
+                            Spacer(Modifier.height(Space.sm))
                             Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                                 ConsoleButton(onClick = {
                                     scope.launch(Dispatchers.IO) { decideRemote(app, inbox, approval, r, true) }
@@ -237,7 +227,6 @@ fun AgentsScreen(
                                 }
                             }
                         } else if (r.unread) {
-                            Spacer(Modifier.height(Space.sm))
                             ConsoleTextButton(onClick = { inbox.markRead(r.eventId) }) { Text("Okundu") }
                         }
                     }

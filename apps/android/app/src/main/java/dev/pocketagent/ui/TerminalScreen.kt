@@ -2,9 +2,7 @@
 package dev.pocketagent.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -30,7 +28,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -247,7 +244,6 @@ private fun SessionPillsRow(
             val nth = sessionList.take(idx).count { it.conn.id == h.conn.id }
             val label = if (same > 1) "${h.conn.name}·${nth + 1}" else h.conn.name
             SessionPill(
-                index = idx,
                 name = label,
                 state = st,
                 retry = retry,
@@ -266,38 +262,26 @@ private fun SessionPillsRow(
     }
 }
 
-// Oturum hücresi: tmux window-list biçimi `i:ad` + durum noktası; aktif
-// pencere reverse-video blokta (accent zemin + onPrimary), retry `↻n/5`.
+// Oturum sekmesi: durum noktası + ad; aktif sekme tonal zemin + koyu metin,
+// retry `↻n/5`. Çerçeve yok — editor sekmesi dili.
 @Composable
-private fun SessionPill(index: Int, name: String, state: ConnectionState, retry: Int, active: Boolean, onClick: () -> Unit) {
-    val fg = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+private fun SessionPill(name: String, state: ConnectionState, retry: Int, active: Boolean, onClick: () -> Unit) {
+    val fg = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         Modifier
             .clip(MaterialTheme.shapes.extraSmall)
-            .background(if (active) MaterialTheme.colorScheme.primary else Color.Transparent)
-            .border(
-                1.dp,
-                if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                MaterialTheme.shapes.extraSmall,
-            )
+            .background(if (active) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         StateDot(state, size = 6.dp)
-        Spacer(Modifier.width(6.dp))
-        Text(
-            "$index:",
-            fontFamily = LocalMonoFont.current,
-            fontSize = 11.sp,
-            color = fg.copy(alpha = if (active) 0.75f else 0.6f),
-            maxLines = 1,
-        )
+        Spacer(Modifier.width(7.dp))
         Text(
             name,
             fontFamily = LocalMonoFont.current,
-            fontSize = 11.5.sp,
-            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+            fontSize = 12.sp,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
             color = fg,
             maxLines = 1,
         )
@@ -566,14 +550,12 @@ private fun ActiveTerminal(
         Box(
             Modifier
                 .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = if (fullscreen) 0.dp else 6.dp),
+                .fillMaxWidth(),
         ) {
+            // Terminal yüzeyi edge-to-edge: çerçevesiz, tam genişlik — gerçek
+            // bir pencere gibi durur; tuş şeridi aynı zeminde yaşar.
             Surface(
                 color = termBg,
-                shape = if (fullscreen) RoundedCornerShape(0.dp) else MaterialTheme.shapes.medium,
-                border = if (fullscreen) null
-                else BorderStroke(1.dp, if (typing) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 Column(Modifier.fillMaxSize()) {

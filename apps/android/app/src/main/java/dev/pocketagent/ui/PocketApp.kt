@@ -3,7 +3,6 @@ package dev.pocketagent.ui
 
 import android.content.Intent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,11 +13,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
@@ -29,6 +31,7 @@ import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -45,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -68,13 +72,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-enum class AppTab(val label: String, val short: String, val icon: ImageVector) {
-    Home("Ana Sayfa", "ana", Icons.Filled.Home),
-    Connections("Bağlantılar", "host", Icons.Filled.Dns),
-    Terminal("Terminal", "term", Icons.Filled.Terminal),
-    Agents("Agentlar", "agent", Icons.Filled.SmartToy),
-    Files("Dosyalar", "dosya", Icons.Filled.Folder),
-    Settings("Ayarlar", "ayar", Icons.Filled.Settings),
+enum class AppTab(val label: String, val icon: ImageVector) {
+    Home("Ana Sayfa", Icons.Filled.Home),
+    Connections("Bağlantılar", Icons.Filled.Dns),
+    Terminal("Terminal", Icons.Filled.Terminal),
+    Agents("Agentlar", Icons.Filled.SmartToy),
+    Files("Dosyalar", Icons.Filled.Folder),
+    Settings("Ayarlar", Icons.Filled.Settings),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -212,7 +216,7 @@ fun PocketAgentApp(
             topBar = {
                 // Terminal tam ekrandayken üst bar da gizlenir — gerçek immersive.
                 if (!(tab == AppTab.Terminal && termFullscreen)) {
-                    ConsoleTopBar(tab, activeCount)
+                    ConsoleTopBar(activeCount)
                 }
             },
             snackbarHost = { SnackbarHost(snackbar) },
@@ -290,59 +294,35 @@ fun PocketAgentApp(
     }
 }
 
-// ── Uygulama chrome'u — "status-line" dili ───────────────────────────────────
-// Üst bar bir kabuk prompt'u, alt bar bir tmux window-list'tir. Seçim
-// her yerde "reverse video" ile gösterilir: accent zemin + onPrimary metin.
+// ── Uygulama chrome'u — flat editoryal dil ───────────────────────────────────
+// Üst bar ince bir şerit: wordmark + canlı oturum sayacı. Alt bar ikon +
+// etiket; aktif sekme accent renkte ve üst kenarında ince bir accent işaret
+// taşır. Sekme adını ekran başlığı taşır, bar'a konmaz.
 
-// Üst bar: `❯ pocket-agent  ~/sekme` prompt'u + sağda canlı oturum sayacı.
-// Edge-to-edge'de status bar altına kaymaması için kendi inset'ini uygular.
+// Üst bar: wordmark + sağda canlı oturum sayacı. Edge-to-edge'de status
+// bar altına kaymaması için kendi inset'ini uygular.
 @Composable
-private fun ConsoleTopBar(tab: AppTab, activeSessions: Int) {
+private fun ConsoleTopBar(activeSessions: Int) {
     Column(Modifier.windowInsetsPadding(WindowInsets.statusBars).background(MaterialTheme.colorScheme.surface)) {
         Row(
-            Modifier.fillMaxWidth().height(48.dp).padding(horizontal = Space.lg),
+            Modifier.fillMaxWidth().height(44.dp).padding(horizontal = Space.lg),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                "❯",
-                fontFamily = LocalMonoFont.current,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.width(7.dp))
             Text(
                 "pocket-agent",
                 fontFamily = LocalMonoFont.current,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 13.5.sp,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-            )
-            Text(
-                "  ~/${tab.short}",
-                fontFamily = LocalMonoFont.current,
-                fontSize = 12.sp,
+                fontSize = 12.5.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
             )
             Spacer(Modifier.weight(1f))
             if (activeSessions > 0) {
-                Row(
-                    Modifier
-                        .clip(MaterialTheme.shapes.extraSmall)
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.outlineVariant,
-                            MaterialTheme.shapes.extraSmall,
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     StateDot(ConnectionState.ACTIVE, size = 6.dp)
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "$activeSessions sess",
+                        "$activeSessions oturum",
                         style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -353,8 +333,9 @@ private fun ConsoleTopBar(tab: AppTab, activeSessions: Int) {
     }
 }
 
-// Alt bar: tmux status-line. Her sekme `i:ad` hücresi; aktif pencere `*`
-// ile reverse-video blokta, Agents'ta okunmamış `#n` bayrağıyla durur.
+// Alt bar: ikon + kısa etiket hücreleri. Aktif sekme accent renkte; üstte
+// 2.5dp accent işaret (editor sekmesi dili). Agents'ta okunmamış sayısı
+// ikonun köşesinde küçük bir rozet olarak durur.
 @Composable
 private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) -> Unit) {
     Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
@@ -363,40 +344,65 @@ private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) 
             Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.navigationBars)
-                .height(50.dp),
+                .height(58.dp),
         ) {
-            AppTab.entries.forEachIndexed { i, t ->
+            AppTab.entries.forEach { t ->
                 val selected = current == t
-                val label = buildString {
-                    append(i)
-                    append(':')
-                    append(t.short)
-                    if (selected) append('*')
-                    if (t == AppTab.Agents && agentUnread > 0) append('#').append(agentUnread)
-                }
-                Box(
+                val tint = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+                Column(
                     Modifier
                         .weight(1f)
                         .fillMaxHeight()
                         .semantics { contentDescription = t.label }
                         .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(t) }),
-                    contentAlignment = Alignment.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(
-                        label,
-                        fontFamily = LocalMonoFont.current,
-                        fontSize = 10.5.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        maxLines = 1,
-                        color = if (selected) MaterialTheme.colorScheme.onPrimary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = if (selected) {
-                            Modifier
-                                .clip(MaterialTheme.shapes.extraSmall)
-                                .background(MaterialTheme.colorScheme.primary)
-                                .padding(horizontal = 7.dp, vertical = 3.dp)
-                        } else Modifier,
+                    Box(
+                        Modifier
+                            .width(24.dp)
+                            .height(2.5.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            ),
                     )
+                    Spacer(Modifier.weight(1f))
+                    Box {
+                        Icon(
+                            t.icon,
+                            contentDescription = null,
+                            tint = tint,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        if (t == AppTab.Agents && agentUnread > 0) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 8.dp, y = (-4).dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(MaterialTheme.colorScheme.primary)
+                                    .padding(horizontal = 3.5.dp),
+                            ) {
+                                Text(
+                                    "$agentUnread",
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        t.label,
+                        fontSize = 9.5.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = tint,
+                        maxLines = 1,
+                    )
+                    Spacer(Modifier.weight(1f))
                 }
             }
         }

@@ -20,23 +20,20 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.Dns
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -191,7 +187,6 @@ fun ConnectionsScreen(
                     shape = MaterialTheme.shapes.small,
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     contentColor = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small),
                 ) {
                     Icon(Icons.Filled.AttachFile, contentDescription = "~/.ssh/config içe aktar")
                 }
@@ -200,7 +195,6 @@ fun ConnectionsScreen(
                     shape = MaterialTheme.shapes.small,
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     contentColor = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small),
                 ) {
                     Icon(Icons.Filled.QrCodeScanner, contentDescription = "QR ile bağlan")
                 }
@@ -210,7 +204,7 @@ fun ConnectionsScreen(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                    text = { Text("Host ekle", fontFamily = LocalMonoFont.current, fontWeight = FontWeight.Bold) },
+                    text = { Text("Host ekle", fontWeight = FontWeight.SemiBold) },
                 )
             }
         },
@@ -220,8 +214,9 @@ fun ConnectionsScreen(
                 // İlk çalıştırma sihirbazı: backend → host komutu → QR/kod.
                 Column(
                     Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Space.lg),
-                    verticalArrangement = Arrangement.spacedBy(Space.md),
                 ) {
+                    ScreenHeader("Bağlantılar", meta = "ilk host'u ekle")
+                    Spacer(Modifier.height(Space.lg))
                     ConsoleCard {
                         CardHeader("Hızlı kurulum")
                         Spacer(Modifier.height(Space.sm))
@@ -280,12 +275,13 @@ fun ConnectionsScreen(
                         OutlinedTextField(
                             value = query,
                             onValueChange = { query = it },
-                            placeholder = { Text("Host ara…", fontFamily = LocalMonoFont.current) },
-                            prefix = {
-                                Text(
-                                    "❯ ",
-                                    fontFamily = LocalMonoFont.current,
-                                    color = MaterialTheme.colorScheme.primary,
+                            placeholder = { Text("Host ara…") },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Search,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             },
                             singleLine = true,
@@ -295,12 +291,18 @@ fun ConnectionsScreen(
                     }
                 LazyColumn(
                     Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(Space.md),
-                    contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 88.dp),
                 ) {
+                    item(key = "header") {
+                        ScreenHeader(
+                            "Bağlantılar",
+                            meta = "${items.size} host · ${profileList.size} profil",
+                            modifier = Modifier.padding(bottom = Space.lg),
+                        )
+                    }
                     // Hazır profiller: kayıtlı komutla tek dokunuşta oturum.
                     item(key = "profiles") {
-                        ProfilesCard(
+                        ProfilesSection(
                             profiles = profileList,
                             conns = items,
                             onOpen = launchProfile,
@@ -308,11 +310,14 @@ fun ConnectionsScreen(
                             onEdit = { editingProfile = it },
                             onDelete = { p -> scope.launch { profiles.delete(p.id) } },
                         )
+                        Spacer(Modifier.height(Space.lg))
+                        SectionLabel("Hostlar")
                     }
                     items(filtered, key = { it.id }) { c ->
                         val openSession = sessionList.firstOrNull { it.conn.id == c.id }
                         val sessionState = openSession?.controller?.state?.collectAsState()?.value
-                        ConnectionCard(
+                        SoftDivider()
+                        ConnectionRow(
                             conn = c,
                             isActive = sessionState == ConnectionState.ACTIVE,
                             hasSecret = repo.hasSavedSecret(c.id),
@@ -519,10 +524,10 @@ fun ConnectionsScreen(
     }
 }
 
-// Hazır profiller kartı: ad + komut (+ opsiyonel host). Dokun → oturum açılır
-// ve komut otomatik çalışır; ⋮ → düzenle/sil.
+// Hazır profiller bölümü: ad + komut (+ opsiyonel host). Dokun → oturum
+// açılır ve komut otomatik çalışır; ⋮ → düzenle/sil.
 @Composable
-private fun ProfilesCard(
+private fun ProfilesSection(
     profiles: List<SavedProfile>,
     conns: List<SavedConnection>,
     onOpen: (SavedProfile) -> Unit,
@@ -530,29 +535,28 @@ private fun ProfilesCard(
     onEdit: (SavedProfile) -> Unit,
     onDelete: (SavedProfile) -> Unit,
 ) {
-    ConsoleCard(padding = Space.sm) {
-        Box(Modifier.padding(start = Space.lg, top = Space.sm, end = Space.lg)) {
-            CardHeader("Profiller") {
-                ConsoleTextButton(onClick = onAdd) { Text("Yeni profil") }
-            }
-        }
-        if (profiles.isEmpty()) {
-            Text(
-                "Kayıtlı komutla oturum aç — örn. ad \"Codex\", komut \"codex\".",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = Space.lg, end = Space.lg, bottom = Space.sm),
-            )
-        }
-        profiles.forEach { p ->
-            ProfileRow(
-                p = p,
-                hostName = conns.firstOrNull { it.id == p.connectionId }?.name,
-                onOpen = { onOpen(p) },
-                onEdit = { onEdit(p) },
-                onDelete = { onDelete(p) },
-            )
-        }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        SectionLabel("Profiller")
+        Spacer(Modifier.weight(1f))
+        ConsoleTextButton(onClick = onAdd) { Text("Yeni profil") }
+    }
+    if (profiles.isEmpty()) {
+        Text(
+            "Kayıtlı komutla oturum aç — örn. ad \"Codex\", komut \"codex\".",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = Space.xs),
+        )
+    }
+    profiles.forEachIndexed { i, p ->
+        if (i > 0) SoftDivider()
+        ProfileRow(
+            p = p,
+            hostName = conns.firstOrNull { it.id == p.connectionId }?.name,
+            onOpen = { onOpen(p) },
+            onEdit = { onEdit(p) },
+            onDelete = { onDelete(p) },
+        )
     }
 }
 
@@ -568,19 +572,14 @@ private fun ProfileRow(
     ListRow(
         title = p.name,
         subtitle = p.command + (hostName?.let { " · $it" } ?: " · host seçilecek"),
+        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 10.dp),
         leading = {
-            Box(
-                Modifier.size(34.dp).clip(MaterialTheme.shapes.small)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "❯",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontFamily = LocalMonoFont.current,
-                )
-            }
+            Text(
+                "❯",
+                color = MaterialTheme.colorScheme.primary,
+                fontFamily = LocalMonoFont.current,
+                fontSize = 14.sp,
+            )
         },
         trailing = {
             Box {
@@ -676,22 +675,17 @@ private fun ProfileDialog(
     )
 }
 
-// İlk kurulum adımı: numaralı başlık + açıklama + içerik.
+// İlk kurulum adımı: mono sıra numarası + başlık + açıklama + içerik.
 @Composable
 private fun WizardStep(n: Int, title: String, subtitle: String, content: @Composable () -> Unit) {
     Column(Modifier.padding(vertical = Space.sm)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(22.dp).clip(MaterialTheme.shapes.extraSmall)
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.extraSmall),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "$n",
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
+            Text(
+                "%02d".format(n),
+                style = MaterialTheme.typography.labelMedium.copy(fontFamily = LocalMonoFont.current),
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            )
             Spacer(Modifier.width(Space.sm))
             Column {
                 Text(title, style = MaterialTheme.typography.titleSmall)
@@ -703,8 +697,10 @@ private fun WizardStep(n: Int, title: String, subtitle: String, content: @Compos
     }
 }
 
+// Bağlantı satırı: monogram + ad + adres + sağda durum/menü. Satırın
+// tamamı bağlanma hedefi; kutu yok, ayırıcı çağırandan gelir.
 @Composable
-private fun ConnectionCard(
+private fun ConnectionRow(
     conn: SavedConnection,
     isActive: Boolean,
     hasSecret: Boolean,
@@ -714,100 +710,78 @@ private fun ConnectionCard(
     onDelete: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    ConsoleCard(
-        // Kartın tamamı bağlanma hedefi — kullanıcı küçük "Bağlan" düğmesini
-        // aramak zorunda kalmaz; düğme görünür ipucu olarak kalır.
-        // Aktif kart: accent hairline — "seçili satır" işareti.
-        modifier = Modifier.clip(MaterialTheme.shapes.medium).clickable(onClick = onConnect),
-        borderColor = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
-        else MaterialTheme.colorScheme.outlineVariant,
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onConnect)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(42.dp)
-                    .clip(MaterialTheme.shapes.small)
-                    .background(
-                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                        else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    )
-                    .border(
-                        1.dp,
-                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
-                        else MaterialTheme.colorScheme.outlineVariant,
-                        MaterialTheme.shapes.small,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    conn.name.trim().take(1).uppercase().ifBlank { "?" },
-                    style = MaterialTheme.typography.titleMedium.copy(fontFamily = LocalMonoFont.current),
-                    color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.width(Space.md))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(conn.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                    if (isActive) {
-                        Spacer(Modifier.width(Space.sm))
-                        StateDot(ConnectionState.ACTIVE, size = 7.dp)
-                    }
-                }
-                Spacer(Modifier.height(1.dp))
-                Text(
-                    "${conn.user}@${conn.host}:${conn.port}",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
-            }
-            Box {
-                IconButton(onClick = { menu = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "Menü")
-                }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    if (isActive) {
-                        DropdownMenuItem(
-                            text = { Text("Yeni oturum aç") },
-                            leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                            onClick = { menu = false; onNewSession() },
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = { Text("Düzenle") },
-                        leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
-                        onClick = { menu = false; onEdit() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Sil", color = MaterialTheme.colorScheme.error) },
-                        onClick = { menu = false; onDelete() },
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(Space.md))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                conn.transportOrder.forEach { t ->
-                    TagPill(t.name, active = t == TerminalTransport.SSH)
-                }
-            }
-            Spacer(Modifier.weight(1f))
+        Box(
+            Modifier
+                .size(38.dp)
+                .clip(MaterialTheme.shapes.small)
+                .background(
+                    if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                    else MaterialTheme.colorScheme.surfaceContainerHigh,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
-                "Son: ${relativeTime(conn.lastConnectedAt)}" + if (hasSecret) " · kayıtlı" else "",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                conn.name.trim().take(1).uppercase().ifBlank { "?" },
+                style = MaterialTheme.typography.titleMedium.copy(fontFamily = LocalMonoFont.current),
+                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Spacer(Modifier.height(Space.md))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            if (isActive) {
-                // Aynı host'ta paralel terminal — mevcut oturum korunur.
-                ConsoleTextButton(onClick = onNewSession) { Text("Yeni oturum") }
+        Spacer(Modifier.width(Space.md))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(conn.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                if (isActive) {
+                    Spacer(Modifier.width(Space.sm))
+                    StateDot(ConnectionState.ACTIVE, size = 7.dp)
+                }
             }
-            ConsoleButton(onClick = onConnect) {
-                Text(if (isActive) "Terminale git" else "Bağlan")
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "${conn.user}@${conn.host}:${conn.port}",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+        Text(
+            relativeTime(conn.lastConnectedAt) + if (hasSecret) " · kayıtlı" else "",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier.padding(end = 2.dp),
+        )
+        Box {
+            IconButton(onClick = { menu = true }) {
+                Icon(
+                    Icons.Filled.MoreVert,
+                    contentDescription = "Menü",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                if (isActive) {
+                    DropdownMenuItem(
+                        text = { Text("Yeni oturum aç") },
+                        leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                        onClick = { menu = false; onNewSession() },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text("Düzenle") },
+                    leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                    onClick = { menu = false; onEdit() },
+                )
+                DropdownMenuItem(
+                    text = { Text("Sil", color = MaterialTheme.colorScheme.error) },
+                    onClick = { menu = false; onDelete() },
+                )
             }
         }
     }

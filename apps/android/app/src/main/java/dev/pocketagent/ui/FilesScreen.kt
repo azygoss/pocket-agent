@@ -6,7 +6,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -28,20 +27,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -348,8 +341,7 @@ private fun RemoteFileRow(f: RemoteFile, onClick: () -> Unit) {
                     .background(
                         if (f.isDir) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
                         else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    )
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small),
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -373,13 +365,8 @@ private fun PathBar(files: FilesViewModel, modifier: Modifier = Modifier) {
     val segments = rel.split('/').filter { it.isNotEmpty() }
     val scroll = rememberScrollState()
     LaunchedEffect(rel) { scroll.scrollTo(scroll.maxValue) }
-    // Kapsayıcı, kontrol olduğunu gösterir — yüzen metin değil.
     Row(
-        modifier
-            .clip(MaterialTheme.shapes.small)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
-            .horizontalScroll(scroll)
-            .padding(horizontal = 8.dp),
+        modifier.horizontalScroll(scroll),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -424,17 +411,16 @@ private fun humanSize(bytes: Long): String = when {
 
 @Composable
 private fun WorkspaceMissingCard() {
-    ConsoleCard {
-        CardHeader("Workspace gateway kurulu değil")
-        Spacer(Modifier.height(Space.sm))
-        Text(
-            "Host'ta çalıştır:\n  pocket-agent gateway serve\n  veya kalıcı servis:\n  pocket-agent service install-gateway\n\n" +
-                "Token ~/.config/pocket-agent/gateway.token altında üretilir; " +
-                "uygulama onu SSH oturumu içinden okur. Gateway yalnız 127.0.0.1:24543 dinler.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    Spacer(Modifier.height(Space.lg))
+    SectionLabel("Workspace gateway kurulu değil")
+    Spacer(Modifier.height(Space.sm))
+    Text(
+        "Host'ta çalıştır:\n  pocket-agent gateway serve\n  veya kalıcı servis:\n  pocket-agent service install-gateway\n\n" +
+            "Token ~/.config/pocket-agent/gateway.token altında üretilir; " +
+            "uygulama onu SSH oturumu içinden okur. Gateway yalnız 127.0.0.1:24543 dinler.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
@@ -448,9 +434,10 @@ private fun NoSessionCard() {
             title = "Uzak dosyalar",
             body = "Aktif bir SSH oturumu yok. Terminal sekmesinden bir host'a bağlan; bu sekme aynı oturumun SFTP kanalıyla uzak dosya sistemini gösterir.",
         )
-        ConsoleCard(modifier = Modifier.padding(horizontal = Space.lg)) {
-            CardHeader("Güvenlik")
-            Spacer(Modifier.height(Space.sm))
+        Spacer(Modifier.height(Space.md))
+        Column(Modifier.padding(horizontal = Space.xl)) {
+            SectionLabel("Güvenlik")
+            Spacer(Modifier.height(Space.xs))
             Text(
                 "• Dosyalar yalnız SSH tünelinde akar, backend içerik görmez\n" +
                     "• İndirilenler paylaşım önbelleğine düşer (10MB üst sınır)",
