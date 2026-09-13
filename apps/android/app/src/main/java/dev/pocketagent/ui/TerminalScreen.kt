@@ -446,18 +446,38 @@ private fun ActiveTerminal(
         onDispose { ic?.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
-    // reverseLayout: indeks 0 = en yeni satır, her zaman altta sabit.
-    // Yeniden açılışta, klavye aç/kapa'da veya scrollback büyümesinde
-    // scroll konumu "en alta hizalı" kalır — üste-hizala kayması olmaz.
+    // Gerçek terminal düzeni: içerik üstten büyür, ekran dolana kadar
+    // prompt üstte durur; dolunca imleç satırı viewport'un altında tutulur.
+    // visRows = görünen satır sayısı (klavye açıkken kısalır).
+    var visRows by remember { mutableIntStateOf(24) }
     val atBottom by remember {
-        derivedStateOf { listState.firstVisibleItemIndex == 0 }
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            last >= info.totalItemsCount - 1
+        }
+    }
+    // İmleç satırı görünürde kalsın: fold'un üstündeyse üste, altındaysa
+    // alta hizala; zaten görünüyorsa hiç dokunma (kayma yok).
+    suspend fun revealCursor() {
+        if (lines.isEmpty()) return
+        val target = (cursor?.first ?: lines.size - 1).coerceIn(0, lines.size - 1)
+        val vis = listState.layoutInfo.visibleItemsInfo
+        if (vis.isEmpty()) {
+            listState.scrollToItem((target - visRows + 1).coerceAtLeast(0))
+            return
+        }
+        if (target < vis.first().index) listState.scrollToItem(target)
+        else if (target > vis.last().index) {
+            listState.scrollToItem((target - visRows + 1).coerceAtLeast(0))
+        }
     }
     LaunchedEffect(lines.size) {
-        if (lines.isNotEmpty() && atBottom) listState.scrollToItem(0)
+        if (lines.isNotEmpty() && atBottom) revealCursor()
     }
     // Klavye açılıp viewport küçülünce yazılan satır görünür kalsın.
     LaunchedEffect(viewportEpoch) {
-        if (lines.isNotEmpty()) listState.scrollToItem(0)
+        if (lines.isNotEmpty()) revealCursor()
     }
 
     // Alt-screen açıldığında (vim/htop/less/tmux) bekleyen gerçek boyutu
@@ -699,6 +719,9 @@ private fun ActiveTerminal(
                                 // ve scrollback itmesini önler.
                                 val rows = ((sz.height + imePx) / lineH).roundToInt().coerceIn(4, 200)
                                 val newSize = TerminalSize(cols, rows)
+                                // Görünen satır sayısı (IME'li — kırpılan alan)
+                                // revealCursor'un alta-hizala hesabı için.
+                                visRows = (sz.height / lineH).toInt().coerceAtLeast(1)
                                 resizeJob?.cancel()
                                 resizeJob = scope.launch {
                                     kotlinx.coroutines.delay(160)
@@ -825,10 +848,8 @@ private fun ActiveTerminal(
                                     state = listState,
                                     modifier = Modifier.fillMaxSize(),
                                     contentPadding = PaddingValues(8.dp),
-                                    reverseLayout = true,
                                 ) {
-                                    itemsIndexed(lines.asReversed()) { revIdx, line ->
-                                        val idx = lines.size - 1 - revIdx
+                                    itemsIndexed(lines) { idx, line ->
                                         val isMatch = currentMatch == idx
                                         val hasMatch = matchSet.contains(idx)
                                         val cur = cursor
@@ -860,7 +881,11 @@ private fun ActiveTerminal(
                                 shadowElevation = 6.dp,
                                 modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
                             ) {
-                                IconButton(onClick = { scope.launch { listState.scrollToItem(0) } }) {
+                                IconButton(onClick = {
+                                    scope.launch {
+                                        listState.scrollToItem((lines.size - visRows).coerceAtLeast(0))
+                                    }
+                                }) {
                                     Icon(
                                         Icons.Filled.KeyboardArrowDown,
                                         contentDescription = "En alta in",
@@ -940,7 +965,7 @@ private fun ActiveTerminal(
                             enabled = matches.isNotEmpty(),
                             onClick = {
                                 matchCursor = (matchCursor - 1 + matches.size) % matches.size
-                                scope.launch { listState.scrollToItem(lines.size - 1 - matches[matchCursor]) }
+                                scope.launch { listState.scrollToItem(matches[matchCursor]) }
                             },
                         ) {
                             Icon(
@@ -953,7 +978,7 @@ private fun ActiveTerminal(
                             enabled = matches.isNotEmpty(),
                             onClick = {
                                 matchCursor = (matchCursor + 1) % matches.size
-                                scope.launch { listState.scrollToItem(lines.size - 1 - matches[matchCursor]) }
+                                scope.launch { listState.scrollToItem(matches[matchCursor]) }
                             },
                         ) {
                             Icon(
