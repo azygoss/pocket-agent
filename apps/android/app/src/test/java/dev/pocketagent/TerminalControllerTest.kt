@@ -155,7 +155,8 @@ class AutoTmuxTest {
         val c = TerminalController(scope, connector, store)
         c.connect(SavedConnection("t", "h", 22, "u", "ram:password", id = "c2"), Secret.Password("pw"))
         delay(900)
-        assertTrue(transport.sent.none { it is TerminalInput.Text })
+        // autoTmux kapalıysa tmux komutu gitmez; yalnız temiz-açılış `clear`'ı gider.
+        assertTrue(transport.sent.filterIsInstance<TerminalInput.Text>().none { it.s.contains("tmux") })
         c.disconnect()
     }
 
@@ -198,11 +199,13 @@ class AutoTmuxTest {
             startupCommand = "codex",
         )
         withTimeout(5000) {
-            while (transport.sent.filterIsInstance<TerminalInput.Text>().size < 2) delay(20)
+            while (transport.sent.filterIsInstance<TerminalInput.Text>().size < 3) delay(20)
         }
         val texts = transport.sent.filterIsInstance<TerminalInput.Text>().map { it.s }
-        assertTrue(texts[0].contains("tmux new-session -A -s main"))
-        assertTrue(texts[1].contains("codex"))
+        // clear → tmux → profil komutu: temiz açılış, komut tmux'un içine düşer.
+        assertTrue(texts[0].contains("clear"))
+        assertTrue(texts[1].contains("tmux new-session -A -s main"))
+        assertTrue(texts[2].contains("codex"))
         c.disconnect()
     }
 }

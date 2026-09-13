@@ -91,17 +91,18 @@ class TerminalController(
                 retryCount = 0
                 onConnected?.invoke(conn)
                 // Açılış komutları: kabuk hazır olsun diye kısa gecikme.
-                // autoTmux önce gelir — profil komutu tmux oturumunun içine düşer.
+                // `clear` en başta: MOTD/banner/son-giriş bilgisi silinir,
+                // prompt üstte temiz açılır. tmux attach'ten ÖNCE çalışır —
+                // var olan pane içeriği silinmez (attach alt-screen'e geçer).
                 val startupCmds = buildList {
+                    add("clear")
                     if (conn.autoTmux) add("tmux new-session -A -s main")
                     startupCommand?.trim()?.takeIf { it.isNotEmpty() }?.let { add(it) }
                 }
-                if (startupCmds.isNotEmpty()) {
-                    scope.launch {
-                        startupCmds.forEach { cmd ->
-                            kotlinx.coroutines.delay(600)
-                            runCatching { t.send(TerminalInput.Text("$cmd\n")) }
-                        }
+                scope.launch {
+                    startupCmds.forEach { cmd ->
+                        kotlinx.coroutines.delay(600)
+                        runCatching { t.send(TerminalInput.Text("$cmd\n")) }
                     }
                 }
                 readLoop(t)
