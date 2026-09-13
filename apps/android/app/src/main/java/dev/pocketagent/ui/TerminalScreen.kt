@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -111,6 +112,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import dev.pocketagent.transport.ConnectionState
+import dev.pocketagent.transport.SessionHandle
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalController
 import dev.pocketagent.transport.TermLine
@@ -215,6 +217,7 @@ fun TerminalScreen(
             EmptyTerminal(onNewConnection)
         } else {
             ActiveTerminal(
+                handle = active,
                 controller = active.controller,
                 manager = manager,
                 settings = settings,
@@ -272,12 +275,13 @@ private fun SessionPillsRow(
 // ad + retry `↻n/5`.
 @Composable
 private fun SessionPill(name: String, state: ConnectionState, retry: Int, active: Boolean, onClick: () -> Unit) {
-    val termBg = Color(LocalConsoleTheme.current.term.background)
     val fg = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         Modifier
-            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-            .background(if (active) termBg else Color.Transparent)
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                if (active) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent,
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -319,6 +323,7 @@ private fun EmptyTerminal(onNewConnection: () -> Unit) {
 
 @Composable
 private fun ActiveTerminal(
+    handle: SessionHandle,
     controller: TerminalController,
     manager: SessionManager,
     settings: SettingsViewModel,
@@ -449,77 +454,15 @@ private fun ActiveTerminal(
     }
 
     Column(Modifier.fillMaxSize()) {
-        // ── Üst sabit şerit: oturum sekmeleri + durum + aksiyonlar ──
-        // Alt padding yok — aktif sekme zemini terminal yüzeyine bitişir
-        // (editor tab'ı dili). Yüzen overlay yok — hiçbir şey çıktıyı örtmez.
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(start = 10.dp, top = 4.dp, end = 2.dp),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            SessionPillsRow(manager, Modifier.weight(1f), onNewConnection)
-            // Durum metni (mono, dim): transport • pencere başlığı — dar, ellipsis.
-            Text(
-                buildString {
-                    append(vm.badge)
-                    if (windowTitle.isNotBlank()) append(" · $windowTitle")
-                    if (state == ConnectionState.CONNECTING) append(" · bağlanıyor…")
-                },
-                fontFamily = LocalMonoFont.current,
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .widthIn(max = 110.dp)
-                    .padding(start = 6.dp, bottom = 9.dp),
+        // Çoklu oturumda geçiş şeridi panelin üstünde kalır; tek oturumda
+        // panel header'ı adı taşır (referans düzen: sadece başlık + rozeti).
+        val handles by manager.sessions.collectAsState()
+        if (handles.size > 1) {
+            SessionPillsRow(
+                manager,
+                Modifier.fillMaxWidth().padding(start = 10.dp, top = 4.dp, end = 2.dp),
+                onNewConnection,
             )
-            OverlayAction("Scrollback'te ara", { searchOpen = !searchOpen; if (!searchOpen) query = "" }) {
-                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            OverlayAction("Scrollback'i paylaş", {
-                val dump = lines.joinToString("\n") { it.text }
-                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                    val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
-                    val f = java.io.File(dir, "scrollback.txt")
-                    f.writeText(dump)
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        val uri = androidx.core.content.FileProvider.getUriForFile(
-                            context, context.packageName + ".fileprovider", f,
-                        )
-                        val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(android.content.Intent.createChooser(share, "Scrollback"))
-                    }
-                }
-            }) {
-                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            OverlayAction(
-                if (fullscreen) "Tam ekrandan çık" else "Tam ekran",
-                { fullscreen = !fullscreen },
-            ) {
-                Icon(
-                    if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                    contentDescription = null,
-                    modifier = Modifier.size(17.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (state == ConnectionState.CLOSED || state == ConnectionState.FAILED) {
-                if (controller.canReconnect()) {
-                    OverlayAction("Yeniden bağlan", { controller.reconnect() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
-                    }
-                }
-            }
-            OverlayAction("Oturumu kapat", onClose) {
-                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.error)
-            }
         }
 
         val console = LocalConsoleTheme.current
@@ -529,19 +472,133 @@ private fun ActiveTerminal(
         val charW = with(density) { (13 * settings.theme.fontScale).sp.toPx() } * 0.6f
         val lineH = with(density) { (16 * settings.theme.fontScale).sp.toPx() }
         val connected = state == ConnectionState.ACTIVE
+        val conn = handle.conn
 
         Box(
             Modifier
                 .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .then(
+                    if (fullscreen) Modifier
+                    else Modifier.padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 10.dp),
+                ),
         ) {
-            // Terminal yüzeyi edge-to-edge: çerçevesiz, tam genişlik — gerçek
-            // bir pencere gibi durur; tuş şeridi aynı zeminde yaşar.
+            // Yüzen terminal paneli: tutamaç + başlık + çıktı tek yuvarlak
+            // yüzeyde; tuş şeridi ayrı kapsül olarak altta yüzer.
             Surface(
                 color = termBg,
+                shape = if (fullscreen) RectangleShape else RoundedCornerShape(22.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 Column(Modifier.fillMaxSize()) {
+                    if (!fullscreen) {
+                        Box(
+                            Modifier.fillMaxWidth().padding(top = 7.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                Modifier
+                                    .width(34.dp)
+                                    .height(4.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.30f)),
+                            )
+                        }
+                    }
+                    // ── Panel başlığı: durum noktası + oturum + rozet + aksiyonlar ──
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        StateDot(state, size = 7.dp)
+                        Row(
+                            Modifier.weight(1f).padding(start = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                conn.name,
+                                fontFamily = LocalMonoFont.current,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.92f),
+                                maxLines = 1,
+                            )
+                            Text(
+                                buildString {
+                                    append("  ${conn.user}@${conn.host}")
+                                    if (windowTitle.isNotBlank()) append(" · $windowTitle")
+                                    if (state == ConnectionState.CONNECTING) append(" · bağlanıyor…")
+                                },
+                                fontFamily = LocalMonoFont.current,
+                                fontSize = 10.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                        }
+                        // Transport rozeti (SSH/MOSH) — mavi tonal kapsül.
+                        Box(
+                            Modifier
+                                .clip(CircleShape)
+                                .background(Color(console.accentAlt).copy(alpha = 0.16f))
+                                .padding(horizontal = 9.dp, vertical = 3.dp),
+                        ) {
+                            Text(
+                                vm.badge,
+                                fontFamily = LocalMonoFont.current,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(console.accentAlt),
+                            )
+                        }
+                        OverlayAction("Scrollback'te ara", { searchOpen = !searchOpen; if (!searchOpen) query = "" }) {
+                            Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OverlayAction("Scrollback'i paylaş", {
+                            val dump = lines.joinToString("\n") { it.text }
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
+                                val f = java.io.File(dir, "scrollback.txt")
+                                f.writeText(dump)
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                                        context, context.packageName + ".fileprovider", f,
+                                    )
+                                    val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(android.content.Intent.createChooser(share, "Scrollback"))
+                                }
+                            }
+                        }) {
+                            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OverlayAction(
+                            if (fullscreen) "Tam ekrandan çık" else "Tam ekran",
+                            { fullscreen = !fullscreen },
+                        ) {
+                            Icon(
+                                if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (state == ConnectionState.CLOSED || state == ConnectionState.FAILED) {
+                            if (controller.canReconnect()) {
+                                OverlayAction("Yeniden bağlan", { controller.reconnect() }) {
+                                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                        OverlayAction("Oturumu kapat", onClose) {
+                            Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
                     // ── Çıktı alanı: dokun → doğrudan yaz (ayrı giriş satırı yok) ──
                     Box(
                         Modifier
@@ -715,27 +772,6 @@ private fun ActiveTerminal(
                         }
                     }
 
-                    // ── Alt tuş şeridi: terminal yüzeyine bitişik, ince ayırıcı ──
-                    // Tam ekranda da gösterilir — Scaffold nav bar'ının yerini alır.
-                    if (!fullscreen) ConsoleDivider()
-                    TerminalKeyBar(
-                        ctrl = ctrl,
-                        enabled = connected,
-                        typing = typing,
-                        snippets = settings.snippetList(),
-                        onCtrl = { ctrl = !ctrl },
-                        onKey = { sendText(it) },
-                        onPaste = {
-                            val clip = clipboard.getText()?.text ?: ""
-                            if (clip.isNotEmpty()) emit(clip)
-                        },
-                        onKeyboard = {
-                            // clearFocus, sistem geri tuşuyla kapatılmış IME'de de
-                            // durumu sıfırlar (hide() no-op kalıyordu).
-                            if (typing) focusManager.clearFocus()
-                            else { inputFocus.requestFocus(); keyboard?.show() }
-                        },
-                    )
                 }
             }
 
@@ -832,11 +868,40 @@ private fun ActiveTerminal(
             }
 
         }
+
+        // ── Yüzen kapsül tuş şeridi: panelden ayrı durur, tam ekranda da ──
+        // Scaffold nav bar'ının yerini alır.
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = RoundedCornerShape(26.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 10.dp, end = 10.dp, bottom = 8.dp),
+        ) {
+            TerminalKeyBar(
+                ctrl = ctrl,
+                enabled = connected,
+                typing = typing,
+                snippets = settings.snippetList(),
+                onCtrl = { ctrl = !ctrl },
+                onKey = { sendText(it) },
+                onPaste = {
+                    val clip = clipboard.getText()?.text ?: ""
+                    if (clip.isNotEmpty()) emit(clip)
+                },
+                onKeyboard = {
+                    // clearFocus, sistem geri tuşuyla kapatılmış IME'de de
+                    // durumu sıfırlar (hide() no-op kalıyordu).
+                    if (typing) focusManager.clearFocus()
+                    else { inputFocus.requestFocus(); keyboard?.show() }
+                },
+            )
+        }
     }
 }
 
 // Alt tuş şeridi: solda ctrl mandalı, ortada kaydırılabilir tuşlar, sağda
-// yapıştır/klavye. Terminal yüzeyinin bir parçası; ayrı bir giriş satırı yok.
+// yapıştır/klavye. Yüzen kapsülün içeriği; ayrı bir giriş satırı yok.
 @Composable
 private fun TerminalKeyBar(
     ctrl: Boolean,
@@ -990,15 +1055,18 @@ private fun TermIconKey(icon: ImageVector, desc: String, enabled: Boolean, onTap
     }
 }
 
-// Yarı saydam overlay ikonu (terminal içeriğinin üstünde).
+// Panel başlığı aksiyonu: dairesel tonal buton (referans chrome).
 @Composable
 private fun OverlayAction(desc: String, onClick: () -> Unit, icon: @Composable () -> Unit) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier
-            .size(32.dp)
-            .semantics { contentDescription = desc },
-        colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+    Box(
+        Modifier
+            .padding(start = 4.dp)
+            .size(30.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            .semantics { contentDescription = desc }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) { icon() }
 }
 

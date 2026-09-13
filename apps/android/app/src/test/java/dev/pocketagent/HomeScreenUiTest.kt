@@ -67,7 +67,8 @@ class HomeScreenUiTest {
         rule.setContent { HomeScreen(manager(), r, InboxViewModel()) {} }
         rule.waitForIdle()
         rule.onNodeWithText("Son bağlantılar").assertIsDisplayed()
-        rule.onNodeWithText("prod — root@10.0.0.5").assertIsDisplayed()
+        rule.onNodeWithText("prod").assertIsDisplayed()
+        rule.onNodeWithText("root@10.0.0.5:22").assertIsDisplayed()
         rule.onNodeWithText("Başlangıç").assertDoesNotExist()
     }
 }
