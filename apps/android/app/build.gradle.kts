@@ -14,8 +14,8 @@ android {
         applicationId = "dev.pocketagent.android"
         minSdk = 29
         targetSdk = 34
-        versionCode = 20
-        versionName = "0.22.0"
+        versionCode = 21
+        versionName = "0.23.0"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }

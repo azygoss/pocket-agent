@@ -125,6 +125,33 @@ fun PocketAgentApp(
         tab = AppTab.Terminal
     }
 
+    // Oturum persistansı: açık oturumların conn id'leri diske yazılır;
+    // açılışta kullanıcı kapatmadıysa geri yüklenip yeniden bağlanır
+    // (uzak tarafta tmux re-attach kaldığı yerden devam ettirir).
+    var sessionsRestored by remember { mutableStateOf(false) }
+    LaunchedEffect(connections2.value) {
+        if (sessionsRestored) return@LaunchedEffect
+        val conns = connections2.value
+        if (conns.isEmpty()) return@LaunchedEffect
+        sessionsRestored = true
+        app.settingsStore.loadOpenSessions().forEach { id ->
+            conns.firstOrNull { it.id == id }?.let { c ->
+                app.connections.secret(c.id)?.let { s ->
+                    // Aynı host'ta birden çok kayıtlı oturum → paralel aç.
+                    sessions.open(c, s, forceNew = sessions.sessions.value.any { it.conn.id == c.id })
+                }
+            }
+        }
+    }
+    // Liste yalnız restore denendikten sonra diske yazılır — aksi halde ilk
+    // boş emission kayıtlı id'leri okunmadan silerdi.
+    LaunchedEffect(sessionsRestored) {
+        if (!sessionsRestored) return@LaunchedEffect
+        sessions.sessions.collect { list ->
+            app.settingsStore.saveOpenSessions(list.map { it.conn.id })
+        }
+    }
+
     // pocketagent://tmux|herdr → Terminal sekmesine düş.
     LaunchedEffect(Unit) {
         deepLinkAction.collect { action ->
@@ -253,6 +280,7 @@ fun PocketAgentApp(
                         settings = settings,
                         onNewConnection = { tab = AppTab.Connections },
                         onFullscreenChange = { termFullscreen = it },
+                        onCollapse = { tab = AppTab.Home },
                     )
                     AppTab.Agents -> AgentsScreen(
                         inbox = inbox, approval = approval, app = app,

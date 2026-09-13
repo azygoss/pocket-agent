@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -16,11 +17,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -199,6 +202,7 @@ fun TerminalScreen(
     settings: SettingsViewModel,
     onNewConnection: () -> Unit,
     onFullscreenChange: (Boolean) -> Unit = {},
+    onCollapse: () -> Unit = {},
 ) {
     val sessionList by manager.sessions.collectAsState()
     val activeId by manager.activeId.collectAsState()
@@ -224,6 +228,7 @@ fun TerminalScreen(
                 onClose = { manager.close(active.id) },
                 onNewConnection = onNewConnection,
                 onFullscreenChange = onFullscreenChange,
+                onCollapse = onCollapse,
             )
         }
     }
@@ -330,6 +335,7 @@ private fun ActiveTerminal(
     onClose: () -> Unit,
     onNewConnection: () -> Unit,
     onFullscreenChange: (Boolean) -> Unit = {},
+    onCollapse: () -> Unit = {},
 ) {
     val vm = controller.vm
     val lines by vm.lines.collectAsState()
@@ -356,6 +362,10 @@ private fun ActiveTerminal(
     // Viewport her değiştiğinde (klavye aç/kapa, tam ekran) artar; aktif satır
     // görünür kalsın diye alta kaydırmayı tetikler.
     var viewportEpoch by remember { mutableIntStateOf(0) }
+    // Klavye aç/kapa animasyonu onSizeChanged'i her frame'de tetikler —
+    // her karede PTY'ye Resize göndermek uzak tarafı SIGWINCH yağmuruna
+    // tutar (prompt defalarca yeniden basılır). Gönderim debounce'lu.
+    var resizeJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val inputFocus = remember { FocusRequester() }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -473,6 +483,9 @@ private fun ActiveTerminal(
         val lineH = with(density) { (16 * settings.theme.fontScale).sp.toPx() }
         val connected = state == ConnectionState.ACTIVE
         val conn = handle.conn
+        // Klavye açıkken panel-kapsül arasındaki hava boşluğu daralır —
+        // kapsül klavyenin hemen üstünde durur, görüş alanı korunur.
+        val imeOpen = WindowInsets.ime.getBottom(density) > 0
 
         Box(
             Modifier
@@ -480,7 +493,10 @@ private fun ActiveTerminal(
                 .fillMaxWidth()
                 .then(
                     if (fullscreen) Modifier
-                    else Modifier.padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 10.dp),
+                    else Modifier.padding(
+                        start = 10.dp, end = 10.dp, top = 6.dp,
+                        bottom = if (imeOpen) 6.dp else 10.dp,
+                    ),
                 ),
         ) {
             // Yüzen terminal paneli: tutamaç + başlık + çıktı tek yuvarlak
@@ -492,8 +508,24 @@ private fun ActiveTerminal(
             ) {
                 Column(Modifier.fillMaxSize()) {
                     if (!fullscreen) {
+                        // Tutamaç: aşağı çek → terminal kapanır (oturum yaşar),
+                        // ana sayfadaki oturum kartlarına dönülür.
+                        var pull by remember { mutableStateOf(0f) }
+                        val pullThreshold = with(density) { 48.dp.toPx() }
                         Box(
-                            Modifier.fillMaxWidth().padding(top = 7.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .pointerInput(Unit) {
+                                    detectVerticalDragGestures(
+                                        onDragStart = { pull = 0f },
+                                        onDragEnd = {
+                                            if (pull > pullThreshold) onCollapse()
+                                            pull = 0f
+                                        },
+                                        onDragCancel = { pull = 0f },
+                                    ) { _, dy -> if (dy > 0) pull += dy }
+                                }
+                                .padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             Box(
@@ -612,7 +644,13 @@ private fun ActiveTerminal(
                                 val newSize = TerminalSize(cols, rows)
                                 if (newSize != vm.size) {
                                     vm.setSize(newSize)
-                                    if (connected) controller.send(TerminalInput.Resize(newSize))
+                                    if (connected) {
+                                        resizeJob?.cancel()
+                                        resizeJob = scope.launch {
+                                            kotlinx.coroutines.delay(180)
+                                            controller.send(TerminalInput.Resize(newSize))
+                                        }
+                                    }
                                 }
                                 viewportEpoch++
                             }
@@ -876,7 +914,7 @@ private fun ActiveTerminal(
             shape = RoundedCornerShape(26.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 10.dp, end = 10.dp, bottom = 8.dp),
+                .padding(start = 10.dp, end = 10.dp, bottom = if (imeOpen) 4.dp else 8.dp),
         ) {
             TerminalKeyBar(
                 ctrl = ctrl,

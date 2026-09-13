@@ -71,4 +71,17 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
             it[snippetsKey] = s.snippets
         }
     }
+
+    // Açık terminal oturumları (conn id listesi, virgülle) — kullanıcı
+    // kapatmadıkça uygulama yeniden başlayınca geri yüklenir (tmux
+    // re-attach ile kaldığı yerden devam eder).
+    private val openSessionsKey = stringPreferencesKey("open_sessions")
+
+    suspend fun loadOpenSessions(): List<String> =
+        context.prefs.data.first()[openSessionsKey]
+            ?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
+
+    suspend fun saveOpenSessions(connIds: List<String>) {
+        context.prefs.edit { it[openSessionsKey] = connIds.joinToString(",") }
+    }
 }
