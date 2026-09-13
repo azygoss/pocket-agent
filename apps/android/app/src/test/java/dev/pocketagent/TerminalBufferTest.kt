@@ -160,6 +160,40 @@ class TerminalBufferTest {
         assertEquals("xxxxx", b.snapshot().first().text)
     }
 
+    @Test fun deadInlineTuiPromptSnapsBelowContent() {
+        // pi/codex tarzı inline TUI: çerçeveyi ana ekrana çizer, çıkarken
+        // imleci metnin ortasında bırakır (temizlik dizisi gelmez). Sonraki
+        // kabuk prompt'u tüm metnin ALTINDAN devam etmeli, ezmemeli.
+        val b = TerminalBuffer(cols = 40, rows = 10)
+        b.feed("agent satır 1\r\nagent satır 2\r\nagent satır 3\r\n")
+        b.feed("\u001B[2;1H") // TUI'nin son çizimi imleci içeriğe taşıdı
+        b.feed("root@devbox:~# ") // ölü TUI sonrası: düz metin chunk'ı
+        val lines = b.snapshot().map { it.text }
+        assertEquals("agent satır 3", lines[2].trimEnd())
+        assertTrue("prompt içerik altında olmalı: $lines", lines[3].startsWith("root@devbox"))
+    }
+
+    @Test fun deadTuiNarrowedRegionIsReleased() {
+        // Agent çıkışında bölge daraltılmış + imleç içeride kalmış:
+        // bölge sıfırlanıp imleç tüm içeriğin altına taşınmalı.
+        val b = TerminalBuffer(cols = 20, rows = 6)
+        b.feed("a\r\nb\r\nc\r\nd\r\ne\r\nf")
+        b.feed("\u001B[2;5r\u001B[3;1H") // bölge daralt + imleç içeride
+        b.feed("PROMPT") // ölü TUI sonrası düz metin
+        val lines = b.snapshot().map { it.text }
+        assertTrue("prompt en sonda olmalı: $lines", lines.last().startsWith("PROMPT"))
+        assertEquals(1, b.scrollbackSize) // dolu ekran bir satır yer açtı
+    }
+
+    @Test fun positionedWritesInsideContentNotSnapped() {
+        // Canlı TUI: aynı chunk'ta konumlandırma + içerik-içi yazı serbest
+        // kalmalı — kelepçe yalnız konumlandırmasız düz metni yakalar.
+        val b = TerminalBuffer(cols = 40, rows = 10)
+        b.feed("one\r\ntwo\r\nthree\r\n")
+        b.feed("\u001B[2;1HZZ")
+        assertEquals("ZZo", b.snapshot()[1].text)
+    }
+
     @Test fun sgrStoresAnsiIndexForTheming() {
         // Renk indeksi saklanır ki tema değişince çıktı yeni paletten çözülsün.
         val b = TerminalBuffer()
