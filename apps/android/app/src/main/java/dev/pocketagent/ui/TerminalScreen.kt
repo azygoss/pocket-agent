@@ -2,6 +2,7 @@
 package dev.pocketagent.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +30,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -45,6 +48,7 @@ import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -262,17 +266,19 @@ private fun SessionPillsRow(
     }
 }
 
-// Oturum sekmesi: durum noktası + ad; aktif sekme tonal zemin + koyu metin,
-// retry `↻n/5`. Çerçeve yok — editor sekmesi dili.
+// Oturum sekmesi: editor-tab dili — aktif sekme üst köşeleri yuvarlak, zemini
+// terminal yüzeyiyle aynı renk; aşağı doğru panele "bağlanır". Durum noktası +
+// ad + retry `↻n/5`.
 @Composable
 private fun SessionPill(name: String, state: ConnectionState, retry: Int, active: Boolean, onClick: () -> Unit) {
+    val termBg = Color(LocalConsoleTheme.current.term.background)
     val fg = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         Modifier
-            .clip(MaterialTheme.shapes.small)
-            .background(if (active) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
+            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+            .background(if (active) termBg else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         StateDot(state, size = 6.dp)
@@ -299,38 +305,13 @@ private fun SessionPill(name: String, state: ConnectionState, retry: Int, active
 
 @Composable
 private fun EmptyTerminal(onNewConnection: () -> Unit) {
-    Column(
-        Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "❯ açık oturum yok",
-                color = MaterialTheme.colorScheme.primary,
-                fontFamily = LocalMonoFont.current,
-                fontSize = 14.sp,
-            )
-            Spacer(Modifier.width(4.dp))
-            // Statik imleç bloğu — terminal motifi.
-            Box(
-                Modifier
-                    .width(8.dp)
-                    .height(15.dp)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Bağlantılar sekmesinden bir host seç ya da QR ile eşle. Her host kendi oturumuyla açılır; yukarıdaki şeritle aralarında gezinebilirsin.",
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Spacer(Modifier.height(14.dp))
-        Row(
-            Modifier.clickable(onClick = onNewConnection),
-            verticalAlignment = Alignment.CenterVertically,
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        EmptyState(
+            icon = Icons.Filled.Terminal,
+            title = "açık oturum yok",
+            body = "Bağlantılar sekmesinden bir host seç ya da QR ile eşle. Her host kendi oturumuyla açılır; yukarıdaki şeritle aralarında gezinebilirsin.",
         ) {
-            Text("❯ host ekle", fontFamily = LocalMonoFont.current, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+            ConsoleButton(onClick = onNewConnection) { Text("Host ekle") }
         }
     }
 }
@@ -467,13 +448,14 @@ private fun ActiveTerminal(
     }
 
     Column(Modifier.fillMaxSize()) {
-        // ── Üst sabit şerit: oturum pill'leri + durum + aksiyonlar ──
-        // Yüzen overlay yok — hiçbir şey terminal çıktısını örtmez.
+        // ── Üst sabit şerit: oturum sekmeleri + durum + aksiyonlar ──
+        // Alt padding yok — aktif sekme zemini terminal yüzeyine bitişir
+        // (editor tab'ı dili). Yüzen overlay yok — hiçbir şey çıktıyı örtmez.
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(start = 10.dp, top = 2.dp, bottom = 2.dp, end = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(start = 10.dp, top = 4.dp, end = 2.dp),
+            verticalAlignment = Alignment.Bottom,
         ) {
             SessionPillsRow(manager, Modifier.weight(1f), onNewConnection)
             // Durum metni (mono, dim): transport • pencere başlığı — dar, ellipsis.
@@ -490,10 +472,10 @@ private fun ActiveTerminal(
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier
                     .widthIn(max = 110.dp)
-                    .padding(start = 6.dp),
+                    .padding(start = 6.dp, bottom = 9.dp),
             )
             OverlayAction("Scrollback'te ara", { searchOpen = !searchOpen; if (!searchOpen) query = "" }) {
-                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             OverlayAction("Scrollback'i paylaş", {
                 val dump = lines.joinToString("\n") { it.text }
@@ -514,7 +496,7 @@ private fun ActiveTerminal(
                     }
                 }
             }) {
-                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             OverlayAction(
                 if (fullscreen) "Tam ekrandan çık" else "Tam ekran",
@@ -523,19 +505,19 @@ private fun ActiveTerminal(
                 Icon(
                     if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
                     contentDescription = null,
-                    modifier = Modifier.size(15.dp),
+                    modifier = Modifier.size(17.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (state == ConnectionState.CLOSED || state == ConnectionState.FAILED) {
                 if (controller.canReconnect()) {
                     OverlayAction("Yeniden bağlan", { controller.reconnect() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
             OverlayAction("Oturumu kapat", onClose) {
-                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
+                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.error)
             }
         }
 
@@ -642,25 +624,45 @@ private fun ActiveTerminal(
                         )
 
                         if (lines.size <= 1 && lines.firstOrNull()?.text?.isBlank() != false) {
+                            // Boş çıktı: mono durum satırı + yanıp sönen imleç bloğu.
+                            val cursorAlpha by androidx.compose.animation.core.rememberInfiniteTransition(label = "cursor")
+                                .animateFloat(
+                                    initialValue = 1f,
+                                    targetValue = 0.15f,
+                                    animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                                        androidx.compose.animation.core.tween(530),
+                                        androidx.compose.animation.core.RepeatMode.Reverse,
+                                    ),
+                                    label = "cursor-alpha",
+                                )
                             Column(
                                 Modifier.fillMaxSize().padding(20.dp),
                                 verticalArrangement = Arrangement.Center,
                             ) {
-                                Text(
-                                    when (state) {
-                                        ConnectionState.CONNECTING -> "❯ bağlanıyor…"
-                                        ConnectionState.ACTIVE -> "❯ yazmaya başla"
-                                        ConnectionState.FAILED -> "❯ bağlantı hatası"
-                                        else -> "❯ bekleniyor"
-                                    },
-                                    color = when (state) {
-                                        ConnectionState.CONNECTING -> TermAmber
-                                        ConnectionState.FAILED -> MaterialTheme.colorScheme.error
-                                        else -> MaterialTheme.colorScheme.primary
-                                    },
-                                    fontFamily = LocalMonoFont.current,
-                                    fontSize = (14 * settings.theme.fontScale).sp,
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        when (state) {
+                                            ConnectionState.CONNECTING -> "❯ bağlanıyor…"
+                                            ConnectionState.ACTIVE -> "❯ yazmaya başla"
+                                            ConnectionState.FAILED -> "❯ bağlantı hatası"
+                                            else -> "❯ bekleniyor"
+                                        },
+                                        color = when (state) {
+                                            ConnectionState.CONNECTING -> TermAmber
+                                            ConnectionState.FAILED -> MaterialTheme.colorScheme.error
+                                            else -> MaterialTheme.colorScheme.primary
+                                        },
+                                        fontFamily = LocalMonoFont.current,
+                                        fontSize = (14 * settings.theme.fontScale).sp,
+                                    )
+                                    Spacer(Modifier.width(3.dp))
+                                    Box(
+                                        Modifier
+                                            .width(8.dp)
+                                            .height(16.dp)
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = cursorAlpha)),
+                                    )
+                                }
                             }
                         } else {
                             SelectionContainer {
@@ -848,16 +850,18 @@ private fun TerminalKeyBar(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(46.dp),
+            .height(48.dp)
+            .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TermKey("ctrl", enabled = enabled, active = ctrl, onTap = onCtrl)
-        TermKeyDivider()
+        Spacer(Modifier.width(6.dp))
         Row(
             Modifier
                 .weight(1f)
                 .horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             TermKey("esc", enabled) { onKey("\u001B") }
             TermKey("tab", enabled) { onKey("\t") }
@@ -865,17 +869,17 @@ private fun TerminalKeyBar(
             TermKey("^d", enabled) { onKey("\u0004") }
             TermKey("^z", enabled) { onKey("\u001A") }
             TermKey("^l", enabled) { onKey("\u000C") }
-            TermKeyDivider()
+            Spacer(Modifier.width(5.dp))
             TermKey("←", enabled) { onKey("\u001B[D") }
             TermKey("↑", enabled) { onKey("\u001B[A") }
             TermKey("↓", enabled) { onKey("\u001B[B") }
             TermKey("→", enabled) { onKey("\u001B[C") }
-            TermKeyDivider()
+            Spacer(Modifier.width(5.dp))
             TermKey("home", enabled) { onKey("\u001B[H") }
             TermKey("end", enabled) { onKey("\u001B[F") }
             TermKey("pgup", enabled) { onKey("\u001B[5~") }
             TermKey("pgdn", enabled) { onKey("\u001B[6~") }
-            TermKeyDivider()
+            Spacer(Modifier.width(5.dp))
             TermKey("|", enabled) { onKey("|") }
             TermKey("~", enabled) { onKey("~") }
             TermKey("-", enabled) { onKey("-") }
@@ -883,14 +887,11 @@ private fun TerminalKeyBar(
             TermKey("/", enabled) { onKey("/") }
             // Kullanıcı snippet'ları (Ayarlar → Tuş şeridi): etiket basılır,
             // komut metni gönderilir (Enter kullanıcıda — iptal şansı kalır).
-            if (snippets.isNotEmpty()) {
-                TermKeyDivider()
-                snippets.forEach { (label, cmd) ->
-                    TermKey(label, enabled) { onKey(cmd) }
-                }
+            snippets.forEach { (label, cmd) ->
+                TermKey(label, enabled) { onKey(cmd) }
             }
         }
-        TermKeyDivider()
+        Spacer(Modifier.width(6.dp))
         TermIconKey(
             icon = if (typing) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
             desc = if (typing) "Klavyeyi kapat" else "Klavyeyi aç",
@@ -901,9 +902,9 @@ private fun TerminalKeyBar(
     }
 }
 
-// Konsol tuşu: çerçevesiz mono metin; aktif mandal "reverse video" (accent
-// blok + onPrimary), basılıyken hafif zemin + haptic. Ripple yok — haptic
-// dokunmanın algılandığını garantiler.
+// Konsol tuşu: tonal keycap — yumuşak köşeli dolgu hücre; aktif mandal
+// accent dolgu + onPrimary, basılıyken koyulaşır + haptic. Ripple yok —
+// haptic dokunmanın algılandığını garantiler.
 @Composable
 private fun TermKey(
     label: String,
@@ -917,13 +918,14 @@ private fun TermKey(
     Box(
         Modifier
             .fillMaxHeight()
-            .padding(horizontal = 2.dp, vertical = 5.dp)
-            .clip(MaterialTheme.shapes.extraSmall)
+            .padding(vertical = 6.dp)
+            .defaultMinSize(minWidth = 34.dp)
+            .clip(MaterialTheme.shapes.small)
             .background(
                 when {
                     active -> MaterialTheme.colorScheme.primary
-                    pressed && enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)
-                    else -> Color.Transparent
+                    pressed && enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f)
+                    else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
                 },
             )
             .clickable(
@@ -935,18 +937,18 @@ private fun TermKey(
                     onTap()
                 },
             )
-            .padding(horizontal = 11.dp),
+            .padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
             fontFamily = LocalMonoFont.current,
-            fontSize = 12.5.sp,
+            fontSize = 12.sp,
             maxLines = 1,
             color = when {
                 !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                 active -> MaterialTheme.colorScheme.onPrimary
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
             },
         )
     }
@@ -960,9 +962,13 @@ private fun TermIconKey(icon: ImageVector, desc: String, enabled: Boolean, onTap
     Box(
         Modifier
             .fillMaxHeight()
-            .padding(horizontal = 2.dp, vertical = 5.dp)
-            .clip(MaterialTheme.shapes.extraSmall)
-            .background(if (pressed && enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f) else Color.Transparent)
+            .padding(vertical = 6.dp)
+            .width(38.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(
+                if (pressed && enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f)
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+            )
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -971,29 +977,16 @@ private fun TermIconKey(icon: ImageVector, desc: String, enabled: Boolean, onTap
                     view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                     onTap()
                 },
-            )
-            .padding(horizontal = 11.dp),
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             icon,
             contentDescription = desc,
-            modifier = Modifier.size(18.dp),
-            tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+            modifier = Modifier.size(17.dp),
+            tint = if (enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
         )
     }
-}
-
-// Tuş grupları arasında ince dikey ayırıcı.
-@Composable
-private fun TermKeyDivider() {
-    Box(
-        Modifier
-            .padding(horizontal = 5.dp)
-            .width(1.dp)
-            .height(18.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant),
-    )
 }
 
 // Yarı saydam overlay ikonu (terminal içeriğinin üstünde).
