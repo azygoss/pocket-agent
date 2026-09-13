@@ -446,19 +446,18 @@ private fun ActiveTerminal(
         onDispose { ic?.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
+    // reverseLayout: indeks 0 = en yeni satır, her zaman altta sabit.
+    // Yeniden açılışta, klavye aç/kapa'da veya scrollback büyümesinde
+    // scroll konumu "en alta hizalı" kalır — üste-hizala kayması olmaz.
     val atBottom by remember {
-        derivedStateOf {
-            val info = listState.layoutInfo
-            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-            last >= info.totalItemsCount - 1
-        }
+        derivedStateOf { listState.firstVisibleItemIndex == 0 }
     }
     LaunchedEffect(lines.size) {
-        if (lines.isNotEmpty() && atBottom) listState.scrollToItem(lines.size - 1)
+        if (lines.isNotEmpty() && atBottom) listState.scrollToItem(0)
     }
     // Klavye açılıp viewport küçülünce yazılan satır görünür kalsın.
     LaunchedEffect(viewportEpoch) {
-        if (lines.isNotEmpty()) listState.scrollToItem(lines.size - 1)
+        if (lines.isNotEmpty()) listState.scrollToItem(0)
     }
 
     // Alt-screen açıldığında (vim/htop/less/tmux) bekleyen gerçek boyutu
@@ -695,7 +694,10 @@ private fun ActiveTerminal(
                                 // model küçülürken üst satırlar (prompt dahil)
                                 // scrollback'e itilir ve ekran boş kalır.
                                 val imePx = imeInsets.getBottom(density)
-                                val rows = ((sz.height + imePx) / lineH).toInt().coerceIn(4, 200)
+                                // Yuvarla (floor değil): piksel-sapmalı ölçümler
+                                // sınırda ±1 satır üretmesin — gereksiz reflow'u
+                                // ve scrollback itmesini önler.
+                                val rows = ((sz.height + imePx) / lineH).roundToInt().coerceIn(4, 200)
                                 val newSize = TerminalSize(cols, rows)
                                 resizeJob?.cancel()
                                 resizeJob = scope.launch {
@@ -823,8 +825,10 @@ private fun ActiveTerminal(
                                     state = listState,
                                     modifier = Modifier.fillMaxSize(),
                                     contentPadding = PaddingValues(8.dp),
+                                    reverseLayout = true,
                                 ) {
-                                    itemsIndexed(lines) { idx, line ->
+                                    itemsIndexed(lines.asReversed()) { revIdx, line ->
+                                        val idx = lines.size - 1 - revIdx
                                         val isMatch = currentMatch == idx
                                         val hasMatch = matchSet.contains(idx)
                                         val cur = cursor
@@ -856,7 +860,7 @@ private fun ActiveTerminal(
                                 shadowElevation = 6.dp,
                                 modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
                             ) {
-                                IconButton(onClick = { scope.launch { listState.scrollToItem(lines.size - 1) } }) {
+                                IconButton(onClick = { scope.launch { listState.scrollToItem(0) } }) {
                                     Icon(
                                         Icons.Filled.KeyboardArrowDown,
                                         contentDescription = "En alta in",
@@ -936,7 +940,7 @@ private fun ActiveTerminal(
                             enabled = matches.isNotEmpty(),
                             onClick = {
                                 matchCursor = (matchCursor - 1 + matches.size) % matches.size
-                                scope.launch { listState.scrollToItem(matches[matchCursor]) }
+                                scope.launch { listState.scrollToItem(lines.size - 1 - matches[matchCursor]) }
                             },
                         ) {
                             Icon(
@@ -949,7 +953,7 @@ private fun ActiveTerminal(
                             enabled = matches.isNotEmpty(),
                             onClick = {
                                 matchCursor = (matchCursor + 1) % matches.size
-                                scope.launch { listState.scrollToItem(matches[matchCursor]) }
+                                scope.launch { listState.scrollToItem(lines.size - 1 - matches[matchCursor]) }
                             },
                         ) {
                             Icon(
