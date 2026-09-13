@@ -150,6 +150,8 @@ class TerminalBuffer(
     var bracketedPaste = false
         private set
     private var wrapPending = false
+    private var insertMode = false // IRM (CSI 4 h)
+    private var originMode = false // DECOM (CSI ? 6 h) — CUP bölge-göreli
     private var pending = "" // chunk sınırında bölünen escape dizisi
 
     // OSC 52 (cihaz panosuna kopyala) ve OSC 0/2 (pencere başlığı) geri çağrıları.
@@ -277,6 +279,7 @@ class TerminalBuffer(
             if (autowrap) { lineFeed(); s.ccol = 0 }
             wrapPending = false
         }
+        if (insertMode) insertChars(1)
         val c = if (decGraphics) DEC_GRAPHICS[c0] ?: c0 else c0
         val withLink = if (link != null) style.copy(link = link) else style
         val eff = if (inverse) {
@@ -291,8 +294,12 @@ class TerminalBuffer(
         }
         s.grid[s.crow].chars[s.ccol] = c
         s.grid[s.crow].styles[s.ccol] = eff
+        lastPrinted = c
         if (s.ccol == cols - 1) wrapPending = true else s.ccol++
     }
+
+    // REP (ESC[n b) için son yazılan karakter.
+    private var lastPrinted: Char = ' '
 
     // LF/IND: bölge dibindeyse kaydır, değilse imleci indir. CR uygulamaz.
     private fun lineFeed() {
@@ -370,6 +377,22 @@ class TerminalBuffer(
         inverse = false
         link = null
         decGraphics = false
+        insertMode = false
+        originMode = false
+        wrapPending = false
+    }
+
+    // DECSRR (ESC [ ! p): ekran içeriği korunur; bölge/modlar normale döner.
+    private fun softResetTerminal() {
+        val s = active()
+        s.scrollTop = 0; s.scrollBottom = rows - 1
+        style = TermStyle()
+        inverse = false
+        link = null
+        decGraphics = false
+        insertMode = false
+        originMode = false
+        cursorVisible = true
         wrapPending = false
     }
 
@@ -423,6 +446,10 @@ class TerminalBuffer(
 
     private fun handleCsi(final: Char, raw: String) {
         if (raw.startsWith('?')) { privateMode(final, raw.substring(1)); return }
+        // DECSRR (ESC [ ! p): soft reset — scroll bölgesi sıfırlanır, modlar
+        // normale döner. İşlenmezse daraltılmış bölge kalır ve imleç eski
+        // metnin içinde hapsolur.
+        if (final == 'p' && raw.startsWith("!")) { softResetTerminal(); return }
         val parts = raw.split(';')
         fun p(idx: Int, default: Int): Int =
             parts.getOrNull(idx)?.toIntOrNull() ?: default
@@ -436,12 +463,22 @@ class TerminalBuffer(
             'E' -> { s.crow = (s.crow + p(0, 1)).coerceAtMost(rows - 1); s.ccol = 0; wrapPending = false }
             'F' -> { s.crow = (s.crow - p(0, 1)).coerceAtLeast(0); s.ccol = 0; wrapPending = false }
             'G', '`' -> { s.ccol = (p(0, 1) - 1).coerceIn(0, cols - 1); wrapPending = false }
-            'd' -> { s.crow = (p(0, 1) - 1).coerceIn(0, rows - 1); wrapPending = false }
+            'd' -> {
+                // DECOM'da VPA bölge-göreli.
+                val rBase = if (originMode) s.scrollTop else 0
+                val rMax = if (originMode) s.scrollBottom else rows - 1
+                s.crow = (rBase + p(0, 1) - 1).coerceIn(rBase, rMax)
+                wrapPending = false
+            }
             'H', 'f' -> {
-                s.crow = (p(0, 1) - 1).coerceIn(0, rows - 1)
+                // DECOM'da CUP bölge-göreli ve bölgeyle sınırlı.
+                val rBase = if (originMode) s.scrollTop else 0
+                val rMax = if (originMode) s.scrollBottom else rows - 1
+                s.crow = (rBase + p(0, 1) - 1).coerceIn(rBase, rMax)
                 s.ccol = (p(1, 1) - 1).coerceIn(0, cols - 1)
                 wrapPending = false
             }
+            'h', 'l' -> if (raw.trim() == "4") insertMode = final == 'h' // IRM
             'J' -> eraseDisplay(p(0, 0))
             'K' -> eraseLine(p(0, 0))
             'L' -> insertLines(p(0, 1))
@@ -451,6 +488,10 @@ class TerminalBuffer(
             'S' -> scrollUp(p(0, 1))
             'T' -> scrollDown(p(0, 1))
             'X' -> s.grid[s.crow].erase(s.ccol until (s.ccol + p(0, 1)), TermStyle(bg = style.bg))
+            'b' -> repeat(p(0, 1)) { putChar(lastPrinted) } // REP
+            'a' -> { s.ccol = (s.ccol + p(0, 1)).coerceAtMost(cols - 1); wrapPending = false } // HPR
+            'I' -> { s.ccol = minOf((s.ccol / 8 + p(0, 1)) * 8, cols - 1); wrapPending = false } // CHT
+            'Z' -> { s.ccol = maxOf(((s.ccol + 7) / 8 - p(0, 1)) * 8, 0); wrapPending = false } // CBT
             'r' -> {
                 val top = (p(0, 1) - 1).coerceIn(0, rows - 1)
                 val bottom = (p(1, rows) - 1).coerceIn(0, rows - 1)
@@ -476,6 +517,13 @@ class TerminalBuffer(
             47 -> if (final == 'h') enterAlt(saveCursor = false, clear = false) else exitAlt(restoreCursor = false)
             25 -> cursorVisible = final == 'h'
             7 -> autowrap = final == 'h'
+            6 -> { // DECOM: imleç adresleme kaydırma bölgesine göreli olur.
+                originMode = final == 'h'
+                val s = active()
+                s.crow = if (originMode) s.scrollTop else 0
+                s.ccol = 0
+                wrapPending = false
+            }
             2004 -> bracketedPaste = final == 'h'
             else -> {} // 1 (app cursor) vb: yoksay
         }
@@ -495,6 +543,15 @@ class TerminalBuffer(
         useAlt = false
         altScreenActive = false
         if (restoreCursor) { main.crow = main.savedRow; main.ccol = main.savedCol; main.clampCursor() }
+        // TUI/agent çıkışında geri yüklenen imleç, kalan içeriğin İÇİNE
+        // düşmemeli — yeni çıktı son dolu satırın altından devam eder.
+        // Restore satırı içerik içindeyse alta çekilir; ekran doluysa
+        // yer açmak için bir satır scrollback'e itilir.
+        val used = main.usedRows()
+        if (main.crow < used) {
+            if (used >= rows) { scrollUp(1) }
+            main.crow = used.coerceAtMost(rows - 1)
+        }
         wrapPending = false
     }
 
