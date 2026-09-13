@@ -202,6 +202,13 @@ fun PocketAgentApp(
         if (anyActive) snackbar.showSnackbar("Oturum bağlandı")
     }
 
+    // Terminalde geri tuşu da çıkış yoludur: arama/tam-ekran açıksa onlar
+    // önce kapanır (TerminalScreen'in kendi BackHandler'ı önceliklidir),
+    // değilse oturumlar bölümüne (ana sayfa) dönülür — oturum yaşar.
+    androidx.activity.compose.BackHandler(
+        enabled = tab == AppTab.Terminal && sessionList.isNotEmpty(),
+    ) { tab = AppTab.Home }
+
     val console = consoleTheme(settings.theme.themeId)
     // Sistem çubuğu ikon kontrastı temayı takip eder — açık temada koyu ikon.
     val barView = androidx.compose.ui.platform.LocalView.current
@@ -225,7 +232,7 @@ fun PocketAgentApp(
                         if (tab == AppTab.Terminal) {
                             val activeId by sessions.activeId.collectAsState()
                             sessionList.firstOrNull { it.id == activeId }?.let { h ->
-                                TerminalBarActions(h, sessions, termChrome)
+                                TerminalBarActions(h, sessions, termChrome, onExit = { tab = AppTab.Home })
                             }
                         }
                     }
@@ -236,12 +243,11 @@ fun PocketAgentApp(
             // status/nav boşluğu içerikte kalmasın diye sıfırlanır.
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
-                // Terminal tam ekrandayken ana menü barı yerine terminalin
-                // kendi tuş şeridi görünür (TerminalScreen içinde render edilir).
-                // Klavye açıkken de gizlenir — aksi halde tuş kapsülüyle klavye
-                // arasında nav bar yüksekliği kadar ölü boşluk kalır.
-                val imeOpen = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
-                if (!(tab == AppTab.Terminal && (termFullscreen || imeOpen))) {
+                // Aktif terminalde ana nav bar tamamen gizlenir — çıkış
+                // tutamaç çekişi, üst bardaki X veya geri tuşuyla yapılır.
+                // Oturum yokken (boş terminal) bar görünür kalır ki ekran
+                // çıkışsız bir tuzağa dönüşmesin.
+                if (tab != AppTab.Terminal || sessionList.isEmpty()) {
                     ConsoleNavBar(tab) { tab = it }
                 }
             },
@@ -350,9 +356,10 @@ private fun ConsoleTopBar(activeSessions: Int, actions: (@Composable () -> Unit)
     }
 }
 
-// Terminal aksiyonları üst barda: ara / paylaş / tam ekran / yeniden bağlan / kapat.
+// Terminal aksiyonları üst barda: ara / paylaş / tam ekran / yeniden bağlan /
+// kapat. X oturumu kapatır ve terminalden çıkar (oturumlar bölümüne dönülür).
 @Composable
-private fun TerminalBarActions(h: SessionHandle, sessions: SessionManager, chrome: TerminalChromeState) {
+private fun TerminalBarActions(h: SessionHandle, sessions: SessionManager, chrome: TerminalChromeState, onExit: () -> Unit) {
     val state by h.controller.state.collectAsState()
     val context = LocalContext.current
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -368,6 +375,7 @@ private fun TerminalBarActions(h: SessionHandle, sessions: SessionManager, chrom
         }
         TerminalBarIcon("Oturumu kapat", Icons.Filled.Close, tint = MaterialTheme.colorScheme.error) {
             sessions.close(h.id)
+            onExit()
         }
     }
 }

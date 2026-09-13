@@ -560,39 +560,43 @@ private fun ActiveTerminal(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 Column(Modifier.fillMaxSize()) {
-                    if (!fullscreen) {
-                        // Tutamaç: aşağı çek → panel parmağı izler; eşik
-                        // geçilirse aşağı akıp ana sayfadaki oturum kartlarına
-                        // döner (oturum yaşar), geçilmezse geri yaylanır.
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .pointerInput(Unit) {
-                                    detectVerticalDragGestures(
-                                        onDragEnd = {
-                                            if (pull > pullThreshold) {
-                                                pull = pullMax
-                                                scope.launch {
-                                                    kotlinx.coroutines.delay(140)
-                                                    onCollapse()
-                                                }
-                                            } else pull = 0f
-                                        },
-                                        onDragCancel = { pull = 0f },
-                                    ) { _, dy -> pull = (pull + dy).coerceIn(0f, pullMax) }
-                                }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
+                    // Üst bölge (tutamaç + başlık) aşağı çekilebilir: panel
+                    // parmağı izler; eşik geçilirse aşağı akıp ana sayfadaki
+                    // oturum kartlarına döner (oturum yaşar), geçilmezse geri
+                    // yaylanır. Buton dokunuşları çalışmaya devam eder — sürükleme
+                    // yalnız dikey kayma eşiği aşılınca olayı alır.
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .pointerInput(Unit) {
+                                detectVerticalDragGestures(
+                                    onDragEnd = {
+                                        if (pull > pullThreshold) {
+                                            pull = pullMax
+                                            scope.launch {
+                                                kotlinx.coroutines.delay(140)
+                                                onCollapse()
+                                            }
+                                        } else pull = 0f
+                                    },
+                                    onDragCancel = { pull = 0f },
+                                ) { _, dy -> pull = (pull + dy).coerceIn(0f, pullMax) }
+                            },
+                    ) {
+                        if (!fullscreen) {
                             Box(
-                                Modifier
-                                    .width(34.dp)
-                                    .height(4.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.30f)),
-                            )
+                                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(
+                                    Modifier
+                                        .width(34.dp)
+                                        .height(4.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.30f)),
+                                )
+                            }
                         }
-                    }
                     // ── Panel başlığı: durum noktası + oturum + rozet + aksiyonlar ──
                     Row(
                         Modifier
@@ -659,10 +663,12 @@ private fun ActiveTerminal(
                                     }
                                 }
                             }
-                            OverlayAction("Oturumu kapat", onClose) {
+                            // X: oturumu kapatır ve terminalden çıkar.
+                            OverlayAction("Oturumu kapat", { onClose(); onCollapse() }) {
                                 Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
                             }
                         }
+                    }
                     }
                     // ── Çıktı alanı: dokun → doğrudan yaz (ayrı giriş satırı yok) ──
                     Box(
