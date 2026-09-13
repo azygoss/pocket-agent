@@ -83,6 +83,8 @@ class TerminalController(
         _state.value = ConnectionState.CONNECTING
         job = scope.launch {
             try {
+                // PTY bu boyutla açılıyor — dedupe tabanı burada kurulur.
+                lastPtySize = vm.size
                 val t = connector.open(conn, secret, vm.size)
                 transport = t
                 _connectedTo.value = conn
@@ -148,8 +150,17 @@ class TerminalController(
         _pendingHostKey.value = null
     }
 
+    // Uzak PTY'nin bildiği son boyut: aynı boyuta tekrar Resize göndermek
+    // uzak shell'i SIGWINCH ile uyandırır — zsh/fish prompt'u yeniden basar,
+    // ekranda fazladan prompt satırları birikir.
+    @Volatile private var lastPtySize: TerminalSize? = null
+
     fun send(input: TerminalInput) {
         val t = transport ?: return
+        if (input is TerminalInput.Resize) {
+            if (input.size == lastPtySize) return
+            lastPtySize = input.size
+        }
         scope.launch {
             try {
                 t.send(input)
