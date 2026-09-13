@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -200,7 +201,7 @@ fun TerminalScreen(
     val sessionList by manager.sessions.collectAsState()
     val activeId by manager.activeId.collectAsState()
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().imePadding()) {
         val active = sessionList.firstOrNull { it.id == activeId }
         if (active == null) {
             // Oturum yokken şerit burada kalır (yeni bağlantı + geçiş).
