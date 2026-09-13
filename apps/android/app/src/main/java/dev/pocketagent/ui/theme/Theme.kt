@@ -27,14 +27,14 @@ object Space {
     val xxl = 32.dp
 }
 
-// "Status-line" dili: enstrüman paneli hissi — keskin köşeler (kart 10,
-// kontrol 6), hairline kurallar, ters-video vurgular. Blob köşeler yok.
+// Tonal dil: yumuşak köşeler (kontrol 8, kart 14, grup 18, sheet 28).
+// Derinlik border ile değil tonal katman farkıyla kurulur.
 private val PocketShapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp),
-    small = RoundedCornerShape(6.dp),
-    medium = RoundedCornerShape(10.dp),
-    large = RoundedCornerShape(14.dp),
-    extraLarge = RoundedCornerShape(20.dp),
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(18.dp),
+    extraLarge = RoundedCornerShape(28.dp),
 )
 
 // Tipografi: UI metni sistem sans; mono yalnız veri taşıyan yerlerde

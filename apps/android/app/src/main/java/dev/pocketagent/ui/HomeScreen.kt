@@ -3,7 +3,6 @@ package dev.pocketagent.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,34 +53,34 @@ fun HomeScreen(
         ScreenHeader("Ana sayfa")
         Spacer(Modifier.height(Space.xl))
 
-        // ── Durum: tek bakışta bağlantı okuması ────────────────────────────
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            StateDot(state, size = 10.dp)
-            Spacer(Modifier.width(Space.md))
-            Column(Modifier.weight(1f)) {
-                Text(stateText(state, sessionList.size), style = MaterialTheme.typography.titleLarge)
-                if (state == ConnectionState.ACTIVE && activeConn != null) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        "${activeConn.user}@${activeConn.host}",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = LocalMonoFont.current),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                    )
+        // ── Durum paneli: tek bakışta bağlantı okuması ─────────────────────
+        ConsoleCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StateDot(state, size = 10.dp)
+                Spacer(Modifier.width(Space.md))
+                Column(Modifier.weight(1f)) {
+                    Text(stateText(state, sessionList.size), style = MaterialTheme.typography.titleLarge)
+                    if (state == ConnectionState.ACTIVE && activeConn != null) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "${activeConn.user}@${activeConn.host}",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = LocalMonoFont.current),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
             if (state == ConnectionState.ACTIVE && active != null) {
-                TagPill(active.controller.vm.badge, active = true, tone = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(Space.md))
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                    TagPill(
+                        "pty ${active.controller.vm.size.cols}×${active.controller.vm.size.rows}",
+                    )
+                    TagPill("${sessionList.size} oturum")
+                    TagPill(active.controller.vm.badge, active = true, tone = MaterialTheme.colorScheme.primary)
+                }
             }
-        }
-        if (state == ConnectionState.ACTIVE && active != null) {
-            Spacer(Modifier.height(Space.sm))
-            Text(
-                "pty ${active.controller.vm.size.cols}×${active.controller.vm.size.rows} · ${sessionList.size} oturum",
-                style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 22.dp),
-            )
         }
         Spacer(Modifier.height(Space.lg))
 
@@ -107,72 +106,79 @@ fun HomeScreen(
             }
         }
         Spacer(Modifier.height(Space.xxl))
-        SoftDivider()
-        Spacer(Modifier.height(Space.lg))
 
-        // ── Başlangıç / Son bağlantılar ────────────────────────────────────
+        // ── Başlangıç / Son bağlantılar — gruplu konteyner ────────────────
         if (saved.isEmpty()) {
             SectionLabel("Başlangıç")
             Spacer(Modifier.height(Space.md))
-            StepRow(1, "Host'ta çalıştır: pocket-agent pair")
-            StepRow(2, "QR'ı tara ya da XXXX-XXXX kodunu gir")
-            StepRow(3, "İlk bağlantıda parmak izini pinle (TOFU)")
-            StepRow(4, "tmux re-attach hazır — kopmaya dayanıklı")
+            ConsoleCard {
+                StepRow(1, "Host'ta çalıştır: pocket-agent pair")
+                StepRow(2, "QR'ı tara ya da XXXX-XXXX kodunu gir")
+                StepRow(3, "İlk bağlantıda parmak izini pinle (TOFU)")
+                StepRow(4, "tmux re-attach hazır — kopmaya dayanıklı")
+            }
         } else {
             SectionLabel("Son bağlantılar")
-            Spacer(Modifier.height(Space.xs))
-            saved.sortedByDescending { it.lastConnectedAt }.take(3).forEachIndexed { i, c ->
-                val open = sessionList.firstOrNull { it.conn.id == c.id }
-                if (i > 0) SoftDivider()
-                ListRow(
-                    title = "${c.name} — ${c.user}@${c.host}",
-                    titleMono = true,
-                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 10.dp),
-                    leading = {
-                        StateDot(open?.controller?.state?.collectAsState()?.value ?: ConnectionState.CLOSED)
-                    },
-                    trailing = {
-                        Icon(
-                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    },
-                    onClick = {
-                        if (open != null || connections.hasSavedSecret(c.id)) {
-                            sessions.open(c, connections.secret(c.id))
-                            onGoTo(AppTab.Terminal)
-                        } else {
-                            onGoTo(AppTab.Connections)
-                        }
-                    },
-                )
+            Spacer(Modifier.height(Space.md))
+            ConsoleCard(padding = 0.dp) {
+                saved.sortedByDescending { it.lastConnectedAt }.take(3).forEachIndexed { i, c ->
+                    val open = sessionList.firstOrNull { it.conn.id == c.id }
+                    if (i > 0) SoftDivider(Modifier.padding(start = Space.lg))
+                    ListRow(
+                        title = "${c.name} — ${c.user}@${c.host}",
+                        titleMono = true,
+                        leading = {
+                            StateDot(open?.controller?.state?.collectAsState()?.value ?: ConnectionState.CLOSED)
+                        },
+                        trailing = {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                        onClick = {
+                            if (open != null || connections.hasSavedSecret(c.id)) {
+                                sessions.open(c, connections.secret(c.id))
+                                onGoTo(AppTab.Terminal)
+                            } else {
+                                onGoTo(AppTab.Connections)
+                            }
+                        },
+                    )
+                }
             }
         }
         Spacer(Modifier.height(Space.xl))
-        SoftDivider()
-        Spacer(Modifier.height(Space.lg))
 
         // ── Son agent olayları ─────────────────────────────────────────────
         SectionLabel("Agent olayları")
-        Spacer(Modifier.height(Space.sm))
+        Spacer(Modifier.height(Space.md))
         if (inbox.rows.isEmpty()) {
-            Text(
-                "Henüz olay yok. Hook'lar kurulunca onay istekleri burada birleşir (24s TTL).",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            ConsoleCard {
+                Text(
+                    "Henüz olay yok. Hook'lar kurulunca onay istekleri burada birleşir (24s TTL).",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         } else {
-            inbox.rows.take(3).forEach { r ->
-                Row(Modifier.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    StateDot(ConnectionState.ACTIVE, size = 5.dp)
-                    Spacer(Modifier.width(Space.md))
-                    Text(r.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+            ConsoleCard(padding = 0.dp) {
+                inbox.rows.take(3).forEachIndexed { i, r ->
+                    if (i > 0) SoftDivider(Modifier.padding(start = Space.lg))
+                    Row(
+                        Modifier.padding(horizontal = Space.lg, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        StateDot(ConnectionState.ACTIVE, size = 6.dp)
+                        Spacer(Modifier.width(Space.md))
+                        Text(r.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                    }
                 }
             }
             if (inbox.rows.size > 3) {
-                Spacer(Modifier.height(Space.xs))
+                Spacer(Modifier.height(Space.sm))
                 Text(
                     "+${inbox.rows.size - 3} daha",
                     style = MaterialTheme.typography.labelSmall,

@@ -81,33 +81,35 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
             }
         }
         Spacer(Modifier.height(Space.lg))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Yazı ölçeği", style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.weight(1f))
-            Text(
-                "%.1fx".format(settings.theme.fontScale),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
+        ConsoleCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Yazı ölçeği", style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "%.1fx".format(settings.theme.fontScale),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Slider(
+                value = settings.theme.fontScale,
+                onValueChange = { settings.setFontScale(it) },
+                valueRange = 0.8f..2.0f,
             )
-        }
-        Slider(
-            value = settings.theme.fontScale,
-            onValueChange = { settings.setFontScale(it) },
-            valueRange = 0.8f..2.0f,
-        )
-        SoftDivider()
-        SettingRow(
-            "Açılışta son oturuma bağlan",
-            subtitle = "Secret Keystore'da saklıysa uygulama açılır açılmaz bağlanır",
-        ) {
-            Switch(checked = settings.autoReconnect, onCheckedChange = { settings.toggleAutoReconnect() })
-        }
-        SoftDivider()
-        SettingRow(
-            "Kopunca otomatik yeniden bağlan",
-            subtitle = "5 denemeye kadar üstel geri çekilme; kimlik/host-key hatasında durur",
-        ) {
-            Switch(checked = settings.autoReconnectOnDrop, onCheckedChange = { settings.toggleAutoReconnectOnDrop() })
+            SoftDivider()
+            SettingRow(
+                "Açılışta son oturuma bağlan",
+                subtitle = "Secret Keystore'da saklıysa uygulama açılır açılmaz bağlanır",
+            ) {
+                Switch(checked = settings.autoReconnect, onCheckedChange = { settings.toggleAutoReconnect() })
+            }
+            SoftDivider()
+            SettingRow(
+                "Kopunca otomatik yeniden bağlan",
+                subtitle = "5 denemeye kadar üstel geri çekilme; kimlik/host-key hatasında durur",
+            ) {
+                Switch(checked = settings.autoReconnectOnDrop, onCheckedChange = { settings.toggleAutoReconnectOnDrop() })
+            }
         }
         Spacer(Modifier.height(Space.xxl))
 
@@ -149,24 +151,30 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         SectionLabel("Kullanım")
         Spacer(Modifier.height(Space.md))
         if (usage.rows.isEmpty()) {
-            Text(
-                "Henüz kullanım verisi yok — host raporlama bağlanınca burada görünür. Backend ayarlıysa her senkron turunda güncellenir.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        usage.rows.forEach { u ->
-            Column(Modifier.padding(vertical = Space.sm)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(u.agent, Modifier.weight(1f), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        "%${u.percent} · ${u.resetIn}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            ConsoleCard {
+                Text(
+                    "Henüz kullanım verisi yok — host raporlama bağlanınca burada görünür. Backend ayarlıysa her senkron turunda güncellenir.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            ConsoleCard {
+                usage.rows.forEachIndexed { i, u ->
+                    if (i > 0) SoftDivider()
+                    Column(Modifier.padding(vertical = Space.sm)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(u.agent, Modifier.weight(1f), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "%${u.percent} · ${u.resetIn}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.height(Space.sm))
+                        MeterBar(u.percent / 100f)
+                    }
                 }
-                Spacer(Modifier.height(Space.sm))
-                MeterBar(u.percent / 100f)
             }
         }
         Spacer(Modifier.height(Space.xs))
@@ -181,24 +189,29 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         SectionLabel("Bilinen host anahtarları")
         Spacer(Modifier.height(Space.sm))
         if (pinnedKeys.isEmpty()) {
-            Text(
-                "Henüz pinlenen anahtar yok. İlk bağlantıda parmak izi sorulur.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            ConsoleCard {
+                Text(
+                    "Henüz pinlenen anahtar yok. İlk bağlantıda parmak izi sorulur.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         } else {
-            pinnedKeys.forEach { k ->
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = Space.sm)) {
-                    Column(Modifier.weight(1f)) {
-                        Text("${k.host}:${k.port}", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            k.fingerprint,
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    ConsoleTextButton(onClick = { hostKeys.forget(k.host, k.port); pinnedKeys = hostKeys.all() }) {
-                        Text("Unut", color = MaterialTheme.colorScheme.error)
+            ConsoleCard {
+                pinnedKeys.forEachIndexed { i, k ->
+                    if (i > 0) SoftDivider()
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = Space.sm)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("${k.host}:${k.port}", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                k.fingerprint,
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        ConsoleTextButton(onClick = { hostKeys.forget(k.host, k.port); pinnedKeys = hostKeys.all() }) {
+                            Text("Unut", color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             }
@@ -221,40 +234,45 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
                 pkg.getPackageInfo(app.packageName, 0).versionName
             }.getOrNull() ?: "dev"
         }
-        Text("Pocket Agent $version • GPL-3.0-or-later", style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(Space.xs))
-        Text(
-            "Fontlar: JetBrains Mono, IBM Plex Mono, Space Mono (OFL-1.1) • Lisans metinleri assets/licenses altında.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            "Terminal baytları, diff ve dosya içerikleri backend'den geçmez; yalnız kısa özetler (≤256 karakter, 24s TTL) tutulur.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            "Dikte: cihaz-içi varsayılan (BYOK opt-in) • Deep link: pocketagent://tmux|herdr",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        ConsoleCard {
+            Text("Pocket Agent $version • GPL-3.0-or-later", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(Space.xs))
+            Text(
+                "Fontlar: JetBrains Mono, IBM Plex Mono, Space Mono (OFL-1.1) • Lisans metinleri assets/licenses altında.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Terminal baytları, diff ve dosya içerikleri backend'den geçmez; yalnız kısa özetler (≤256 karakter, 24s TTL) tutulur.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Dikte: cihaz-içi varsayılan (BYOK opt-in) • Deep link: pocketagent://tmux|herdr",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Spacer(Modifier.height(Space.xxl))
     }
 }
 
 // Tema kartı: mini terminal önizlemesi — tema zemininde prompt satırı +
-// ANSI renkli örnek çıktı. Seçili kart accent hairline alır.
+// ANSI renkli örnek çıktı. Seçili kart accent halkası alır.
 @Composable
 private fun ThemeCard(t: ConsoleTheme, selected: Boolean, onTap: () -> Unit) {
     val mono = dev.pocketagent.ui.theme.LocalMonoFont.current
     Column(
         Modifier
             .width(136.dp)
-            .clip(MaterialTheme.shapes.small)
-            .border(
-                if (selected) 1.5.dp else 1.dp,
-                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                MaterialTheme.shapes.small,
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .then(
+                if (selected) {
+                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.medium)
+                } else {
+                    Modifier
+                },
             )
             .clickable(onClick = onTap),
     ) {
@@ -283,18 +301,17 @@ private fun ThemeCard(t: ConsoleTheme, selected: Boolean, onTap: () -> Unit) {
     }
 }
 
-// Font çipi: adı kendi fontuyla render eder (canlı önizleme). Seçili çip
-// accent hairline alır.
+// Font çipi: adı kendi fontuyla render eder (canlı önizleme). Tonal kapsül;
+// seçiliyken accent tint.
 @Composable
 private fun FontChip(f: ConsoleFont, selected: Boolean, onTap: () -> Unit) {
     val fg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         Modifier
-            .clip(MaterialTheme.shapes.extraSmall)
-            .border(
-                1.dp,
-                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                MaterialTheme.shapes.extraSmall,
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                else MaterialTheme.colorScheme.surfaceContainerHigh,
             )
             .clickable(onClick = onTap)
             .padding(horizontal = Space.md, vertical = Space.sm),
