@@ -534,7 +534,8 @@ private fun ActiveTerminal(
         val conn = handle.conn
         // Klavye açıkken panel-kapsül arasındaki hava boşluğu daralır —
         // kapsül klavyenin hemen üstünde durur, görüş alanı korunur.
-        val imeOpen = WindowInsets.ime.getBottom(density) > 0
+        val imeInsets = WindowInsets.ime
+        val imeOpen = imeInsets.getBottom(density) > 0
         // Tutamaçtan aşağı çekme: panel parmağı spring ile takip eder;
         // eşik altında bırakılırsa geri yaylanır, üstünde aşağı akıp kapanır.
         var pull by remember { mutableFloatStateOf(0f) }
@@ -687,25 +688,28 @@ private fun ActiveTerminal(
                             .onSizeChanged { sz ->
                                 val pad = with(density) { 16.dp.toPx() }
                                 val cols = ((sz.width - pad) / charW).toInt().coerceIn(20, 500)
-                                val rows = (sz.height / lineH).toInt().coerceIn(4, 200)
+                                // Satır sayısı IME'siz ölçülür: klavye açılınca
+                                // görünen alan kısalır ama terminal modeli
+                                // (ve remote PTY) değişmez — LazyColumn
+                                // kırpar, scroll imleci izler. Aksi halde
+                                // model küçülürken üst satırlar (prompt dahil)
+                                // scrollback'e itilir ve ekran boş kalır.
+                                val imePx = imeInsets.getBottom(density)
+                                val rows = ((sz.height + imePx) / lineH).toInt().coerceIn(4, 200)
                                 val newSize = TerminalSize(cols, rows)
-                                // Klavye animasyonu boyunca her frame'de
-                                // vm.setSize çalıştırmak buffer'ı sürekli
-                                // reflow ettirir (asıl yavaşlık) ve uzak
-                                // tarafı SIGWINCH yağmuruna tutar. Boyut
-                                // yalnız animasyon durulunca uygulanır;
-                                // net değişim yoksa hiçbir şey gönderilmez.
                                 resizeJob?.cancel()
                                 resizeJob = scope.launch {
                                     kotlinx.coroutines.delay(160)
                                     if (newSize != vm.size) {
                                         vm.setSize(newSize)
-                                        viewportEpoch++
                                         if (controller.state.value == ConnectionState.ACTIVE) {
                                             controller.send(TerminalInput.Resize(newSize))
                                         }
                                     }
                                 }
+                                // Görünen alan her değiştiğinde imleç satırı
+                                // izlensin (scroll ucuz — model reflow'u yok).
+                                viewportEpoch++
                             }
                             .then(
                                 if (connected) Modifier.pointerInput(Unit) {
