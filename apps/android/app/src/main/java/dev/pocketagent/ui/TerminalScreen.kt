@@ -269,7 +269,7 @@ private fun SessionPill(name: String, state: ConnectionState, retry: Int, active
     val fg = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         Modifier
-            .clip(MaterialTheme.shapes.extraSmall)
+            .clip(MaterialTheme.shapes.small)
             .background(if (active) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),

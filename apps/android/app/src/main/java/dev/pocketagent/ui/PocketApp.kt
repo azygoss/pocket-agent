@@ -294,12 +294,11 @@ fun PocketAgentApp(
     }
 }
 
-// ── Uygulama chrome'u — flat editoryal dil ───────────────────────────────────
-// Üst bar ince bir şerit: wordmark + canlı oturum sayacı. Alt bar ikon +
-// etiket; aktif sekme accent renkte ve üst kenarında ince bir accent işaret
-// taşır. Sekme adını ekran başlığı taşır, bar'a konmaz.
+// ── Uygulama chrome'u — tonal dil ────────────────────────────────────────────
+// Üst bar ince bir şerit: wordmark + canlı oturum pill'i. Alt bar M3 usulü:
+// aktif sekme ikonunun arkasında yatay accent pill'i, etiket altta.
 
-// Üst bar: wordmark + sağda canlı oturum sayacı. Edge-to-edge'de status
+// Üst bar: wordmark + sağda tonal oturum pill'i. Edge-to-edge'de status
 // bar altına kaymaması için kendi inset'ini uygular.
 @Composable
 private fun ConsoleTopBar(activeSessions: Int) {
@@ -318,13 +317,19 @@ private fun ConsoleTopBar(activeSessions: Int) {
             )
             Spacer(Modifier.weight(1f))
             if (activeSessions > 0) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     StateDot(ConnectionState.ACTIVE, size = 6.dp)
                     Spacer(Modifier.width(6.dp))
                     Text(
                         "$activeSessions oturum",
                         style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }
@@ -333,9 +338,8 @@ private fun ConsoleTopBar(activeSessions: Int) {
     }
 }
 
-// Alt bar: ikon + kısa etiket hücreleri. Aktif sekme accent renkte; üstte
-// 2.5dp accent işaret (editor sekmesi dili). Agents'ta okunmamış sayısı
-// ikonun köşesinde küçük bir rozet olarak durur.
+// Alt bar: aktif sekmenin ikonu yatay accent pill'i içinde (M3 indicator),
+// etiket altta accent renkte. Agents'ta okunmamış sayısı rozette.
 @Composable
 private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) -> Unit) {
     Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
@@ -344,7 +348,7 @@ private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) 
             Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.navigationBars)
-                .height(58.dp),
+                .height(64.dp),
         ) {
             AppTab.entries.forEach { t ->
                 val selected = current == t
@@ -358,31 +362,34 @@ private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) 
                         .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(t) }),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Box(
-                        Modifier
-                            .width(24.dp)
-                            .height(2.5.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(
-                                if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                            ),
-                    )
                     Spacer(Modifier.weight(1f))
                     Box {
-                        Icon(
-                            t.icon,
-                            contentDescription = null,
-                            tint = tint,
-                            modifier = Modifier.size(20.dp),
-                        )
+                        Box(
+                            Modifier
+                                .width(56.dp)
+                                .height(30.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                    else Color.Transparent,
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                t.icon,
+                                contentDescription = null,
+                                tint = tint,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                         if (t == AppTab.Agents && agentUnread > 0) {
                             Box(
                                 Modifier
                                     .align(Alignment.TopEnd)
-                                    .offset(x = 8.dp, y = (-4).dp)
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .offset(x = (-2).dp)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .background(MaterialTheme.colorScheme.primary)
-                                    .padding(horizontal = 3.5.dp),
+                                    .padding(horizontal = 4.dp),
                             ) {
                                 Text(
                                     "$agentUnread",
@@ -394,7 +401,7 @@ private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) 
                             }
                         }
                     }
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(3.dp))
                     Text(
                         t.label,
                         fontSize = 9.5.sp,

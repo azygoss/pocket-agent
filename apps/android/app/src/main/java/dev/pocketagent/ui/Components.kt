@@ -4,7 +4,6 @@ package dev.pocketagent.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,7 +28,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -53,20 +51,20 @@ import dev.pocketagent.ui.theme.TermGreen
 import dev.pocketagent.ui.theme.TermRed
 import dev.pocketagent.ui.theme.LocalMonoFont
 
-// ── Bileşen kütüphanesi — flat editoryal dil ─────────────────────────────────
-// İçerik düz zeminde yaşar: satırlar hairline ayırıcılarla ayrılır, kart
-// yalnız gerçek bir panel olduğunda kullanılır. Accent tutumlu — birincil
-// aksiyon, canlı durum ve seçili öğe dışında renk yok. Mono yalnız veri
-// taşır (hostname, oturum adı, yol, komut).
+// ── Bileşen kütüphanesi — tonal dil ─────────────────────────────────────────
+// Derinlik border ile değil tonal katman farkıyla kurulur: grup konteynerler
+// hafif yükseltilmiş zemin taşır, içerik içlerinde hairline'la ayrılır.
+// Accent tutumlu — birincil aksiyon, canlı durum ve seçili öğe dışında renk
+// yok. Mono yalnız veri taşır (hostname, oturum adı, yol, komut).
 
-// Panel: hairline border + hafif dolgu + 10dp köşe. Hiyerarşi border ve
-// katman farkıyla kurulur; gölge kullanılmaz.
+// Grup konteyneri: bordersuz tonal panel (14dp). Bir bölümün tüm satırları
+// tek konteynerde yaşar; satırlar arasına SoftDivider konur.
 @Composable
 fun ConsoleCard(
     modifier: Modifier = Modifier,
     padding: Dp = Space.lg,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
-    borderColor: Color = MaterialTheme.colorScheme.outlineVariant,
+    borderColor: Color = Color.Transparent,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
@@ -77,6 +75,27 @@ fun ConsoleCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(Modifier.padding(padding), content = content)
+    }
+}
+
+// İkon karosu: renkli tonlu zemin üstünde ikon — iOS/Linear satır dili.
+// Liste satırlarının leading elemanı.
+@Composable
+fun IconTile(
+    icon: ImageVector,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 38.dp,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+) {
+    Box(
+        modifier
+            .size(size)
+            .clip(MaterialTheme.shapes.small)
+            .background(containerColor),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.52f))
     }
 }
 
@@ -205,8 +224,8 @@ fun ListRow(
     }
 }
 
-// Mikro etiket (transport, kategori, durum): hairline kapsül + mono metin.
-// Aktifte accent border + accent metin — dolgusuz, enstrüman rozeti gibi.
+// Mikro etiket (transport, kategori, durum): tonal kapsül + mono metin.
+// Aktifte tint renge boyanır — dolgu her zaman var, border yok.
 @Composable
 fun TagPill(
     text: String,
@@ -217,13 +236,9 @@ fun TagPill(
     val color = tone ?: MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier
-            .clip(MaterialTheme.shapes.extraSmall)
-            .border(
-                1.dp,
-                if (active) color else MaterialTheme.colorScheme.outlineVariant,
-                MaterialTheme.shapes.extraSmall,
-            )
-            .padding(horizontal = 7.dp, vertical = 2.dp),
+            .clip(CircleShape)
+            .background(if (active) color.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 9.dp, vertical = 3.dp),
     ) {
         Text(
             text,
@@ -233,7 +248,7 @@ fun TagPill(
     }
 }
 
-// Boş durum: tek ikon + başlık + açıklama + isteğe bağlı aksiyon. Kutu yok.
+// Boş durum: tonal ikon karosu + başlık + açıklama + isteğe bağlı aksiyon.
 @Composable
 fun EmptyState(
     icon: ImageVector,
@@ -247,12 +262,7 @@ fun EmptyState(
         modifier.fillMaxWidth().padding(horizontal = Space.xl, vertical = Space.xxl),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = tint.copy(alpha = 0.8f),
-            modifier = Modifier.size(30.dp),
-        )
+        IconTile(icon, tint.copy(alpha = 0.85f), size = 56.dp)
         Spacer(Modifier.height(Space.lg))
         Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
         Spacer(Modifier.height(Space.xs))
@@ -269,9 +279,30 @@ fun EmptyState(
     }
 }
 
+// Tonal satır karosu: bordersuz 14dp zemin — liste satırlarının konteyneri.
+// Grup içi düz satır yerine tek başına duran öğeler için.
+@Composable
+fun TonalTile(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = Space.md, vertical = Space.md),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
+
 data class Segment<T>(val value: T, val label: String)
 
-// Segmentli geçiş: tonal kap, seçili segment dolu accent.
+// Segmentli geçiş: iOS usulü — loş ray üstünde aydınlık segment, accent
+// kullanmaz (tutumlu renk kuralı).
 @Composable
 fun <T> SegmentedControl(
     options: List<Segment<T>>,
@@ -281,25 +312,25 @@ fun <T> SegmentedControl(
 ) {
     Row(
         modifier
-            .clip(MaterialTheme.shapes.small)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         options.forEach { option ->
             val isSelected = option.value == selected
             val bg by animateColorAsState(
-                if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                if (isSelected) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent,
                 label = "segment-bg",
             )
             val fg by animateColorAsState(
-                if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 label = "segment-fg",
             )
             Box(
                 Modifier
                     .weight(1f)
-                    .clip(MaterialTheme.shapes.extraSmall)
+                    .clip(MaterialTheme.shapes.small)
                     .background(bg)
                     .selectable(selected = isSelected, role = Role.Tab, onClick = { onSelect(option.value) })
                     .padding(vertical = 7.dp),
@@ -344,9 +375,9 @@ fun SettingRow(
     }
 }
 
-// ── Butonlar: 8dp köşe, 44dp hedef, sans etiket ─────────────────────────────
+// ── Butonlar: 12dp köşe, 44dp hedef, sans etiket ────────────────────────────
 
-private val ButtonShape = RoundedCornerShape(8.dp)
+private val ButtonShape = RoundedCornerShape(12.dp)
 
 @Composable
 fun ConsoleButton(
@@ -372,6 +403,7 @@ fun ConsoleButton(
     }
 }
 
+// İkincil aksiyon: tonal dolgu — border'suz, zeminle konuşur.
 @Composable
 fun ConsoleOutlinedButton(
     onClick: () -> Unit,
@@ -379,14 +411,16 @@ fun ConsoleOutlinedButton(
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
 ) {
-    OutlinedButton(
+    Button(
         onClick = onClick,
         modifier = modifier.defaultMinSize(minHeight = 44.dp),
         enabled = enabled,
         shape = ButtonShape,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
     ) {
         ProvideTextStyle(MaterialTheme.typography.labelLarge) {
             content()

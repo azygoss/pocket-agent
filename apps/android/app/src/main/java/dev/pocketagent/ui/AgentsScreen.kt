@@ -125,34 +125,36 @@ fun AgentsScreen(
         if (active.isNotEmpty()) {
             Spacer(Modifier.height(Space.md))
             SectionLabel("aktif agent'lar")
-            Spacer(Modifier.height(Space.xs))
-            active.forEachIndexed { i, r ->
-                if (i > 0) SoftDivider()
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { onOpenAgent(r) }
-                        .padding(vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    StateDot(dev.pocketagent.transport.ConnectionState.ACTIVE, 8.dp)
-                    Spacer(Modifier.width(Space.md))
-                    Column(Modifier.weight(1f)) {
-                        Text(r.source, style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(Space.sm))
+            ConsoleCard(padding = 0.dp) {
+                active.forEachIndexed { i, r ->
+                    if (i > 0) SoftDivider(Modifier.padding(start = Space.lg))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenAgent(r) }
+                            .padding(horizontal = Space.lg, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        StateDot(dev.pocketagent.transport.ConnectionState.ACTIVE, 8.dp)
+                        Spacer(Modifier.width(Space.md))
+                        Column(Modifier.weight(1f)) {
+                            Text(r.source, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                listOf(r.sessionId, eventTime(r.createdAt))
+                                    .filter { it.isNotBlank() }
+                                    .joinToString(" · "),
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
                         Text(
-                            listOf(r.sessionId, eventTime(r.createdAt))
-                                .filter { it.isNotBlank() }
-                                .joinToString(" · "),
+                            "oturuma git ›",
                             style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
+                            color = MaterialTheme.colorScheme.primary,
                         )
                     }
-                    Text(
-                        "oturuma git ›",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
-                        color = MaterialTheme.colorScheme.primary,
-                    )
                 }
             }
             Spacer(Modifier.height(Space.md))
@@ -173,18 +175,23 @@ fun AgentsScreen(
                 )
             }
         } else {
-            LazyColumn {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                 items(shown, key = { it.eventId }) { r ->
                     val isApproval = r.category == "APPROVAL_REQUIRED" || r.digest.isNotBlank()
                     val tint = categoryColor(r.category)
-                    SoftDivider()
-                    Column(Modifier.padding(vertical = 10.dp)) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                            .padding(horizontal = Space.md, vertical = 12.dp),
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
+                            IconTile(
                                 categoryIcon(r.category),
-                                contentDescription = null,
                                 tint = tint,
-                                modifier = Modifier.size(18.dp),
+                                containerColor = tint.copy(alpha = 0.14f),
+                                size = 34.dp,
                             )
                             Spacer(Modifier.width(Space.md))
                             Column(Modifier.weight(1f)) {

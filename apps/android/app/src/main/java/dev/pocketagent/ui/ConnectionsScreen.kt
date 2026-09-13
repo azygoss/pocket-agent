@@ -21,8 +21,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.SmallFloatingActionButton
@@ -184,7 +182,7 @@ fun ConnectionsScreen(
             ) {
                 SmallFloatingActionButton(
                     onClick = { sshConfigPicker.launch(arrayOf("*/*")) },
-                    shape = MaterialTheme.shapes.small,
+                    shape = MaterialTheme.shapes.medium,
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     contentColor = MaterialTheme.colorScheme.primary,
                 ) {
@@ -192,7 +190,7 @@ fun ConnectionsScreen(
                 }
                 SmallFloatingActionButton(
                     onClick = { pairError = null; showPair = true },
-                    shape = MaterialTheme.shapes.small,
+                    shape = MaterialTheme.shapes.medium,
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     contentColor = MaterialTheme.colorScheme.primary,
                 ) {
@@ -200,7 +198,7 @@ fun ConnectionsScreen(
                 }
                 ExtendedFloatingActionButton(
                     onClick = { showAdd = true },
-                    shape = MaterialTheme.shapes.small,
+                    shape = MaterialTheme.shapes.large,
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     icon = { Icon(Icons.Filled.Add, contentDescription = null) },
@@ -246,8 +244,8 @@ fun ConnectionsScreen(
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()
-                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.extraSmall)
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.shapes.extraSmall)
+                                    .clip(MaterialTheme.shapes.small)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                                     .padding(8.dp),
                             ) {
                                 Text(
@@ -285,7 +283,13 @@ fun ConnectionsScreen(
                                 )
                             },
                             singleLine = true,
-                            shape = MaterialTheme.shapes.small,
+                            shape = MaterialTheme.shapes.medium,
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            ),
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                         )
                     }
@@ -316,7 +320,7 @@ fun ConnectionsScreen(
                     items(filtered, key = { it.id }) { c ->
                         val openSession = sessionList.firstOrNull { it.conn.id == c.id }
                         val sessionState = openSession?.controller?.state?.collectAsState()?.value
-                        SoftDivider()
+                        Spacer(Modifier.height(4.dp))
                         ConnectionRow(
                             conn = c,
                             isActive = sessionState == ConnectionState.ACTIVE,
@@ -545,18 +549,22 @@ private fun ProfilesSection(
             "Kayıtlı komutla oturum aç — örn. ad \"Codex\", komut \"codex\".",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = Space.xs),
+            modifier = Modifier.padding(bottom = Space.sm),
         )
-    }
-    profiles.forEachIndexed { i, p ->
-        if (i > 0) SoftDivider()
-        ProfileRow(
-            p = p,
-            hostName = conns.firstOrNull { it.id == p.connectionId }?.name,
-            onOpen = { onOpen(p) },
-            onEdit = { onEdit(p) },
-            onDelete = { onDelete(p) },
-        )
+    } else {
+        Spacer(Modifier.height(Space.xs))
+        ConsoleCard(padding = 0.dp) {
+            profiles.forEachIndexed { i, p ->
+                if (i > 0) SoftDivider(Modifier.padding(start = Space.lg))
+                ProfileRow(
+                    p = p,
+                    hostName = conns.firstOrNull { it.id == p.connectionId }?.name,
+                    onOpen = { onOpen(p) },
+                    onEdit = { onEdit(p) },
+                    onDelete = { onDelete(p) },
+                )
+            }
+        }
     }
 }
 
@@ -572,14 +580,21 @@ private fun ProfileRow(
     ListRow(
         title = p.name,
         subtitle = p.command + (hostName?.let { " · $it" } ?: " · host seçilecek"),
-        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 10.dp),
         leading = {
-            Text(
-                "❯",
-                color = MaterialTheme.colorScheme.primary,
-                fontFamily = LocalMonoFont.current,
-                fontSize = 14.sp,
-            )
+            Box(
+                Modifier
+                    .size(34.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "❯",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontFamily = LocalMonoFont.current,
+                    fontSize = 14.sp,
+                )
+            }
         },
         trailing = {
             Box {
@@ -697,8 +712,8 @@ private fun WizardStep(n: Int, title: String, subtitle: String, content: @Compos
     }
 }
 
-// Bağlantı satırı: monogram + ad + adres + sağda durum/menü. Satırın
-// tamamı bağlanma hedefi; kutu yok, ayırıcı çağırandan gelir.
+// Bağlantı satırı: tonal karo — monogram + ad + adres + sağda zaman/menü.
+// Satırın tamamı bağlanma hedefi.
 @Composable
 private fun ConnectionRow(
     conn: SavedConnection,
@@ -710,13 +725,7 @@ private fun ConnectionRow(
     onDelete: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onConnect)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    TonalTile(onClick = onConnect) {
         Box(
             Modifier
                 .size(38.dp)
@@ -982,8 +991,8 @@ private fun ConnectionDialog(
                         fontFamily = LocalMonoFont.current,
                         fontSize = 10.sp,
                         modifier = Modifier.fillMaxWidth()
-                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.extraSmall)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.shapes.extraSmall)
+                            .clip(MaterialTheme.shapes.small)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                             .padding(8.dp),
                     )
                 }

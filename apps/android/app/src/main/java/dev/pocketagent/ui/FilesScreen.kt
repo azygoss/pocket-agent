@@ -366,15 +366,13 @@ private fun PathBar(files: FilesViewModel, modifier: Modifier = Modifier) {
     val scroll = rememberScrollState()
     LaunchedEffect(rel) { scroll.scrollTo(scroll.maxValue) }
     Row(
-        modifier.horizontalScroll(scroll),
+        modifier
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .horizontalScroll(scroll)
+            .padding(horizontal = 12.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            "❯",
-            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(end = 4.dp),
-        )
         Text(
             "/",
             style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
@@ -412,15 +410,17 @@ private fun humanSize(bytes: Long): String = when {
 @Composable
 private fun WorkspaceMissingCard() {
     Spacer(Modifier.height(Space.lg))
-    SectionLabel("Workspace gateway kurulu değil")
-    Spacer(Modifier.height(Space.sm))
-    Text(
-        "Host'ta çalıştır:\n  pocket-agent gateway serve\n  veya kalıcı servis:\n  pocket-agent service install-gateway\n\n" +
-            "Token ~/.config/pocket-agent/gateway.token altında üretilir; " +
-            "uygulama onu SSH oturumu içinden okur. Gateway yalnız 127.0.0.1:24543 dinler.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    ConsoleCard {
+        CardHeader("Workspace gateway kurulu değil")
+        Spacer(Modifier.height(Space.sm))
+        Text(
+            "Host'ta çalıştır:\n  pocket-agent gateway serve\n  veya kalıcı servis:\n  pocket-agent service install-gateway\n\n" +
+                "Token ~/.config/pocket-agent/gateway.token altında üretilir; " +
+                "uygulama onu SSH oturumu içinden okur. Gateway yalnız 127.0.0.1:24543 dinler.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
@@ -436,14 +436,16 @@ private fun NoSessionCard() {
         )
         Spacer(Modifier.height(Space.md))
         Column(Modifier.padding(horizontal = Space.xl)) {
-            SectionLabel("Güvenlik")
-            Spacer(Modifier.height(Space.xs))
-            Text(
-                "• Dosyalar yalnız SSH tünelinde akar, backend içerik görmez\n" +
-                    "• İndirilenler paylaşım önbelleğine düşer (10MB üst sınır)",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            ConsoleCard {
+                CardHeader("Güvenlik")
+                Spacer(Modifier.height(Space.xs))
+                Text(
+                    "• Dosyalar yalnız SSH tünelinde akar, backend içerik görmez\n" +
+                        "• İndirilenler paylaşım önbelleğine düşer (10MB üst sınır)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
