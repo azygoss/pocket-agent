@@ -8,6 +8,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -122,6 +124,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import dev.pocketagent.transport.ConnectionState
+import dev.pocketagent.transport.SessionHandle
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalController
 import dev.pocketagent.transport.TermLine
@@ -280,6 +283,8 @@ private fun SessionPillsRow(
 ) {
     val sessionList by manager.sessions.collectAsState()
     val activeId by manager.activeId.collectAsState()
+    val customNames by manager.customNames.collectAsState()
+    var renaming by remember { mutableStateOf<SessionHandle?>(null) }
     Row(
         modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -291,13 +296,15 @@ private fun SessionPillsRow(
             // Aynı host'ta paralel oturumlar: ·2, ·3… ile ayırt et.
             val same = sessionList.count { it.conn.id == h.conn.id }
             val nth = sessionList.take(idx).count { it.conn.id == h.conn.id }
-            val label = if (same > 1) "${h.conn.name}·${nth + 1}" else h.conn.name
+            val label = customNames[h.id]
+                ?: if (same > 1) "${h.conn.name}·${nth + 1}" else h.conn.name
             SessionPill(
                 name = label,
                 state = st,
                 retry = retry,
                 active = h.id == activeId,
                 onClick = { manager.setActive(h.id) },
+                onLongClick = { renaming = h },
             )
         }
         IconButton(onClick = onNewConnection, modifier = Modifier.size(36.dp)) {
@@ -309,13 +316,29 @@ private fun SessionPillsRow(
             )
         }
     }
+    renaming?.let { h ->
+        RenameSessionDialog(
+            connName = h.conn.name,
+            initial = customNames[h.id],
+            onDismiss = { renaming = null },
+            onSave = { name -> manager.rename(h.id, name); renaming = null },
+        )
+    }
 }
 
 // Oturum sekmesi: editor-tab dili — aktif sekme üst köşeleri yuvarlak, zemini
 // terminal yüzeyiyle aynı renk; aşağı doğru panele "bağlanır". Durum noktası +
-// ad + retry `↻n/5`.
+// ad + retry `↻n/5`. Uzun basma → yeniden adlandırma.
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SessionPill(name: String, state: ConnectionState, retry: Int, active: Boolean, onClick: () -> Unit) {
+private fun SessionPill(
+    name: String,
+    state: ConnectionState,
+    retry: Int,
+    active: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val fg = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         Modifier
@@ -323,7 +346,7 @@ private fun SessionPill(name: String, state: ConnectionState, retry: Int, active
             .background(
                 if (active) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent,
             )
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

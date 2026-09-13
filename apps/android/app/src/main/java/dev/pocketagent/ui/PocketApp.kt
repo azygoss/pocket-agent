@@ -137,22 +137,27 @@ fun PocketAgentApp(
         val conns = connections2.value
         if (conns.isEmpty()) return@LaunchedEffect
         sessionsRestored = true
-        app.settingsStore.loadOpenSessions().forEach { id ->
+        app.settingsStore.loadOpenSessions().forEach { (id, name) ->
             conns.firstOrNull { it.id == id }?.let { c ->
                 app.connections.secret(c.id)?.let { s ->
                     // Aynı host'ta birden çok kayıtlı oturum → paralel aç.
-                    sessions.open(c, s, forceNew = sessions.sessions.value.any { it.conn.id == c.id })
+                    sessions.open(
+                        c, s,
+                        forceNew = sessions.sessions.value.any { it.conn.id == c.id },
+                        customName = name,
+                    )
                 }
             }
         }
     }
     // Liste yalnız restore denendikten sonra diske yazılır — aksi halde ilk
-    // boş emission kayıtlı id'leri okunmadan silerdi.
+    // boş emission kayıtlı id'leri okunmadan silerdi. Özel adlar da aynı
+    // kayda gömülür; ad değişimi liste değişmeden tetikler (combine).
     LaunchedEffect(sessionsRestored) {
         if (!sessionsRestored) return@LaunchedEffect
-        sessions.sessions.collect { list ->
-            app.settingsStore.saveOpenSessions(list.map { it.conn.id })
-        }
+        kotlinx.coroutines.flow.combine(sessions.sessions, sessions.customNames) { list, names ->
+            list.map { it.conn.id to names[it.id] }
+        }.collect { app.settingsStore.saveOpenSessions(it) }
     }
 
     // pocketagent://tmux|herdr → Terminal sekmesine düş.

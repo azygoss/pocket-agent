@@ -35,6 +35,10 @@ class SessionManager(
     private val _hostKeyPrompt = MutableStateFlow<HostKeyPrompt?>(null)
     val hostKeyPrompt: StateFlow<HostKeyPrompt?> = _hostKeyPrompt
 
+    // Kullanıcının verdiği oturum adları (session id → ad); boşsa conn.name.
+    private val _customNames = MutableStateFlow<Map<String, String>>(emptyMap())
+    val customNames: StateFlow<Map<String, String>> = _customNames
+
     var onConnected: ((SavedConnection) -> Unit)? = null
 
     // Kopmada otomatik yeniden bağlanma tercihi (Ayarlar'dan beslenir).
@@ -52,6 +56,7 @@ class SessionManager(
         secret: Secret?,
         forceNew: Boolean = false,
         startupCommand: String? = null,
+        customName: String? = null,
     ): TerminalController {
         if (!forceNew) _sessions.value.firstOrNull { it.conn.id == conn.id }?.let { h ->
             _activeId.value = h.id
@@ -75,15 +80,26 @@ class SessionManager(
             c.state.collect { refreshAnyActive() }
         }
         _sessions.value = _sessions.value + handle
+        customName?.trim()?.ifBlank { null }?.let { n ->
+            _customNames.value = _customNames.value + (handle.id to n)
+        }
         _activeId.value = handle.id
         c.connect(conn, secret, startupCommand)
         return c
+    }
+
+    // Oturuma özel ad ver; null/boş → bağlantı adına döner.
+    fun rename(id: String, name: String?) {
+        if (_sessions.value.none { it.id == id }) return
+        val n = name?.trim()?.ifBlank { null }
+        _customNames.value = if (n == null) _customNames.value - id else _customNames.value + (id to n)
     }
 
     fun close(id: String) {
         val h = _sessions.value.firstOrNull { it.id == id } ?: return
         h.controller.disconnect()
         _sessions.value = _sessions.value - h
+        _customNames.value = _customNames.value - id
         if (_activeId.value == id) _activeId.value = _sessions.value.lastOrNull()?.id
         refreshAnyActive()
     }
@@ -95,6 +111,7 @@ class SessionManager(
     fun closeAll() {
         _sessions.value.forEach { it.controller.disconnect() }
         _sessions.value = emptyList()
+        _customNames.value = emptyMap()
         _activeId.value = null
         _anyActive.value = false
     }
