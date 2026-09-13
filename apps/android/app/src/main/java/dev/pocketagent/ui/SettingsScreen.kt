@@ -244,6 +244,12 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         )
         Spacer(Modifier.height(Space.xxl))
 
+        // ── Güncelleme: GitHub Releases kontrolü + indir/kur ──────────────
+        SectionLabel("Güncelleme")
+        Spacer(Modifier.height(Space.md))
+        UpdateCard()
+        Spacer(Modifier.height(Space.lg))
+
         // ── Hakkında ───────────────────────────────────────────────────────
         SectionLabel("Hakkında")
         Spacer(Modifier.height(Space.sm))
@@ -274,6 +280,111 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
             )
         }
         Spacer(Modifier.height(Space.xxl))
+    }
+}
+
+// Güncelleme kartı: mevcut sürüm + kontrol butonu; güncelleme varsa
+// sürüm + boyut + "İndir ve kur" → ilerleme → paket kurucu.
+private enum class UpdPhase { Idle, Checking, Current, Available, Downloading, Ready, Failed }
+
+@Composable
+private fun UpdateCard() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val version = remember {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull() ?: "dev"
+    }
+    var phase by remember { mutableStateOf(UpdPhase.Idle) }
+    var rel by remember { mutableStateOf<dev.pocketagent.net.ReleaseInfo?>(null) }
+    var progress by remember { mutableStateOf(0f) }
+    var err by remember { mutableStateOf<String?>(null) }
+
+    fun check() {
+        phase = UpdPhase.Checking
+        err = null
+        scope.launch(Dispatchers.IO) {
+            runCatching { dev.pocketagent.net.UpdateChecker.fetchLatest() }
+                .onSuccess { r ->
+                    when {
+                        r == null -> { phase = UpdPhase.Failed; err = "Sürüm bilgisi alınamadı" }
+                        dev.pocketagent.net.UpdateChecker.isNewer(r.version, version) -> { rel = r; phase = UpdPhase.Available }
+                        else -> phase = UpdPhase.Current
+                    }
+                }
+                .onFailure { phase = UpdPhase.Failed; err = it.message }
+        }
+    }
+
+    fun downloadAndInstall(r: dev.pocketagent.net.ReleaseInfo) {
+        phase = UpdPhase.Downloading
+        progress = 0f
+        scope.launch(Dispatchers.IO) {
+            val dest = java.io.File(context.cacheDir, "shared/pocket-agent-${r.version}.apk")
+            runCatching {
+                dev.pocketagent.net.UpdateChecker.download(r.apkUrl, dest) { progress = it }
+            }.onSuccess {
+                phase = UpdPhase.Ready
+                dev.pocketagent.net.UpdateChecker.installApk(context, dest)
+            }.onFailure {
+                phase = UpdPhase.Available
+                err = "İndirme başarısız: ${it.message}"
+            }
+        }
+    }
+
+    ConsoleCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Sürüm $version", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    when (phase) {
+                        UpdPhase.Idle -> "GitHub Releases"
+                        UpdPhase.Checking -> "Kontrol ediliyor…"
+                        UpdPhase.Current -> "Güncel"
+                        UpdPhase.Available -> rel?.let { "v${it.version} · %.0f MB".format(it.sizeBytes / 1e6f) } ?: ""
+                        UpdPhase.Downloading -> "İndiriliyor %${(progress * 100).toInt()}"
+                        UpdPhase.Ready -> rel?.let { "v${it.version} indirildi" } ?: ""
+                        UpdPhase.Failed -> err ?: "Hata"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when (phase) {
+                        UpdPhase.Current -> TermGreen
+                        UpdPhase.Failed -> MaterialTheme.colorScheme.error
+                        UpdPhase.Available, UpdPhase.Ready -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+            when (phase) {
+                UpdPhase.Checking, UpdPhase.Downloading ->
+                    androidx.compose.material3.CircularProgressIndicator(
+                        Modifier.width(20.dp).height(20.dp),
+                        strokeWidth = 2.dp,
+                    )
+                UpdPhase.Available, UpdPhase.Ready ->
+                    ConsoleButton(onClick = { rel?.let(::downloadAndInstall) }) { Text("İndir ve kur") }
+                else ->
+                    ConsoleOutlinedButton(onClick = ::check) { Text("Kontrol et") }
+            }
+        }
+        if (phase == UpdPhase.Downloading) {
+            Spacer(Modifier.height(Space.sm))
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        rel?.notes?.takeIf { it.isNotBlank() && phase == UpdPhase.Available }?.let {
+            Spacer(Modifier.height(Space.sm))
+            Text(
+                it.lines().take(3).joinToString("\n"),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+            )
+        }
     }
 }
 
