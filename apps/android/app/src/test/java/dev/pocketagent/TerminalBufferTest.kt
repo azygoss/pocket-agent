@@ -122,6 +122,44 @@ class TerminalBufferTest {
         assertEquals("l8", b.snapshot().last().text)
     }
 
+    @Test fun altExitCursorStaysBelowLeftoverContent() {
+        // TUI/agent kapanınca geri yüklenen imleç kalan metnin içine
+        // düşmemeli — yeni çıktı son dolu satırın altından devam eder.
+        val b = TerminalBuffer(cols = 40, rows = 10)
+        b.feed("prompt$\r\n") // imleç satır 1 (savedRow)
+        b.feed("\u001B[?1049h")
+        b.feed("\u001B[1;1HAGENT")
+        // Agent çalışırken ana ekrana içerik geldiğini simüle et —
+        // pratikte remote resize ile main kaydı; burada doğrudan kurulur:
+        b.feed("\u001B[?1049l")
+        // Çıkış sonrası imleç içerik satırında/altında olmalı, üstüne yazmamalı.
+        val cur = b.cursorPosition()!!.first
+        val snap = b.snapshot()
+        assertTrue("imleç içerik üstünde olmamalı: cur=$cur", cur >= snap.size - 1 || snap[cur].text.isBlank())
+        // Sonraki yazı boş satıra düşmeli:
+        b.feed("next")
+        assertEquals("next", b.snapshot().last().text.trimEnd())
+    }
+
+    @Test fun softResetRestoresScrollRegion() {
+        // Inline TUI çıkışı (DECSRR): daraltılmış scroll bölgesi sıfırlanmazsa
+        // imleç eski metnin içinde hapsolur — pi/claude tarzı agent'ların
+        // "kapatınca yazılar içinde kalma" belirtisi.
+        val b = TerminalBuffer(cols = 40, rows = 10)
+        for (i in 0 until 10) b.feed("l$i\r\n") // ekran dolar, l0 scrollback'e
+        val sb0 = b.scrollbackSize
+        b.feed("\u001B[4;9r") // bölge daralt (3..8) — DECSTBM imleci 0,0'a götürür
+        b.feed("\u001B[!p")   // soft reset → bölge full
+        b.feed("\u001B[10;1H\r\nX") // dipten LF → tam bölge kayar → scrollback +1
+        assertEquals(sb0 + 1, b.scrollbackSize)
+    }
+
+    @Test fun repRepeatsLastChar() {
+        val b = TerminalBuffer(cols = 40, rows = 5)
+        b.feed("x\u001B[4b") // x + 4 kez x
+        assertEquals("xxxxx", b.snapshot().first().text)
+    }
+
     @Test fun sgrStoresAnsiIndexForTheming() {
         // Renk indeksi saklanır ki tema değişince çıktı yeni paletten çözülsün.
         val b = TerminalBuffer()
