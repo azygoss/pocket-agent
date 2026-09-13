@@ -2,7 +2,10 @@
 package dev.pocketagent.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -24,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -69,6 +73,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,6 +87,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -109,6 +115,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -125,6 +132,7 @@ import dev.pocketagent.transport.TransportFailure
 import dev.pocketagent.ui.theme.TermAmber
 import dev.pocketagent.ui.theme.LocalMonoFont
 import dev.pocketagent.ui.theme.LocalConsoleTheme
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 // Görünmez IME yakalayıcı: alan kontrollü tutulur, her değişim PTY'ye
@@ -196,6 +204,34 @@ fun TermLine.toAnnotatedString(cursorCol: Int = -1, cursorBg: Color = Color.Unsp
     }
 }
 
+// Terminal chrome durumu: arama/tam-ekran bayrakları üst bar (PocketApp)
+// ile panel arasında paylaşılır — aksiyonlar uygulamanın üst barında yaşar.
+class TerminalChromeState {
+    var searchOpen by mutableStateOf(false)
+    var fullscreen by mutableStateOf(false)
+}
+
+// Scrollback'i metin dosyasına döküp paylaş — panel ve üst bar aynı yolu kullanır.
+internal fun shareScrollback(context: android.content.Context, lines: List<TermLine>) {
+    val dump = lines.joinToString("\n") { it.text }
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
+        val f = java.io.File(dir, "scrollback.txt")
+        f.writeText(dump)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, context.packageName + ".fileprovider", f,
+            )
+            val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(android.content.Intent.createChooser(share, "Scrollback"))
+        }
+    }
+}
+
 @Composable
 fun TerminalScreen(
     manager: SessionManager,
@@ -203,6 +239,7 @@ fun TerminalScreen(
     onNewConnection: () -> Unit,
     onFullscreenChange: (Boolean) -> Unit = {},
     onCollapse: () -> Unit = {},
+    chrome: TerminalChromeState = remember { TerminalChromeState() },
 ) {
     val sessionList by manager.sessions.collectAsState()
     val activeId by manager.activeId.collectAsState()
@@ -229,6 +266,7 @@ fun TerminalScreen(
                 onNewConnection = onNewConnection,
                 onFullscreenChange = onFullscreenChange,
                 onCollapse = onCollapse,
+                chrome = chrome,
             )
         }
     }
@@ -336,6 +374,7 @@ private fun ActiveTerminal(
     onNewConnection: () -> Unit,
     onFullscreenChange: (Boolean) -> Unit = {},
     onCollapse: () -> Unit = {},
+    chrome: TerminalChromeState = remember { TerminalChromeState() },
 ) {
     val vm = controller.vm
     val lines by vm.lines.collectAsState()
@@ -344,17 +383,19 @@ private fun ActiveTerminal(
     val pendingClip by vm.pendingClipboard.collectAsState()
     val state by controller.state.collectAsState()
     val failure by controller.failure.collectAsState()
-    val active by controller.connectedTo.collectAsState()
     var ctrl by remember { mutableStateOf(false) }
-    var searchOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
-    var fullscreen by remember { mutableStateOf(false) }
-    // Tam ekran durumunu üst katmana bildir — PocketApp nav bar'ı gizler,
-    // yerine terminal kendi tuş şeridini gösterir.
+    // Arama/tam-ekran bayrakları paylaşılan chrome durumunda — üst bardan
+    // (PocketApp) tetiklenir; tam ekranda üst bar gizlendiği için çıkış
+    // aksiyonu panel başlığında kalır.
+    val searchOpen = chrome.searchOpen
+    val fullscreen = chrome.fullscreen
     LaunchedEffect(fullscreen) { onFullscreenChange(fullscreen) }
+    // Üst bar aramayı kapattığında sorgu da temizlenir.
+    LaunchedEffect(searchOpen) { if (!searchOpen) query = "" }
     // Geri tuşu: önce aramayı kapat, sonra tam ekrandan çık.
     BackHandler(enabled = searchOpen || fullscreen) {
-        if (searchOpen) { searchOpen = false; query = "" } else fullscreen = false
+        if (searchOpen) { chrome.searchOpen = false } else chrome.fullscreen = false
     }
     // Görünmez IME alanı: alanın gerçek içeriği (delta hesabı için).
     var imeBuf by remember { mutableStateOf("") }
@@ -486,11 +527,23 @@ private fun ActiveTerminal(
         // Klavye açıkken panel-kapsül arasındaki hava boşluğu daralır —
         // kapsül klavyenin hemen üstünde durur, görüş alanı korunur.
         val imeOpen = WindowInsets.ime.getBottom(density) > 0
+        // Tutamaçtan aşağı çekme: panel parmağı spring ile takip eder;
+        // eşik altında bırakılırsa geri yaylanır, üstünde aşağı akıp kapanır.
+        var pull by remember { mutableFloatStateOf(0f) }
+        val pullY by animateFloatAsState(
+            pull,
+            spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+            label = "pull",
+        )
+        val pullMax = with(density) { 320.dp.toPx() }
+        val pullThreshold = with(density) { 56.dp.toPx() }
 
         Box(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .offset { IntOffset(0, pullY.roundToInt()) }
+                .graphicsLayer { alpha = 1f - (pullY / pullMax) * 0.3f }
                 .then(
                     if (fullscreen) Modifier
                     else Modifier.padding(
@@ -508,22 +561,25 @@ private fun ActiveTerminal(
             ) {
                 Column(Modifier.fillMaxSize()) {
                     if (!fullscreen) {
-                        // Tutamaç: aşağı çek → terminal kapanır (oturum yaşar),
-                        // ana sayfadaki oturum kartlarına dönülür.
-                        var pull by remember { mutableStateOf(0f) }
-                        val pullThreshold = with(density) { 48.dp.toPx() }
+                        // Tutamaç: aşağı çek → panel parmağı izler; eşik
+                        // geçilirse aşağı akıp ana sayfadaki oturum kartlarına
+                        // döner (oturum yaşar), geçilmezse geri yaylanır.
                         Box(
                             Modifier
                                 .fillMaxWidth()
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
-                                        onDragStart = { pull = 0f },
                                         onDragEnd = {
-                                            if (pull > pullThreshold) onCollapse()
-                                            pull = 0f
+                                            if (pull > pullThreshold) {
+                                                pull = pullMax
+                                                scope.launch {
+                                                    kotlinx.coroutines.delay(140)
+                                                    onCollapse()
+                                                }
+                                            } else pull = 0f
                                         },
                                         onDragCancel = { pull = 0f },
-                                    ) { _, dy -> if (dy > 0) pull += dy }
+                                    ) { _, dy -> pull = (pull + dy).coerceIn(0f, pullMax) }
                                 }
                                 .padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center,
@@ -585,50 +641,27 @@ private fun ActiveTerminal(
                                 color = Color(console.accentAlt),
                             )
                         }
-                        OverlayAction("Scrollback'te ara", { searchOpen = !searchOpen; if (!searchOpen) query = "" }) {
-                            Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        OverlayAction("Scrollback'i paylaş", {
-                            val dump = lines.joinToString("\n") { it.text }
-                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
-                                val f = java.io.File(dir, "scrollback.txt")
-                                f.writeText(dump)
-                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                    val uri = androidx.core.content.FileProvider.getUriForFile(
-                                        context, context.packageName + ".fileprovider", f,
-                                    )
-                                    val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        // Tam ekranda üst bar gizli — aksiyonlar panele döner.
+                        if (fullscreen) {
+                            OverlayAction("Scrollback'te ara", { chrome.searchOpen = !chrome.searchOpen }) {
+                                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            OverlayAction("Scrollback'i paylaş", { shareScrollback(context, lines) }) {
+                                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            OverlayAction("Tam ekrandan çık", { chrome.fullscreen = false }) {
+                                Icon(Icons.Filled.FullscreenExit, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (state == ConnectionState.CLOSED || state == ConnectionState.FAILED) {
+                                if (controller.canReconnect()) {
+                                    OverlayAction("Yeniden bağlan", { controller.reconnect() }) {
+                                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
                                     }
-                                    context.startActivity(android.content.Intent.createChooser(share, "Scrollback"))
                                 }
                             }
-                        }) {
-                            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        OverlayAction(
-                            if (fullscreen) "Tam ekrandan çık" else "Tam ekran",
-                            { fullscreen = !fullscreen },
-                        ) {
-                            Icon(
-                                if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                                contentDescription = null,
-                                modifier = Modifier.size(15.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        if (state == ConnectionState.CLOSED || state == ConnectionState.FAILED) {
-                            if (controller.canReconnect()) {
-                                OverlayAction("Yeniden bağlan", { controller.reconnect() }) {
-                                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
-                                }
+                            OverlayAction("Oturumu kapat", onClose) {
+                                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
                             }
-                        }
-                        OverlayAction("Oturumu kapat", onClose) {
-                            Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
                         }
                     }
                     // ── Çıktı alanı: dokun → doğrudan yaz (ayrı giriş satırı yok) ──

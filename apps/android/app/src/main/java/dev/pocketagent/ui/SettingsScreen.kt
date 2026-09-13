@@ -60,24 +60,44 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
         ScreenHeader("Ayarlar")
         Spacer(Modifier.height(Space.xl))
 
-        // ── Görünüm: tema + font ───────────────────────────────────────────
+        // ── Görünüm: tema grid'i + font + ölçek tek derli kartta ──────────
         SectionLabel("Görünüm")
         Spacer(Modifier.height(Space.md))
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(Space.sm),
-        ) {
-            ConsoleThemes.forEach { t ->
-                ThemeCard(t, settings.theme.themeId == t.id) { settings.setThemeId(t.id) }
+        ConsoleCard {
+            Text(
+                "Tema",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(Space.sm))
+            ConsoleThemes.chunked(3).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                    row.forEach { t ->
+                        ThemeCell(
+                            t,
+                            settings.theme.themeId == t.id,
+                            Modifier.weight(1f),
+                        ) { settings.setThemeId(t.id) }
+                    }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+                Spacer(Modifier.height(Space.sm))
             }
-        }
-        Spacer(Modifier.height(Space.lg))
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(Space.sm),
-        ) {
-            ConsoleFonts.forEach { f ->
-                FontChip(f, settings.theme.fontId == f.id) { settings.setFontId(f.id) }
+            SoftDivider()
+            Spacer(Modifier.height(Space.sm))
+            Text(
+                "Yazı tipi",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(Space.sm))
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            ) {
+                ConsoleFonts.forEach { f ->
+                    FontChip(f, settings.theme.fontId == f.id) { settings.setFontId(f.id) }
+                }
             }
         }
         Spacer(Modifier.height(Space.lg))
@@ -257,46 +277,45 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
     }
 }
 
-// Tema kartı: mini terminal önizlemesi — tema zemininde prompt satırı +
-// ANSI renkli örnek çıktı. Seçili kart accent halkası alır.
+// Tema hücresi: grid'de kompakt mini terminal önizlemesi — zemin rengi +
+// accent çizgisi + isim. Seçili hücre accent halkası alır.
 @Composable
-private fun ThemeCard(t: ConsoleTheme, selected: Boolean, onTap: () -> Unit) {
+private fun ThemeCell(t: ConsoleTheme, selected: Boolean, modifier: Modifier = Modifier, onTap: () -> Unit) {
     val mono = dev.pocketagent.ui.theme.LocalMonoFont.current
     Column(
-        Modifier
-            .width(136.dp)
-            .clip(MaterialTheme.shapes.medium)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+        modifier
+            .clip(MaterialTheme.shapes.small)
+            .background(Color(t.term.background))
             .then(
                 if (selected) {
-                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.medium)
+                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.small)
                 } else {
-                    Modifier
+                    Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
                 },
             )
-            .clickable(onClick = onTap),
+            .clickable(onClick = onTap)
+            .padding(7.dp),
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .background(Color(t.term.background))
-                .padding(horizontal = 9.dp, vertical = 8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("❯", color = Color(t.accent), fontFamily = mono, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                Text(" ls -la", color = Color(t.term.foreground), fontFamily = mono, fontSize = 9.sp)
-            }
-            Spacer(Modifier.height(3.dp))
-            Text("drwx src/", color = Color(t.term.ansi[4]), fontFamily = mono, fontSize = 8.sp, lineHeight = 11.sp)
-            Text("-rw- notes.md", color = Color(t.term.ansi[2]), fontFamily = mono, fontSize = 8.sp, lineHeight = 11.sp)
-            Text("-rw- main.go", color = Color(t.term.foreground), fontFamily = mono, fontSize = 8.sp, lineHeight = 11.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("❯", color = Color(t.accent), fontFamily = mono, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Box(
+                Modifier
+                    .width(14.dp)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(t.accent)),
+            )
         }
+        Spacer(Modifier.height(5.dp))
+        Text("src/  notes.md", color = Color(t.term.foreground), fontFamily = mono, fontSize = 7.5.sp, maxLines = 1)
+        Text("main.go  ok", color = Color(t.term.ansi[2]), fontFamily = mono, fontSize = 7.5.sp, maxLines = 1)
+        Spacer(Modifier.height(5.dp))
         Text(
             t.name,
             style = MaterialTheme.typography.labelSmall,
-            color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (selected) MaterialTheme.colorScheme.onSurface else Color(t.term.foreground).copy(alpha = 0.75f),
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
         )
     }
 }

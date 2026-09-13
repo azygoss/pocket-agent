@@ -57,7 +57,6 @@ import dev.pocketagent.ui.theme.LocalMonoFont
 fun HomeScreen(
     sessions: SessionManager,
     connections: ConnectionRepository,
-    inbox: InboxViewModel,
     onGoTo: (AppTab) -> Unit,
 ) {
     val sessionList by sessions.sessions.collectAsState()
@@ -166,40 +165,6 @@ fun HomeScreen(
             }
             Spacer(Modifier.height(Space.xl))
 
-            // ── Agent olayları ─────────────────────────────────────────────
-            SectionLabel("Agent olayları")
-            Spacer(Modifier.height(Space.md))
-            if (inbox.rows.isEmpty()) {
-                ConsoleCard {
-                    Text(
-                        "Henüz olay yok. Hook'lar kurulunca onay istekleri burada birleşir (24s TTL).",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else {
-                ConsoleCard(padding = 0.dp) {
-                    inbox.rows.take(3).forEachIndexed { i, r ->
-                        if (i > 0) SoftDivider(Modifier.padding(start = Space.lg))
-                        Row(
-                            Modifier.padding(horizontal = Space.lg, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            StateDot(ConnectionState.ACTIVE, size = 6.dp)
-                            Spacer(Modifier.width(Space.md))
-                            Text(r.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
-                        }
-                    }
-                }
-                if (inbox.rows.size > 3) {
-                    Spacer(Modifier.height(Space.sm))
-                    Text(
-                        "+${inbox.rows.size - 3} daha",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
             // FAB payı.
             Spacer(Modifier.height(96.dp))
         }
