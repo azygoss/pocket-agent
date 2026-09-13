@@ -80,7 +80,11 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     val bracketedPaste: Boolean get() = buffer.bracketedPaste
     private val _frames = MutableStateFlow<List<String>>(emptyList())
     val frames: StateFlow<List<String>> = _frames
-    var size = TerminalSize(80, 24)
+    // Varsayılan değil son ölçülen viewport ile başla: yeni oturumun PTY'si
+    // gerçek ekran boyutuyla açılır — aksi halde 80×24 açılıp hemen ardından
+    // resize gider ve uzak shell (zsh/fish) her SIGWINCH'te prompt'u yeniden
+    // basar (ekranda fazladan prompt satırları).
+    var size = lastViewportSize
         private set
     var badge = "SSH"
         private set
@@ -131,6 +135,7 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     fun setSize(newSize: TerminalSize) {
         if (newSize == size) return
         size = newSize
+        lastViewportSize = newSize
         buffer.setScreenSize(newSize.cols, newSize.rows)
         val snap = buffer.snapshot()
         _lines.value = snap
@@ -139,6 +144,11 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     }
 
     val altScreenActive: Boolean get() = buffer.altScreenActive
+
+    companion object {
+        // Tüm oturumların paylaştığı son gerçek viewport ölçüsü.
+        @Volatile var lastViewportSize = TerminalSize(80, 24)
+    }
 
     fun grow() { size = TerminalSize((size.cols + 10).coerceAtMost(200), size.rows) }
     fun shrink() { size = TerminalSize((size.cols - 10).coerceAtLeast(40), size.rows) }
