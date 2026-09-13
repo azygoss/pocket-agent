@@ -122,7 +122,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import dev.pocketagent.transport.ConnectionState
-import dev.pocketagent.transport.SessionHandle
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalController
 import dev.pocketagent.transport.TermLine
@@ -258,7 +257,6 @@ fun TerminalScreen(
             EmptyTerminal(onNewConnection)
         } else {
             ActiveTerminal(
-                handle = active,
                 controller = active.controller,
                 manager = manager,
                 settings = settings,
@@ -366,7 +364,6 @@ private fun EmptyTerminal(onNewConnection: () -> Unit) {
 
 @Composable
 private fun ActiveTerminal(
-    handle: SessionHandle,
     controller: TerminalController,
     manager: SessionManager,
     settings: SettingsViewModel,
@@ -379,7 +376,6 @@ private fun ActiveTerminal(
     val vm = controller.vm
     val lines by vm.lines.collectAsState()
     val cursor by vm.cursor.collectAsState()
-    val windowTitle by vm.windowTitle.collectAsState()
     val pendingClip by vm.pendingClipboard.collectAsState()
     val state by controller.state.collectAsState()
     val failure by controller.failure.collectAsState()
@@ -540,10 +536,10 @@ private fun ActiveTerminal(
     }
 
     Column(Modifier.fillMaxSize()) {
-        // Çoklu oturumda geçiş şeridi panelin üstünde kalır; tek oturumda
-        // panel header'ı adı taşır (referans düzen: sadece başlık + rozeti).
+        // Oturum bilgisi yalnız üstteki şeritte yaşar (ad + durum noktası +
+        // retry rozeti); panel başlığı artık bunları tekrarlamaz.
         val handles by manager.sessions.collectAsState()
-        if (handles.size > 1) {
+        if (handles.isNotEmpty()) {
             SessionPillsRow(
                 manager,
                 Modifier.fillMaxWidth().padding(start = 10.dp, top = 4.dp, end = 2.dp),
@@ -570,7 +566,6 @@ private fun ActiveTerminal(
         }
         val lineH = with(density) { (16 * fontScale).sp.toPx() }
         val connected = state == ConnectionState.ACTIVE
-        val conn = handle.conn
         // Klavye açıkken panel-kapsül arasındaki hava boşluğu daralır —
         // kapsül klavyenin hemen üstünde durur, görüş alanı korunur.
         val imeInsets = WindowInsets.ime
@@ -645,56 +640,17 @@ private fun ActiveTerminal(
                                 )
                             }
                         }
-                    // ── Panel başlığı: durum noktası + oturum + rozet + aksiyonlar ──
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        StateDot(state, size = 7.dp)
+                    // ── Panel başlığı ──
+                    // Oturum bilgisi üst şeride taşındı; panel yalnız tam
+                    // ekranda (üst bar gizliyken) aksiyon ikonlarını taşır.
+                    if (fullscreen) {
                         Row(
-                            Modifier.weight(1f).padding(start = 9.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                conn.name,
-                                fontFamily = LocalMonoFont.current,
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.92f),
-                                maxLines = 1,
-                            )
-                            Text(
-                                buildString {
-                                    append("  ${conn.user}@${conn.host}")
-                                    if (windowTitle.isNotBlank()) append(" · $windowTitle")
-                                    if (state == ConnectionState.CONNECTING) append(" · bağlanıyor…")
-                                },
-                                fontFamily = LocalMonoFont.current,
-                                fontSize = 10.5.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            )
-                        }
-                        // Transport rozeti (SSH/MOSH) — mavi tonal kapsül.
-                        Box(
-                            Modifier
-                                .clip(CircleShape)
-                                .background(Color(console.accentAlt).copy(alpha = 0.16f))
-                                .padding(horizontal = 9.dp, vertical = 3.dp),
-                        ) {
-                            Text(
-                                vm.badge,
-                                fontFamily = LocalMonoFont.current,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(console.accentAlt),
-                            )
-                        }
-                        // Tam ekranda üst bar gizli — aksiyonlar panele döner.
-                        if (fullscreen) {
+                            Spacer(Modifier.weight(1f))
                             OverlayAction("Scrollback'te ara", { chrome.searchOpen = !chrome.searchOpen }) {
                                 Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
