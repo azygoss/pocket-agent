@@ -488,6 +488,14 @@ private fun ActiveTerminal(
         if (altActive) controller.send(TerminalInput.Resize(vm.size))
     }
 
+    // Bağlantı ACTIVE'a geçince gerçek boyutu bir kez gönder — CONNECTING
+    // sırasında ölçülen boyut send()'de ACTIVE kapısına takılıyordu ve PTY
+    // açılış tahmini (lastViewportSize) bayatsa uzak winsize kalıcı olarak
+    // yerelden sapıyordu → TUI agent'lar ekrana sığmıyordu. Dedupe no-op.
+    LaunchedEffect(state) {
+        if (state == ConnectionState.ACTIVE) controller.send(TerminalInput.Resize(vm.size))
+    }
+
     val matches = remember(lines, query) {
         if (query.length < 2) emptyList()
         else lines.mapIndexedNotNull { i, l -> if (l.text.contains(query, ignoreCase = true)) i else null }
@@ -547,8 +555,20 @@ private fun ActiveTerminal(
         val termBg = Color(console.term.background)
         val termFg = Color(console.term.foreground)
         val density = LocalDensity.current
-        val charW = with(density) { (13 * settings.theme.fontScale).sp.toPx() } * 0.6f
-        val lineH = with(density) { (16 * settings.theme.fontScale).sp.toPx() }
+        // Hücre genişliği gerçek fontla ölçülür — `0.6em` kestirimi seçili
+        // mono fonta göre saptığında remote cols yanlış açılır ve TUI
+        // agent'lar ekrana sığmaz.
+        val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
+        val monoFamily = LocalMonoFont.current
+        val fontScale = settings.theme.fontScale
+        val charW = remember(monoFamily, fontScale, density) {
+            val m = textMeasurer.measure(
+                AnnotatedString("0123456789"),
+                style = TextStyle(fontFamily = monoFamily, fontSize = (13 * fontScale).sp),
+            )
+            (m.size.width / 10f).coerceAtLeast(1f)
+        }
+        val lineH = with(density) { (16 * fontScale).sp.toPx() }
         val connected = state == ConnectionState.ACTIVE
         val conn = handle.conn
         // Klavye açıkken panel-kapsül arasındaki hava boşluğu daralır —
