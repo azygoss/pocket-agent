@@ -153,6 +153,10 @@ class TerminalBuffer(
     private var insertMode = false // IRM (CSI 4 h)
     private var originMode = false // DECOM (CSI ? 6 h) — CUP bölge-göreli
     private var pending = "" // chunk sınırında bölünen escape dizisi
+    // Chunk başına imleç-konumlandırma bayrağı: canlı TUI'lar içerik
+    // içine yazmadan önce imleci kaçış dizisiyle konumlandırır; ölen
+    // TUI'nin ardından gelen kabuk çıktısı (prompt) düz metindir.
+    private var cursorPositioned = false
 
     // OSC 52 (cihaz panosuna kopyala) ve OSC 0/2 (pencere başlığı) geri çağrıları.
     var onClipboard: ((String) -> Unit)? = null
@@ -249,6 +253,7 @@ class TerminalBuffer(
         totalFed += chunk.length
         val input = pending + chunk
         pending = ""
+        cursorPositioned = false
         var i = 0
         val n = input.length
         while (i < n) {
@@ -268,7 +273,7 @@ class TerminalBuffer(
                     wrapPending = false
                     i++
                 }
-                else -> if (c < ' ' || c == '\u007F') { if (c == '\u0007') onBell?.invoke(); i++ } else { putChar(c); i++ }
+                else -> if (c < ' ' || c == '\u007F') { if (c == '\u0007') onBell?.invoke(); i++ } else { snapIfStaleCursor(); putChar(c); i++ }
             }
         }
     }
@@ -296,6 +301,26 @@ class TerminalBuffer(
         s.grid[s.crow].styles[s.ccol] = eff
         lastPrinted = c
         if (s.ccol == cols - 1) wrapPending = true else s.ccol++
+    }
+
+    // Ölen TUI kelepçesi: konumlandırma dizisi görmeden gelen düz yazı,
+    // imlecin ALTINDA dolu satır varken içerik içine düşüyor demektir
+    // (agent çıkarken imleci çerçeve ortasında bıraktı). Bu durumda
+    // imleç bayattır — tüm metnin altına taşınır ve ölen TUI'nin
+    // bıraktığı daralmış kaydırma bölgesi sıfırlanır. Canlı TUI'lar
+    // içerik içine yazmadan önce aynı chunk'ta imleci konumlandırdığı
+    // için (cursorPositioned) etkilenmez; yalnız ana ekranda geçerli.
+    private fun snapIfStaleCursor() {
+        if (useAlt || cursorPositioned) return
+        val s = main
+        val used = s.usedRows()
+        if (s.crow >= used - 1) return // imlecin altında dolu satır yok
+        s.scrollTop = 0
+        s.scrollBottom = rows - 1
+        if (used >= rows) scrollUp(1)
+        s.crow = used.coerceAtMost(rows - 1)
+        s.ccol = 0
+        wrapPending = false
     }
 
     // REP (ESC[n b) için son yazılan karakter.
@@ -353,11 +378,11 @@ class TerminalBuffer(
             ']' -> osc(s, i + 2)
             '(' -> charset(s, i + 2)
             ')' -> if (i + 2 >= s.length) -1 else i + 3 // G1 designator — kullanılmıyor
-            '7' -> { val a = active(); a.savedRow = a.crow; a.savedCol = a.ccol; i + 2 }
-            '8' -> { val a = active(); a.crow = a.savedRow; a.ccol = a.savedCol; a.clampCursor(); i + 2 }
+            '7' -> { val a = active(); a.savedRow = a.crow; a.savedCol = a.ccol; cursorPositioned = true; i + 2 }
+            '8' -> { val a = active(); a.crow = a.savedRow; a.ccol = a.savedCol; a.clampCursor(); cursorPositioned = true; i + 2 }
             'D' -> { lineFeed(); i + 2 }
             'E' -> { active().ccol = 0; lineFeed(); i + 2 }
-            'M' -> { reverseIndex(); i + 2 }
+            'M' -> { reverseIndex(); cursorPositioned = true; i + 2 }
             'c' -> { resetSoft(); i + 2 }
             else -> i + 2
         }
@@ -454,6 +479,11 @@ class TerminalBuffer(
         fun p(idx: Int, default: Int): Int =
             parts.getOrNull(idx)?.toIntOrNull() ?: default
         val s = active()
+        // İmleci konumlandıran finaller (CUP/CUU/CUD/CUF/CUB/CNL/CPL/CHA/
+        // HPA/VPA/HPR/CHT/CBT/save/restore): canlı TUI sinyali. 'r'
+        // (DECSTBM) ve 'p' (DECSRR) temizlik dizileridir — bayrak
+        // kaldırılmaz ki çıkış sonrası gelen prompt alta taşınabilsin.
+        if (final in "ABCDEFGH`adefIsuZ") cursorPositioned = true
         when (final) {
             'm' -> sgr(raw)
             'A' -> { s.crow = (s.crow - p(0, 1)).coerceAtLeast(0); wrapPending = false }
@@ -507,18 +537,20 @@ class TerminalBuffer(
     private fun privateMode(final: Char, raw: String) {
         val mode = raw.toIntOrNull() ?: return
         when (mode) {
-            1049 -> if (final == 'h') enterAlt(saveCursor = true, clear = true) else exitAlt(restoreCursor = true)
-            1047 -> if (final == 'h') enterAlt(saveCursor = false, clear = false) else exitAlt(restoreCursor = false)
+            1049 -> if (final == 'h') { enterAlt(saveCursor = true, clear = true); cursorPositioned = true } else exitAlt(restoreCursor = true)
+            1047 -> if (final == 'h') { enterAlt(saveCursor = false, clear = false); cursorPositioned = true } else exitAlt(restoreCursor = false)
             1048 -> { // yalnız imleç kaydet/geri yükle
                 val s = active()
+                cursorPositioned = true
                 if (final == 'h') { s.savedRow = s.crow; s.savedCol = s.ccol }
                 else { s.crow = s.savedRow; s.ccol = s.savedCol; s.clampCursor() }
             }
-            47 -> if (final == 'h') enterAlt(saveCursor = false, clear = false) else exitAlt(restoreCursor = false)
+            47 -> if (final == 'h') { enterAlt(saveCursor = false, clear = false); cursorPositioned = true } else exitAlt(restoreCursor = false)
             25 -> cursorVisible = final == 'h'
             7 -> autowrap = final == 'h'
             6 -> { // DECOM: imleç adresleme kaydırma bölgesine göreli olur.
                 originMode = final == 'h'
+                cursorPositioned = true
                 val s = active()
                 s.crow = if (originMode) s.scrollTop else 0
                 s.ccol = 0
