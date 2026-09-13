@@ -158,7 +158,14 @@ class TerminalController(
     fun send(input: TerminalInput) {
         val t = transport ?: return
         if (input is TerminalInput.Resize) {
-            if (input.size == lastPtySize) return
+            val prev = lastPtySize
+            if (input.size == prev) return
+            // Satır-only değişim + düz shell (alt-screen yok) → SIGWINCH
+            // gönderme: satır sayısı satır-bazlı çıktıyı etkilemez ama zsh/fish
+            // her WINCH'te prompt'u yeniden basar. Klavye aç/kapa tam olarak
+            // bu durum — ekranda boşluklu prompt tekrarları birikiyordu.
+            // Alt-screen aktifse (vim/htop/less/tmux) resize şart.
+            if (prev != null && input.size.cols == prev.cols && !vm.altScreen.value) return
             lastPtySize = input.size
         }
         scope.launch {

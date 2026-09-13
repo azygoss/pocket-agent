@@ -461,6 +461,14 @@ private fun ActiveTerminal(
         if (lines.isNotEmpty()) listState.scrollToItem(lines.size - 1)
     }
 
+    // Alt-screen açıldığında (vim/htop/less/tmux) bekleyen gerçek boyutu
+    // uzak tarafa ilet — satır-only resize'lar düz shell'de filtrelendiği
+    // için uzak tarafın satır sayısı eski kalmış olabilir.
+    val altActive by vm.altScreen.collectAsState()
+    LaunchedEffect(altActive) {
+        if (altActive) controller.send(TerminalInput.Resize(vm.size))
+    }
+
     val matches = remember(lines, query) {
         if (query.length < 2) emptyList()
         else lines.mapIndexedNotNull { i, l -> if (l.text.contains(query, ignoreCase = true)) i else null }

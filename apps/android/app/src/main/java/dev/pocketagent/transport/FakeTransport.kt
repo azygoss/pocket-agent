@@ -66,6 +66,9 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     // BEL sayacı: her uzak zilde artar — UI değişimi izleyip haptic verir.
     private val _bellCount = MutableStateFlow(0)
     val bellCount: StateFlow<Int> = _bellCount
+    // Alt-screen durumu (vim/htop/less/tmux): resize kararı buradan okunur.
+    private val _altScreen = MutableStateFlow(false)
+    val altScreen: StateFlow<Boolean> = _altScreen
 
     init {
         buffer.onTitle = { _windowTitle.value = it }
@@ -107,6 +110,7 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
         _lines.value = snap
         _frames.value = snap.map { it.text }
         _cursor.value = buffer.cursorPosition()
+        _altScreen.value = buffer.altScreenActive
         badge = f.transport.name
     }
 
@@ -128,7 +132,7 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     }
 
     fun setBadge(t: TerminalTransport) { badge = t.name }
-    fun clear() { buffer.clear(); pendingBytes = ByteArray(0); _lines.value = emptyList(); _frames.value = emptyList(); _cursor.value = null }
+    fun clear() { buffer.clear(); pendingBytes = ByteArray(0); _lines.value = emptyList(); _frames.value = emptyList(); _cursor.value = null; _altScreen.value = false }
 
     // Viewport ölçüsü değişti: buffer yeniden boyutlanır (üstten taşan satırlar
     // scrollback'e gider); PTY resize'ı UI katmanında transport'a gönderilir.
