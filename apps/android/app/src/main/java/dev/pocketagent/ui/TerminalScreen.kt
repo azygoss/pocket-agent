@@ -675,17 +675,23 @@ private fun ActiveTerminal(
                                 val cols = ((sz.width - pad) / charW).toInt().coerceIn(20, 500)
                                 val rows = (sz.height / lineH).toInt().coerceIn(4, 200)
                                 val newSize = TerminalSize(cols, rows)
-                                if (newSize != vm.size) {
-                                    vm.setSize(newSize)
-                                    if (connected) {
-                                        resizeJob?.cancel()
-                                        resizeJob = scope.launch {
-                                            kotlinx.coroutines.delay(180)
+                                // Klavye animasyonu boyunca her frame'de
+                                // vm.setSize çalıştırmak buffer'ı sürekli
+                                // reflow ettirir (asıl yavaşlık) ve uzak
+                                // tarafı SIGWINCH yağmuruna tutar. Boyut
+                                // yalnız animasyon durulunca uygulanır;
+                                // net değişim yoksa hiçbir şey gönderilmez.
+                                resizeJob?.cancel()
+                                resizeJob = scope.launch {
+                                    kotlinx.coroutines.delay(160)
+                                    if (newSize != vm.size) {
+                                        vm.setSize(newSize)
+                                        viewportEpoch++
+                                        if (controller.state.value == ConnectionState.ACTIVE) {
                                             controller.send(TerminalInput.Resize(newSize))
                                         }
                                     }
                                 }
-                                viewportEpoch++
                             }
                             .then(
                                 if (connected) Modifier.pointerInput(Unit) {

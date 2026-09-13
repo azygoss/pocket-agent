@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -237,7 +238,10 @@ fun PocketAgentApp(
             bottomBar = {
                 // Terminal tam ekrandayken ana menü barı yerine terminalin
                 // kendi tuş şeridi görünür (TerminalScreen içinde render edilir).
-                if (!(tab == AppTab.Terminal && termFullscreen)) {
+                // Klavye açıkken de gizlenir — aksi halde tuş kapsülüyle klavye
+                // arasında nav bar yüksekliği kadar ölü boşluk kalır.
+                val imeOpen = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+                if (!(tab == AppTab.Terminal && (termFullscreen || imeOpen))) {
                     ConsoleNavBar(tab) { tab = it }
                 }
             },
