@@ -160,12 +160,11 @@ class TerminalController(
         if (input is TerminalInput.Resize) {
             val prev = lastPtySize
             if (input.size == prev) return
-            // Satır-only değişim + düz shell (alt-screen yok) → SIGWINCH
-            // gönderme: satır sayısı satır-bazlı çıktıyı etkilemez ama zsh/fish
-            // her WINCH'te prompt'u yeniden basar. Klavye aç/kapa tam olarak
-            // bu durum — ekranda boşluklu prompt tekrarları birikiyordu.
-            // Alt-screen aktifse (vim/htop/less/tmux) resize şart.
-            if (prev != null && input.size.cols == prev.cols && !vm.altScreen.value) return
+            // Not: satır-only filtreleme YOK — klavye aç/kapa zaten modeli
+            // değiştirmiyor (IME'siz ölçüm, D065). Remote winsize her gerçek
+            // geometri değişimini almalı; aksi halde TUI agent'lar (pi, claude)
+            // mutlak imleç adreslemesini yanlış satıra yapar ve çıkışta
+            // prompt eski metnin üstüne biner.
             lastPtySize = input.size
         }
         scope.launch {
