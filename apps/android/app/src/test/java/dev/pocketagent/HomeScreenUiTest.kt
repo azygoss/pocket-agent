@@ -2,8 +2,13 @@
 package dev.pocketagent
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.room.Room
 import dev.pocketagent.data.AppDatabase
 import dev.pocketagent.data.ConnectionRepository
@@ -69,5 +74,30 @@ class HomeScreenUiTest {
         rule.onNodeWithText("prod").assertIsDisplayed()
         rule.onNodeWithText("root@10.0.0.5:22").assertIsDisplayed()
         rule.onNodeWithText("Başlangıç").assertDoesNotExist()
+    }
+
+    // Oturum kartına uzun bas → ad diyaloğu → yeni ad kartta görünür.
+    @Test fun sessionCardLongPressRenamesSession() {
+        val m = manager()
+        val r = repo()
+        rule.setContent { HomeScreen(m, r) {} }
+        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
+        m.open(conn, Secret.Password("pw"))
+        rule.waitForIdle()
+        rule.onNodeWithText("sunucu").assertIsDisplayed()
+
+        rule.onNodeWithText("sunucu").performTouchInput { longClick() }
+        rule.waitForIdle()
+        rule.onNodeWithText("Oturum adı").assertIsDisplayed()
+        rule.onNode(hasSetTextAction()).performTextInput("prod-web")
+        rule.onNodeWithText("Kaydet").performClick()
+        rule.waitForIdle()
+
+        rule.onNodeWithText("prod-web").assertIsDisplayed()
+        org.junit.Assert.assertEquals(
+            "prod-web",
+            m.customNames.value[m.sessions.value.single().id],
+        )
+        m.closeAll()
     }
 }

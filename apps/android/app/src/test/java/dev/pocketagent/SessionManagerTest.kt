@@ -16,6 +16,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
 private class OkConnector : SshConnector {
     override suspend fun open(conn: SavedConnection, secret: Secret?, size: TerminalSize): SshTransport =
@@ -70,5 +73,43 @@ class SessionManagerTest {
         val first = m.sessions.value.first { it.conn.id == c1.id }
         assertSame(first.controller, m.open(c1, Secret.Password("p")))
         m.closeAll()
+    }
+
+    @Test fun renameSetsAndClearsCustomName() = runBlocking {
+        val m = manager()
+        m.open(c1, Secret.Password("p"))
+        val id = m.sessions.value.single().id
+        assertNull(m.customNames.value[id])
+
+        m.rename(id, "prod-web")
+        assertEquals("prod-web", m.customNames.value[id])
+
+        // Boş ad → bağlantı adına dönüş (kayıt silinir).
+        m.rename(id, "   ")
+        assertNull(m.customNames.value[id])
+
+        // Oturum kapanınca ad da temizlenir.
+        m.rename(id, "tekrar")
+        m.close(id)
+        assertTrue(m.customNames.value.isEmpty())
+    }
+
+    @Test fun openWithCustomNameRegistersIt() = runBlocking {
+        val m = manager()
+        m.open(c1, Secret.Password("p"), customName = "restore-adı")
+        val id = m.sessions.value.single().id
+        assertEquals("restore-adı", m.customNames.value[id])
+        m.closeAll()
+    }
+}
+
+// open_sessions kaydı: "connId|urlEncodedAd" formatı — virgüllü/özel
+// karakterli adlar ve adsız (eski format) kayıtlar doğru çözülmeli.
+@RunWith(RobolectricTestRunner::class)
+class OpenSessionsStoreTest {
+    @Test fun openSessionsNameRoundtrip() = runBlocking {
+        val store = dev.pocketagent.data.DataStoreSettingsStore(RuntimeEnvironment.getApplication())
+        store.saveOpenSessions(listOf("c1" to "web, özel ·1", "c2" to null))
+        assertEquals(listOf("c1" to "web, özel ·1", "c2" to null), store.loadOpenSessions())
     }
 }

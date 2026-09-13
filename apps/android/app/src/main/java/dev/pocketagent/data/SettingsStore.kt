@@ -72,16 +72,26 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
         }
     }
 
-    // Açık terminal oturumları (conn id listesi, virgülle) — kullanıcı
-    // kapatmadıkça uygulama yeniden başlayınca geri yüklenir (tmux
-    // re-attach ile kaldığı yerden devam eder).
+    // Açık terminal oturumları — kullanıcı kapatmadıkça uygulama yeniden
+    // başlayınca geri yüklenir (tmux re-attach ile kaldığı yerden devam eder).
+    // Kayıt: "connId" ya da "connId|urlEncodedAd" (özel oturum adı opsiyonel).
     private val openSessionsKey = stringPreferencesKey("open_sessions")
 
-    suspend fun loadOpenSessions(): List<String> =
+    suspend fun loadOpenSessions(): List<Pair<String, String?>> =
         context.prefs.data.first()[openSessionsKey]
-            ?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
+            ?.split(',')?.filter { it.isNotBlank() }
+            ?.map { e ->
+                val i = e.indexOf('|')
+                if (i < 0) e to null
+                else e.substring(0, i) to
+                    java.net.URLDecoder.decode(e.substring(i + 1), "UTF-8").ifBlank { null }
+            } ?: emptyList()
 
-    suspend fun saveOpenSessions(connIds: List<String>) {
-        context.prefs.edit { it[openSessionsKey] = connIds.joinToString(",") }
+    suspend fun saveOpenSessions(sessions: List<Pair<String, String?>>) {
+        context.prefs.edit {
+            it[openSessionsKey] = sessions.joinToString(",") { (id, name) ->
+                if (name.isNullOrBlank()) id else "$id|${java.net.URLEncoder.encode(name, "UTF-8")}"
+            }
+        }
     }
 }

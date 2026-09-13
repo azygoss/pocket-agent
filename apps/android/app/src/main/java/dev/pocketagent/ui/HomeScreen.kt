@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -35,6 +37,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,7 +66,9 @@ fun HomeScreen(
 ) {
     val sessionList by sessions.sessions.collectAsState()
     val activeId by sessions.activeId.collectAsState()
+    val customNames by sessions.customNames.collectAsState()
     val saved by connections.items.collectAsState()
+    var renaming by remember { mutableStateOf<SessionHandle?>(null) }
     val active = sessionList.firstOrNull { it.id == activeId }
     val state = active?.controller?.state?.collectAsState()?.value ?: ConnectionState.CLOSED
     val primary = MaterialTheme.colorScheme.primary
@@ -105,7 +112,11 @@ fun HomeScreen(
                 Spacer(Modifier.height(Space.md))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
                     items(sessionList, key = { it.id }) { h ->
-                        SessionCard(h) {
+                        SessionCard(
+                            h,
+                            name = customNames[h.id],
+                            onRename = { renaming = h },
+                        ) {
                             sessions.setActive(h.id)
                             onGoTo(AppTab.Terminal)
                         }
@@ -187,13 +198,29 @@ fun HomeScreen(
                 modifier = Modifier.size(28.dp),
             )
         }
+
+        renaming?.let { h ->
+            RenameSessionDialog(
+                connName = h.conn.name,
+                initial = customNames[h.id],
+                onDismiss = { renaming = null },
+                onSave = { name -> sessions.rename(h.id, name); renaming = null },
+            )
+        }
     }
 }
 
 // Oturum kartı: gerçek buffer'ın son satırlarıyla mini terminal önizlemesi.
 // Placeholder yok — kart, oturumun canlı çıktısını gösterir.
+// Uzun basma → yeniden adlandırma diyaloğu (ad SessionManager.customNames'te).
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SessionCard(h: SessionHandle, onClick: () -> Unit) {
+private fun SessionCard(
+    h: SessionHandle,
+    name: String?,
+    onRename: () -> Unit,
+    onClick: () -> Unit,
+) {
     val console = LocalConsoleTheme.current
     val lines by h.controller.vm.lines.collectAsState()
     val st by h.controller.state.collectAsState()
@@ -205,14 +232,14 @@ private fun SessionCard(h: SessionHandle, onClick: () -> Unit) {
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(console.term.background))
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
-                .clickable(onClick = onClick)
+                .combinedClickable(onClick = onClick, onLongClick = onRename)
                 .padding(start = 10.dp, end = 10.dp, top = 9.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StateDot(st, size = 6.dp)
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    h.conn.name,
+                    name ?: h.conn.name,
                     fontFamily = LocalMonoFont.current,
                     fontSize = 10.5.sp,
                     fontWeight = FontWeight.SemiBold,
