@@ -16,7 +16,6 @@ import dev.pocketagent.transport.SshTransport
 import dev.pocketagent.transport.TerminalSize
 import dev.pocketagent.transport.TofuHostKeyStore
 import dev.pocketagent.ui.HomeScreen
-import dev.pocketagent.ui.InboxViewModel
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +50,7 @@ class HomeScreenUiTest {
     }
 
     @Test fun noHostsShowsOnboarding() {
-        rule.setContent { HomeScreen(manager(), repo(), InboxViewModel()) {} }
+        rule.setContent { HomeScreen(manager(), repo()) {} }
         rule.onNodeWithText("Başlangıç").assertIsDisplayed()
         rule.onNodeWithText("İlk hostu ekle").assertIsDisplayed()
     }
@@ -64,7 +63,7 @@ class HomeScreenUiTest {
                 Secret.Password("x"),
             )
         }
-        rule.setContent { HomeScreen(manager(), r, InboxViewModel()) {} }
+        rule.setContent { HomeScreen(manager(), r) {} }
         rule.waitForIdle()
         rule.onNodeWithText("Son bağlantılar").assertIsDisplayed()
         rule.onNodeWithText("prod").assertIsDisplayed()

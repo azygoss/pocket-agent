@@ -3,6 +3,7 @@ package dev.pocketagent.ui
 
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,11 +23,15 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -58,7 +63,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.pocketagent.transport.ConnectionState
-import dev.pocketagent.transport.shortHash
+import dev.pocketagent.transport.SessionHandle
+import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.ui.theme.consoleTheme
 import dev.pocketagent.ui.theme.consoleFont
 import dev.pocketagent.ui.theme.LocalMonoFont
@@ -69,14 +75,12 @@ import dev.pocketagent.service.TerminalService
 import dev.pocketagent.ui.theme.PocketAgentTheme
 import dev.pocketagent.ui.theme.Space
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 enum class AppTab(val label: String, val icon: ImageVector) {
     Home("Ana Sayfa", Icons.Filled.Home),
     Connections("Bağlantılar", Icons.Filled.Dns),
     Terminal("Terminal", Icons.Filled.Terminal),
-    Agents("Agentlar", Icons.Filled.SmartToy),
     Files("Dosyalar", Icons.Filled.Folder),
     Settings("Ayarlar", Icons.Filled.Settings),
 }
@@ -89,13 +93,12 @@ fun PocketAgentApp(
     addHostLink: MutableStateFlow<dev.pocketagent.transport.SavedConnection?> = MutableStateFlow(null),
 ) {
     val settings = remember { SettingsViewModel(app.settingsStore, app.appScope) }
-    val inbox = app.inbox
-    val approval = remember { ApprovalViewModel() }
     val usage = app.usage
     val files = remember { FilesViewModel(app.sessions, app.appScope, app.cacheDir) }
     var tab by remember { mutableStateOf(AppTab.Home) }
-    // Terminal tam ekran: nav bar gizlenir, yerine terminal tuş şeridi gelir.
-    var termFullscreen by remember { mutableStateOf(false) }
+    // Terminal chrome: arama/tam-ekran bayrakları üst barla paylaşılır.
+    val termChrome = remember { TerminalChromeState() }
+    val termFullscreen = termChrome.fullscreen
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     val notifPermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -106,7 +109,6 @@ fun PocketAgentApp(
     val connections2 = app.connections.items.collectAsState()
     val hostKeyPrompt by sessions.hostKeyPrompt.collectAsState()
     val anyActive by sessions.anyActive.collectAsState()
-    val unread = inbox.rows.count { it.unread }
 
     LaunchedEffect(Unit) { app.connections.refresh(); app.profiles.refresh() }
 
@@ -163,7 +165,7 @@ fun PocketAgentApp(
     }
 
     // Sekme değişince tam ekran bayrağını sıfırla (nav bar geri gelir).
-    LaunchedEffect(tab) { if (tab != AppTab.Terminal) termFullscreen = false }
+    LaunchedEffect(tab) { if (tab != AppTab.Terminal) { termChrome.fullscreen = false; termChrome.searchOpen = false } }
 
     // pocketagent://add?host=… → Bağlantılar sekmesi (diyalog ekranda açılır).
     LaunchedEffect(Unit) {
@@ -199,32 +201,6 @@ fun PocketAgentApp(
         if (anyActive) snackbar.showSnackbar("Oturum bağlandı")
     }
 
-    // Agents → "oturuma git": opaque host'u kayıtlı bağlantıya eşle (emit.go
-    // h:sha256(hostID)[0:16] ile aynı kural), oturumu aç/odakla, tmux
-    // oturumuysa attach et.
-    val openAgent: (InboxRow) -> Unit = { row ->
-        tab = AppTab.Terminal
-        app.appScope.launch {
-            val conns = connections2.value
-            val conn = conns.firstOrNull { c ->
-                listOf(c.host, "host:${c.host}", "${c.user}@${c.host}", c.name, "host:${c.name}")
-                    .any { "h:" + shortHash(it) == row.host }
-            } ?: conns.maxByOrNull { it.lastConnectedAt }
-            if (conn == null) {
-                snackbar.showSnackbar("Agent host'u için kayıtlı bağlantı yok")
-                return@launch
-            }
-            val ctl = sessions.open(conn, app.connections.secret(conn.id))
-            if (row.sessionId.startsWith("tmux:")) {
-                val name = row.sessionId.removePrefix("tmux:")
-                kotlinx.coroutines.withTimeoutOrNull(15_000) {
-                    ctl.state.first { it == dev.pocketagent.transport.ConnectionState.ACTIVE }
-                } ?: return@launch
-                ctl.send(dev.pocketagent.transport.TerminalInput.Text("tmux attach -t $name\r"))
-            }
-        }
-    }
-
     val console = consoleTheme(settings.theme.themeId)
     // Sistem çubuğu ikon kontrastı temayı takip eder — açık temada koyu ikon.
     val barView = androidx.compose.ui.platform.LocalView.current
@@ -243,7 +219,15 @@ fun PocketAgentApp(
             topBar = {
                 // Terminal tam ekrandayken üst bar da gizlenir — gerçek immersive.
                 if (!(tab == AppTab.Terminal && termFullscreen)) {
-                    ConsoleTopBar(activeCount)
+                    ConsoleTopBar(activeCount) {
+                        // Terminal sekmesindeyken aksiyonlar üst barda yaşar.
+                        if (tab == AppTab.Terminal) {
+                            val activeId by sessions.activeId.collectAsState()
+                            sessionList.firstOrNull { it.id == activeId }?.let { h ->
+                                TerminalBarActions(h, sessions, termChrome)
+                            }
+                        }
+                    }
                 }
             },
             snackbarHost = { SnackbarHost(snackbar) },
@@ -254,7 +238,7 @@ fun PocketAgentApp(
                 // Terminal tam ekrandayken ana menü barı yerine terminalin
                 // kendi tuş şeridi görünür (TerminalScreen içinde render edilir).
                 if (!(tab == AppTab.Terminal && termFullscreen)) {
-                    ConsoleNavBar(tab, unread) { tab = it }
+                    ConsoleNavBar(tab) { tab = it }
                 }
             },
         ) { pad ->
@@ -263,7 +247,6 @@ fun PocketAgentApp(
                     AppTab.Home -> HomeScreen(
                         sessions = sessions,
                         connections = app.connections,
-                        inbox = inbox,
                         onGoTo = { tab = it },
                     )
                     AppTab.Connections -> ConnectionsScreen(
@@ -279,13 +262,8 @@ fun PocketAgentApp(
                         manager = sessions,
                         settings = settings,
                         onNewConnection = { tab = AppTab.Connections },
-                        onFullscreenChange = { termFullscreen = it },
                         onCollapse = { tab = AppTab.Home },
-                    )
-                    AppTab.Agents -> AgentsScreen(
-                        inbox = inbox, approval = approval, app = app,
-                        backendInfo = "${settings.backendUrl.ifBlank { "ayarlanmadı" }} · tenant: ${settings.tenantToken.ifBlank { "—" }}",
-                        onOpenAgent = openAgent,
+                        chrome = termChrome,
                     )
                     AppTab.Files -> FilesScreen(files = files)
                     AppTab.Settings -> SettingsScreen(
@@ -326,13 +304,14 @@ fun PocketAgentApp(
 // Üst bar ince bir şerit: wordmark + canlı oturum pill'i. Alt bar M3 usulü:
 // aktif sekme ikonunun arkasında yatay accent pill'i, etiket altta.
 
-// Üst bar: wordmark + sağda tonal oturum pill'i. Edge-to-edge'de status
-// bar altına kaymaması için kendi inset'ini uygular.
+// Üst bar: wordmark + sağda tonal oturum pill'i + isteğe bağlı aksiyonlar
+// (Terminal sekmesindeyken ara/paylaş/tam-ekran/kapat burada yaşar).
+// Edge-to-edge'de status bar altına kaymaması için kendi inset'ini uygular.
 @Composable
-private fun ConsoleTopBar(activeSessions: Int) {
+private fun ConsoleTopBar(activeSessions: Int, actions: (@Composable () -> Unit)? = null) {
     Column(Modifier.windowInsetsPadding(WindowInsets.statusBars).background(MaterialTheme.colorScheme.surface)) {
         Row(
-            Modifier.fillMaxWidth().height(44.dp).padding(horizontal = Space.lg),
+            Modifier.fillMaxWidth().height(44.dp).padding(start = Space.lg, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -361,15 +340,53 @@ private fun ConsoleTopBar(activeSessions: Int) {
                     )
                 }
             }
+            actions?.invoke()
         }
         ConsoleDivider()
     }
 }
 
-// Alt bar: aktif sekmenin ikonu yatay accent pill'i içinde (M3 indicator),
-// etiket altta accent renkte. Agents'ta okunmamış sayısı rozette.
+// Terminal aksiyonları üst barda: ara / paylaş / tam ekran / yeniden bağlan / kapat.
 @Composable
-private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) -> Unit) {
+private fun TerminalBarActions(h: SessionHandle, sessions: SessionManager, chrome: TerminalChromeState) {
+    val state by h.controller.state.collectAsState()
+    val context = LocalContext.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TerminalBarIcon("Scrollback'te ara", Icons.Filled.Search) { chrome.searchOpen = !chrome.searchOpen }
+        TerminalBarIcon("Scrollback'i paylaş", Icons.Filled.Share) {
+            shareScrollback(context, h.controller.vm.lines.value)
+        }
+        TerminalBarIcon("Tam ekran", Icons.Filled.Fullscreen) { chrome.fullscreen = true }
+        if ((state == ConnectionState.CLOSED || state == ConnectionState.FAILED) && h.controller.canReconnect()) {
+            TerminalBarIcon("Yeniden bağlan", Icons.Filled.Refresh, tint = MaterialTheme.colorScheme.primary) {
+                h.controller.reconnect()
+            }
+        }
+        TerminalBarIcon("Oturumu kapat", Icons.Filled.Close, tint = MaterialTheme.colorScheme.error) {
+            sessions.close(h.id)
+        }
+    }
+}
+
+@Composable
+private fun TerminalBarIcon(desc: String, icon: ImageVector, tint: Color = MaterialTheme.colorScheme.onSurfaceVariant, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .padding(start = 2.dp)
+            .size(34.dp)
+            .clip(RoundedCornerShape(50))
+            .semantics { contentDescription = desc }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+    }
+}
+
+// Alt bar: aktif sekmenin ikonu yatay accent pill'i içinde (M3 indicator),
+// etiket altta accent renkte.
+@Composable
+private fun ConsoleNavBar(current: AppTab, onSelect: (AppTab) -> Unit) {
     Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
         ConsoleDivider()
         Row(
@@ -391,43 +408,23 @@ private fun ConsoleNavBar(current: AppTab, agentUnread: Int, onSelect: (AppTab) 
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Spacer(Modifier.weight(1f))
-                    Box {
-                        Box(
-                            Modifier
-                                .width(56.dp)
-                                .height(30.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(
-                                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                                    else Color.Transparent,
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                t.icon,
-                                contentDescription = null,
-                                tint = tint,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                        if (t == AppTab.Agents && agentUnread > 0) {
-                            Box(
-                                Modifier
-                                    .align(Alignment.TopEnd)
-                                    .offset(x = (-2).dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.primary)
-                                    .padding(horizontal = 4.dp),
-                            ) {
-                                Text(
-                                    "$agentUnread",
-                                    fontSize = 8.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    maxLines = 1,
-                                )
-                            }
-                        }
+                    Box(
+                        Modifier
+                            .width(56.dp)
+                            .height(30.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                else Color.Transparent,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            t.icon,
+                            contentDescription = null,
+                            tint = tint,
+                            modifier = Modifier.size(20.dp),
+                        )
                     }
                     Spacer(Modifier.height(3.dp))
                     Text(

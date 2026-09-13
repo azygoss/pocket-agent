@@ -15,6 +15,7 @@ import dev.pocketagent.transport.SshTransport
 import dev.pocketagent.transport.TerminalSize
 import dev.pocketagent.transport.TofuHostKeyStore
 import dev.pocketagent.ui.SettingsViewModel
+import dev.pocketagent.ui.TerminalChromeState
 import dev.pocketagent.ui.TerminalScreen
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -52,7 +53,7 @@ class TerminalScreenUiTest {
     @Test fun sessionChipAppearsOnConnect() {
         val m = manager()
         rule.setContent {
-            TerminalScreen(m, SettingsViewModel(), {}){}
+            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {})
         }
         val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
         m.open(conn, Secret.Password("pw"))
@@ -68,22 +69,23 @@ class TerminalScreenUiTest {
     @Test fun fullscreenKeepsKeyBarAndNotifies() {
         val m = manager()
         var fullscreenSeen: Boolean? = null
+        // Aksiyonlar artık üst barda (PocketApp); izole testte chrome durumu
+        // doğrudan sürülür — panel fullscreen'de kendi aksiyonlarını gösterir.
+        val chrome = TerminalChromeState()
         rule.setContent {
-            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = { fullscreenSeen = it })
+            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = { fullscreenSeen = it }, chrome = chrome)
         }
         val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
         m.open(conn, Secret.Password("pw"))
         rule.waitForIdle()
-        // Tam ekrana geç → üst katman bilgilendirilir, tuş şeridi görünür kalır.
-        rule.onNodeWithContentDescription("Tam ekran").performClick()
+        rule.runOnIdle { chrome.fullscreen = true }
         rule.waitForIdle()
         org.junit.Assert.assertEquals(true, fullscreenSeen)
         rule.onNodeWithText("ctrl").assertIsDisplayed()
         rule.onNodeWithText("esc").assertIsDisplayed()
-        // 0.15.2: overlay aksiyonları tam ekranda da erişilebilir (ara/paylaş/çık).
+        // Tam ekranda üst bar gizli → aksiyonlar panel başlığına döner.
         rule.onNodeWithContentDescription("Scrollback'te ara").assertIsDisplayed()
         rule.onNodeWithContentDescription("Scrollback'i paylaş").assertIsDisplayed()
-        // Çıkış → bildirim false, normal görünüm.
         rule.onNodeWithContentDescription("Tam ekrandan çık").performClick()
         rule.waitForIdle()
         org.junit.Assert.assertEquals(false, fullscreenSeen)
