@@ -339,9 +339,10 @@ class ExecRecordingTransport(
     val inner: FakeSshTransport = FakeSshTransport(),
 ) : SshTransport by inner, ExecCapable {
     val execs = java.util.concurrent.CopyOnWriteArrayList<String>()
+    var execOut = ""
     override suspend fun exec(cmd: String, timeoutMs: Int): Pair<Int, String> {
         execs.add(cmd)
-        return 0 to ""
+        return 0 to execOut
     }
 }
 

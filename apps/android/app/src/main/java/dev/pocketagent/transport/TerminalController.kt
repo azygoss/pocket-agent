@@ -239,7 +239,13 @@ class TerminalController(
         scope.launch {
             if (killRemote && tmux != null) {
                 runCatching {
-                    (t as? ExecCapable)?.exec("tmux kill-session -t '$tmux' 2>/dev/null || :", 3_000)
+                    // tmux'u öldür + registry dosyasını sil (diğer cihazlar
+                    // listelemesin). Kopmuş transport'ta sessiz no-op.
+                    (t as? ExecCapable)?.exec(
+                        "tmux kill-session -t '$tmux' 2>/dev/null || :; " +
+                            "rm -f \"\$HOME/.pocket-agent/terms/$tmux\"",
+                        3_000,
+                    )
                 }
             }
             runCatching { t?.close() }

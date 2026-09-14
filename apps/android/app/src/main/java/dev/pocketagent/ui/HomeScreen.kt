@@ -30,11 +30,13 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,11 +69,22 @@ fun HomeScreen(
     val sessionList by sessions.sessions.collectAsState()
     val activeId by sessions.activeId.collectAsState()
     val customNames by sessions.customNames.collectAsState()
+    val remote by sessions.remote.collectAsState()
     val saved by connections.items.collectAsState()
     var renaming by remember { mutableStateOf<SessionHandle?>(null) }
     val active = sessionList.firstOrNull { it.id == activeId }
     val state = active?.controller?.state?.collectAsState()?.value ?: ConnectionState.CLOSED
     val primary = MaterialTheme.colorScheme.primary
+
+    // Host'taki pa-* oturumlarını keşfet: aktif oturumu olan her conn'in
+    // exec kanalından, 15s'de bir. Başka cihazların açtığı terminaller
+    // "Host'ta açık" bölümüne düşer — dokunup aynı tmux'a attach edilir.
+    LaunchedEffect(sessionList.size) {
+        while (true) {
+            sessions.discoverRemote()
+            kotlinx.coroutines.delay(15_000)
+        }
+    }
 
     // Referans düzen: neredeyse siyah zemin, üstten loş yeşil glow.
     Box(
@@ -120,6 +133,41 @@ fun HomeScreen(
                             sessions.setActive(h.id)
                             onGoTo(AppTab.Terminal)
                         }
+                    }
+                }
+                Spacer(Modifier.height(Space.xl))
+            }
+
+            // ── REMOTE TERMS: host'ta yaşayan, bu cihazda açık olmayan ────
+            // oturumlar (diğer cihazlar dahil). Dokun → aynı tmux'a attach;
+            // iki cihaz terminali paylaşır. Registry'siz pa-*'ler ad olarak
+            // tmux adını gösterir.
+            val remoteItems = remote.flatMap { (connId, terms) ->
+                saved.firstOrNull { it.id == connId }
+                    ?.let { c -> terms.map { c to it } } ?: emptyList()
+            }
+            if (remoteItems.isNotEmpty()) {
+                SectionLabel("Host'ta açık")
+                Spacer(Modifier.height(Space.md))
+                Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+                    remoteItems.forEach { (c, r) ->
+                        RemoteTermTile(
+                            name = r.name ?: r.tmux,
+                            address = "${c.user}@${c.host} · ${r.tmux}",
+                            enabled = connections.hasSavedSecret(c.id),
+                            onClick = {
+                                sessions.open(
+                                    c,
+                                    connections.secret(c.id),
+                                    forceNew = true,
+                                    tmuxName = r.tmux,
+                                    customName = r.name,
+                                    // Başkasının oturumu: kapatma detach etsin.
+                                    shared = r.device != sessions.deviceId,
+                                )
+                                onGoTo(AppTab.Terminal)
+                            },
+                        )
                     }
                 }
                 Spacer(Modifier.height(Space.xl))
@@ -322,6 +370,56 @@ private fun ConnectionTile(
             Spacer(Modifier.height(2.dp))
             Text(
                 address,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+// Host'ta yaşayan oturum satırı: bağlantı kartıyla aynı gövde, Terminal
+// ikonu + sahiplik ipucu. Başka cihazın oturumuna attach paylaşımlıdır.
+@Composable
+private fun RemoteTermTile(
+    name: String,
+    address: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = Space.md, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconTile(
+            Icons.Filled.Terminal,
+            tint = if (enabled) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            size = 42.dp,
+        )
+        Spacer(Modifier.width(Space.md))
+        Column(Modifier.weight(1f)) {
+            Text(
+                name,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                maxLines = 1,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                if (enabled) address else "$address · secret gerekli",
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

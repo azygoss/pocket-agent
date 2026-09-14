@@ -100,4 +100,44 @@ class HomeScreenUiTest {
         )
         m.closeAll()
     }
+
+    // Cihazlar-arası keşif: host'taki registry'li pa-* oturumu "Host'ta
+    // açık" bölümünde görünür; dokununca aynı tmux'a attach edilir.
+    @Test fun remoteTermTileAttachesToSharedTmux() {
+        val probe = ExecRecordingTransport().apply {
+            execOut = "pa-own00001\npa-a1b2c3d4\n@@REG@@\n" +
+                "@@F@@pa-a1b2c3d4\nn=uzak+is\nd=dev-B\n" +
+                "@@F@@pa-own00001\nn=benim\nd=dev-A\n"
+        }
+        val store = TofuHostKeyStore(File.createTempFile("hostkeys", ".db"))
+        val m = SessionManager(CoroutineScope(Dispatchers.IO), store) {
+            object : SshConnector {
+                override suspend fun open(
+                    conn: SavedConnection,
+                    secret: Secret?,
+                    size: TerminalSize,
+                ): SshTransport {
+                    probe.inner.openPty("xterm-256color", size)
+                    return probe
+                }
+            }
+        }.apply { deviceId = "dev-A" }
+        val r = repo()
+        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
+        runBlocking { r.upsert(conn, Secret.Password("x")) }
+        m.open(conn, Secret.Password("x"), forceNew = true, tmuxName = "pa-own00001")
+        rule.setContent { HomeScreen(m, r) {} }
+        rule.waitForIdle()
+
+        rule.onNodeWithText("Host'ta açık").assertIsDisplayed()
+        rule.onNodeWithText("uzak is").assertIsDisplayed()
+        rule.onNodeWithText("uzak is").performClick()
+        rule.waitForIdle()
+        // Attach: ikinci oturum aynı tmux adıyla, paylaşımlı (kill'siz close).
+        org.junit.Assert.assertEquals(2, m.sessions.value.size)
+        org.junit.Assert.assertTrue(
+            m.tmuxNames.value.values.toList().containsAll(listOf("pa-own00001", "pa-a1b2c3d4")),
+        )
+        m.closeAll()
+    }
 }
