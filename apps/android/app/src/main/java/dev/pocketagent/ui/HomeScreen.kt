@@ -30,7 +30,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -109,7 +108,14 @@ fun HomeScreen(
             Spacer(Modifier.height(Space.lg))
 
             // ── SESSIONS: canlı terminal önizleme kartları ─────────────────
-            if (sessionList.isNotEmpty()) {
+            // Yerel açık oturumlar + host'ta yaşayan diğer pa-* oturumları
+            // (bu cihazda açık olmayanlar; diğer cihazlar dahil) aynı satırda —
+            // uzak kart "host" rozetli, dokun → aynı tmux'a attach.
+            val remoteItems = remote.flatMap { (connId, terms) ->
+                saved.firstOrNull { it.id == connId }
+                    ?.let { c -> terms.map { c to it } } ?: emptyList()
+            }
+            if (sessionList.isNotEmpty() || remoteItems.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     SectionLabel("Oturumlar")
                     Spacer(Modifier.weight(1f))
@@ -134,26 +140,11 @@ fun HomeScreen(
                             onGoTo(AppTab.Terminal)
                         }
                     }
-                }
-                Spacer(Modifier.height(Space.xl))
-            }
-
-            // ── REMOTE TERMS: host'ta yaşayan, bu cihazda açık olmayan ────
-            // oturumlar (diğer cihazlar dahil). Dokun → aynı tmux'a attach;
-            // iki cihaz terminali paylaşır. Registry'siz pa-*'ler ad olarak
-            // tmux adını gösterir.
-            val remoteItems = remote.flatMap { (connId, terms) ->
-                saved.firstOrNull { it.id == connId }
-                    ?.let { c -> terms.map { c to it } } ?: emptyList()
-            }
-            if (remoteItems.isNotEmpty()) {
-                SectionLabel("Host'ta açık")
-                Spacer(Modifier.height(Space.md))
-                Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    remoteItems.forEach { (c, r) ->
-                        RemoteTermTile(
+                    items(remoteItems, key = { "r-" + it.second.tmux }) { (c, r) ->
+                        RemoteSessionCard(
                             name = r.name ?: r.tmux,
-                            address = "${c.user}@${c.host} · ${r.tmux}",
+                            tmux = r.tmux,
+                            address = "${c.user}@${c.host}",
                             enabled = connections.hasSavedSecret(c.id),
                             onClick = {
                                 sessions.open(
@@ -384,52 +375,90 @@ private fun ConnectionTile(
     }
 }
 
-// Host'ta yaşayan oturum satırı: bağlantı kartıyla aynı gövde, Terminal
-// ikonu + sahiplik ipucu. Başka cihazın oturumuna attach paylaşımlıdır.
+// Host'ta yaşayan ama bu cihazda açık olmayan oturum kartı — SessionCard
+// ile aynı geometri, "host" rozeti + attach ipucu (scrollback yerine).
+// Dokun → aynı tmux'a attach; başka cihazın oturumu paylaşımlı açılır.
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RemoteTermTile(
+private fun RemoteSessionCard(
     name: String,
+    tmux: String,
     address: String,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = Space.md, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconTile(
-            Icons.Filled.Terminal,
-            tint = if (enabled) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            size = 42.dp,
-        )
-        Spacer(Modifier.width(Space.md))
-        Column(Modifier.weight(1f)) {
-            Text(
-                name,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                maxLines = 1,
-                color = if (enabled) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                if (enabled) address else "$address · secret gerekli",
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
+    val console = LocalConsoleTheme.current
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    val alpha = if (enabled) 1f else 0.5f
+    Column(Modifier.width(216.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .height(148.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(console.term.background))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+                .combinedClickable(enabled = enabled, onClick = onClick)
+                .padding(start = 10.dp, end = 10.dp, top = 9.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Uzakta canlı, burada bağlı değil — nötr nokta.
+                Box(
+                    Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(dim.copy(alpha = alpha)),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    name,
+                    fontFamily = LocalMonoFont.current,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f * alpha),
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                Box(
+                    Modifier
+                        .clip(CircleShape)
+                        .background(Color(console.accentAlt).copy(alpha = 0.16f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        "host",
+                        fontFamily = LocalMonoFont.current,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(console.accentAlt).copy(alpha = alpha),
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            listOf(
+                "\$ tmux attach -t $tmux",
+                "→ host'ta canlı oturum",
+                if (enabled) "  dokun: attach" else "  secret gerekli",
+            ).forEach { l ->
+                Text(
+                    l,
+                    color = Color(console.term.foreground).copy(alpha = 0.55f * alpha),
+                    fontFamily = LocalMonoFont.current,
+                    fontSize = 7.5.sp,
+                    lineHeight = 10.5.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
         }
-        Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
+        Spacer(Modifier.height(6.dp))
+        Text(
+            address,
+            fontFamily = LocalMonoFont.current,
+            fontSize = 11.sp,
+            color = dim.copy(alpha = alpha),
+            maxLines = 1,
+            modifier = Modifier.padding(start = 2.dp),
         )
     }
 }

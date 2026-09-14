@@ -101,9 +101,9 @@ class HomeScreenUiTest {
         m.closeAll()
     }
 
-    // Cihazlar-arası keşif: host'taki registry'li pa-* oturumu "Host'ta
-    // açık" bölümünde görünür; dokununca aynı tmux'a attach edilir.
-    @Test fun remoteTermTileAttachesToSharedTmux() {
+    // Cihazlar-arası keşif: host'taki registry'li pa-* oturumu Oturumlar
+    // satırında "host" rozetli kart olarak görünür; dokun → aynı tmux'a attach.
+    @Test fun remoteSessionCardAttachesToSharedTmux() {
         val probe = ExecRecordingTransport().apply {
             execOut = "pa-own00001\npa-a1b2c3d4\n@@REG@@\n" +
                 "@@F@@pa-a1b2c3d4\nn=uzak+is\nd=dev-B\n" +
@@ -129,8 +129,8 @@ class HomeScreenUiTest {
         rule.setContent { HomeScreen(m, r) {} }
         rule.waitForIdle()
 
-        rule.onNodeWithText("Host'ta açık").assertIsDisplayed()
         rule.onNodeWithText("uzak is").assertIsDisplayed()
+        rule.onNodeWithText("\$ tmux attach -t pa-a1b2c3d4").assertIsDisplayed()
         rule.onNodeWithText("uzak is").performClick()
         rule.waitForIdle()
         // Attach: ikinci oturum aynı tmux adıyla, paylaşımlı (kill'siz close).
