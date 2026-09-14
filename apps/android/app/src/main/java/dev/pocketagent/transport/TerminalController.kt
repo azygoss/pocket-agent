@@ -119,11 +119,16 @@ class TerminalController(
                 // (agent dahil) korunur. tmux yoksa `|| :` ile düz shell'de
                 // kalınır. Açık `tmux ...` komutu verilirse sarma atlanır
                 // (Agents akışı var olan oturuma kendisi attach olur).
+                // `set status off`: tmux'un yeşil status satırı uygulamada
+                // görünmesin — oturum-scoped, kullanıcının başka tmux'larına
+                // dokunmaz; -A attach'te de çalışır.
                 val explicit = startupCommand?.trim()?.takeIf { it.isNotEmpty() }
                 val wrapsInTmux = explicit?.startsWith("tmux") != true
                 val startupCmds = buildList {
                     add("clear")
-                    if (wrapsInTmux) tmuxName?.let { add("tmux new-session -A -s '$it' 2>/dev/null || :") }
+                    if (wrapsInTmux) tmuxName?.let {
+                        add("tmux new-session -A -s '$it' \\; set status off 2>/dev/null || :")
+                    }
                     explicit?.let { add(it) }
                 }
                 scope.launch {
