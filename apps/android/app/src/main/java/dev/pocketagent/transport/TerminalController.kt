@@ -132,6 +132,19 @@ class TerminalController(
     // Aktif transport SFTP destekliyorsa döner (dosya sekmesi buradan beslenir).
     fun sftp(): SftpSession? = transport as? SftpSession
 
+    // Agent eki: telefondan seçilen dosya ~/.pocket-agent/uploads altına
+    // SFTP ile yüklenir; dönen uzak yol UI tarafından PTY'ye yazılır
+    // (claude/pi gibi ajanlar yolu input'tan okur). Aynı SSH oturumu içinde
+    // akar — ayrı auth yok.
+    suspend fun uploadForSession(name: String, data: ByteArray): String {
+        val s = sftp() ?: throw IllegalStateException("SFTP yok")
+        val dir = s.home().trimEnd('/') + "/.pocket-agent/uploads"
+        s.mkdir(dir)
+        val path = "$dir/$name"
+        s.writeBytes(path, data)
+        return path
+    }
+
     // Aktif transport gateway tüneli açabiliyorsa döner (P11 workspace erişimi).
     fun gateway(): GatewayTunnel? = transport as? GatewayTunnel
 

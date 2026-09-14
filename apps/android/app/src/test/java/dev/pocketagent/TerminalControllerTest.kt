@@ -13,6 +13,8 @@ import dev.pocketagent.transport.TerminalController
 import dev.pocketagent.transport.TerminalInput
 import dev.pocketagent.transport.TerminalSize
 import dev.pocketagent.transport.TofuHostKeyStore
+import dev.pocketagent.transport.SftpSession
+import dev.pocketagent.transport.RemoteFile
 import dev.pocketagent.transport.TransportFailure
 import dev.pocketagent.transport.UnknownHostKeyException
 import java.io.File
@@ -295,5 +297,70 @@ class AutoRetryTest {
         delay(300)
         assertEquals("hard-stop: ek deneme olmamalı", 2, fc.opens.get())
         c.disconnect()
+    }
+}
+
+// SFTP'li fake: AgentAttach akışının controller tarafını doğrular —
+// staging dizini oluşturma + yazma + dönen uzak yol.
+class SftpFakeTransport : SshTransport by FakeSshTransport(), SftpSession {
+    val files = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+    val dirs = mutableListOf<String>()
+    override suspend fun home() = "/home/u"
+    override suspend fun list(path: String) = emptyList<RemoteFile>()
+    override suspend fun readBytes(path: String, maxBytes: Long) = files[path] ?: ByteArray(0)
+    override suspend fun writeBytes(path: String, data: ByteArray) { files[path] = data }
+    override suspend fun mkdir(path: String) { dirs.add(path) }
+}
+
+class AgentUploadTest {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val conn = SavedConnection("t", "h", 22, "u", "ram:password", id = "c1")
+
+    private fun sftpController(transport: SftpFakeTransport): TerminalController {
+        val store = TofuHostKeyStore(File.createTempFile("khst", null).apply { delete() })
+        val connector = object : SshConnector {
+            override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport {
+                transport.openPty("xterm-256color", size)
+                return transport
+            }
+        }
+        return TerminalController(scope, connector, store)
+    }
+
+    @Test fun uploadForSessionStagesUnderHomeUploads() = runBlocking {
+        val transport = SftpFakeTransport()
+        val c = sftpController(transport)
+        c.connect(conn, Secret.Password("pw"))
+        withTimeout(5_000) { while (c.state.value != ConnectionState.ACTIVE) delay(10) }
+        val path = c.uploadForSession("shot.png", byteArrayOf(1, 2, 3))
+        assertEquals("/home/u/.pocket-agent/uploads/shot.png", path)
+        assertArrayEquals(byteArrayOf(1, 2, 3), transport.files[path])
+        assertTrue(transport.dirs.contains("/home/u/.pocket-agent/uploads"))
+        c.disconnect()
+    }
+
+    @Test fun uploadForSessionWithoutSftpFails() = runBlocking {
+        val store = TofuHostKeyStore(File.createTempFile("khst", null).apply { delete() })
+        val connector = object : SshConnector {
+            override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport =
+                FakeSshTransport().also { it.openPty("xterm-256color", size) }
+        }
+        val c = TerminalController(scope, connector, store)
+        c.connect(conn, Secret.Password("pw"))
+        withTimeout(5_000) { while (c.state.value != ConnectionState.ACTIVE) delay(10) }
+        try {
+            c.uploadForSession("f.bin", byteArrayOf(1))
+            fail("SFTP'siz upload istisna fırlatmalı")
+        } catch (e: IllegalStateException) {
+            // beklenen
+        }
+        c.disconnect()
+    }
+
+    @Test fun sanitizeRemoteNameStripsUnsafeChars() {
+        assertEquals("a_b.png", dev.pocketagent.ui.sanitizeRemoteName("a b.png"))
+        assertEquals("r_sum_.jpg", dev.pocketagent.ui.sanitizeRemoteName("résumé.jpg"))
+        assertEquals("upload.bin", dev.pocketagent.ui.sanitizeRemoteName("   "))
+        assertEquals("a.b-c_d", dev.pocketagent.ui.sanitizeRemoteName("a.b-c_d"))
     }
 }

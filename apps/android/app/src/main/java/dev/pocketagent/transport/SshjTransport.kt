@@ -268,6 +268,10 @@ class SshjTransport(
         f.RemoteFileOutputStream().use { it.write(data) }
     }
 
+    override suspend fun mkdir(path: String) = withContext(Dispatchers.IO) {
+        sftp().mkdirs(path)
+    }
+
     fun startReader() {
         readScope.launch(Dispatchers.IO) {
             val buf = ByteArray(32768)

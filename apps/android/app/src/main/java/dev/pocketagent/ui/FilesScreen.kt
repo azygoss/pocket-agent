@@ -81,11 +81,7 @@ fun FilesScreen(files: FilesViewModel) {
 
     val uploadLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
-            val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-            if (c.moveToFirst() && idx >= 0) c.getString(idx) else null
-        } ?: "upload.bin"
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@rememberLauncherForActivityResult
+        val (name, bytes) = pickedFile(context, uri) ?: return@rememberLauncherForActivityResult
         if (bytes.size <= 10 * 1024 * 1024) files.upload(name, bytes) // P15: 10MB cap
     }
 
@@ -399,6 +395,22 @@ private fun PathBar(files: FilesViewModel, modifier: Modifier = Modifier) {
         }
     }
 }
+
+// SAF seçici sonucu: görünen ad + baytlar (null = okunamadı).
+// FilesScreen upload ve terminal agent-ek akışı paylaşır.
+internal fun pickedFile(context: android.content.Context, uri: android.net.Uri): Pair<String, ByteArray>? {
+    val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+        val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+        if (c.moveToFirst() && idx >= 0) c.getString(idx) else null
+    } ?: "upload.bin"
+    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+    return name to bytes
+}
+
+// Uzak dosya adı: kabuk/agent prompt'una güvenle yazılabilsin diye
+// boşluk/özel karakterler alt çizgiye çevrilir.
+internal fun sanitizeRemoteName(name: String): String =
+    name.trim().replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "upload.bin" }
 
 private fun humanSize(bytes: Long): String = when {
     bytes < 1024 -> "$bytes B"
