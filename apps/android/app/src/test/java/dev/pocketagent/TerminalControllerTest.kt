@@ -124,44 +124,49 @@ class TerminalControllerTest {
     }
 }
 
+// Her oturum kendi pa-<id> tmux'una sarılır (0.28.6+): kopma/yeniden
+// açılış reattach ile devam eder; kullanıcı kapatınca kill-session gider.
 class AutoTmuxTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    @Test fun autoTmuxSendsAttachAfterConnect() = runBlocking {
-        val f = File.createTempFile("khst", null).apply { delete() }
-        val store = TofuHostKeyStore(f)
-        val conn = SavedConnection("t", "h", 22, "u", "ram:password", id = "c1", autoTmux = true)
-        // FakeConnector'a değil, doğrudan transport dönen bir connector gerek — basit inline:
-        val transport = FakeSshTransport()
-        val connector = object : SshConnector {
-            override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport {
-                transport.openPty("xterm-256color", size)
-                return transport
-            }
+    private fun directConnector(transport: SshTransport) = object : SshConnector {
+        override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport {
+            (transport as FakeSshTransport).openPty("xterm-256color", size)
+            return transport
         }
-        val c = TerminalController(scope, connector, store)
-        c.connect(conn, Secret.Password("pw"))
+    }
+
+    @Test fun alwaysWrapsInUniqueTmuxSession() = runBlocking {
+        val store = TofuHostKeyStore(File.createTempFile("khst", null).apply { delete() })
+        val transport = FakeSshTransport()
+        val c = TerminalController(scope, directConnector(transport), store)
+        // autoTmux bayrağı artık kullanılmıyor — oturum hep tmux'a sarılır.
+        c.connect(SavedConnection("t", "h", 22, "u", "ram:password", id = "c1"), Secret.Password("pw"))
         withTimeout(5000) {
-            while (transport.sent.none { it is TerminalInput.Text && it.s.contains("tmux new-session -A -s main") }) delay(20)
+            while (transport.sent.none {
+                it is TerminalInput.Text && it.s.contains("tmux new-session -A -s 'pa-")
+            }) delay(20)
         }
         assertEquals(ConnectionState.ACTIVE, c.state.value)
         c.disconnect()
     }
 
-    @Test fun noAutoTmuxByDefault() = runBlocking {
-        val transport = FakeSshTransport()
-        val connector = object : SshConnector {
-            override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport {
-                transport.openPty("xterm-256color", size)
-                return transport
-            }
-        }
+    // Açık `tmux ...` açılış komutu verilirse sarma atlanır — komut zaten
+    // kendi oturumunu yönetir (Agents akışı var olan tmux'a attach olur).
+    @Test fun explicitTmuxStartupIsNotWrapped() = runBlocking {
         val store = TofuHostKeyStore(File.createTempFile("khst", null).apply { delete() })
-        val c = TerminalController(scope, connector, store)
-        c.connect(SavedConnection("t", "h", 22, "u", "ram:password", id = "c2"), Secret.Password("pw"))
-        delay(900)
-        // autoTmux kapalıysa tmux komutu gitmez; yalnız temiz-açılış `clear`'ı gider.
-        assertTrue(transport.sent.filterIsInstance<TerminalInput.Text>().none { it.s.contains("tmux") })
+        val transport = FakeSshTransport()
+        val c = TerminalController(scope, directConnector(transport), store)
+        c.connect(
+            SavedConnection("t", "h", 22, "u", "ram:password", id = "c2"),
+            Secret.Password("pw"),
+            startupCommand = "tmux attach -t main",
+        )
+        withTimeout(5000) {
+            while (transport.sent.none { it is TerminalInput.Text && it.s.contains("tmux attach") }) delay(20)
+        }
+        delay(400)
+        assertTrue(transport.sent.filterIsInstance<TerminalInput.Text>().none { it.s.contains("new-session") })
         c.disconnect()
     }
 
@@ -187,21 +192,16 @@ class AutoTmuxTest {
         c.disconnect()
     }
 
-    // autoTmux + profil komutu: tmux önce — komut tmux oturumunun içine düşer.
+    // Açılış komutu + tmux: sarma önce — komut tmux oturumunun içine düşer.
     @Test fun startupCommandRunsInsideTmux() = runBlocking {
         val transport = FakeSshTransport()
-        val connector = object : SshConnector {
-            override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport {
-                transport.openPty("xterm-256color", size)
-                return transport
-            }
-        }
         val store = TofuHostKeyStore(File.createTempFile("khst", null).apply { delete() })
-        val c = TerminalController(scope, connector, store)
+        val c = TerminalController(scope, directConnector(transport), store)
         c.connect(
-            SavedConnection("t", "h", 22, "u", "ram:password", id = "c4", autoTmux = true),
+            SavedConnection("t", "h", 22, "u", "ram:password", id = "c4"),
             Secret.Password("pw"),
             startupCommand = "codex",
+            tmuxName = "pa-test0001",
         )
         withTimeout(5000) {
             while (transport.sent.filterIsInstance<TerminalInput.Text>().size < 3) delay(20)
@@ -209,7 +209,7 @@ class AutoTmuxTest {
         val texts = transport.sent.filterIsInstance<TerminalInput.Text>().map { it.s }
         // clear → tmux → profil komutu: temiz açılış, komut tmux'un içine düşer.
         assertTrue(texts[0].contains("clear"))
-        assertTrue(texts[1].contains("tmux new-session -A -s main"))
+        assertTrue(texts[1].contains("tmux new-session -A -s 'pa-test0001'"))
         assertTrue(texts[2].contains("codex"))
         c.disconnect()
     }
@@ -276,6 +276,37 @@ class AutoRetryTest {
         assertEquals(ConnectionState.CLOSED, c.state.value)
     }
 
+    // Kopma → retry: aynı tmux adına reattach, açılış komutu YİNELENMEZ
+    // (yinelenirse tmux'taki agent'a ikinci `codex` yazılırdı).
+    @Test fun reconnectAttachesSameTmuxWithoutStartupResend() = runBlocking {
+        pin()
+        val fc = RetryConnector(store)
+        val c = TerminalController(scope, fc, store)
+        c.retryBaseMs = 50
+        c.connect(conn, Secret.Password("pw"), startupCommand = "codex", tmuxName = "pa-keep0001")
+        awaitActive(c)
+        withTimeout(5_000) {
+            while (fc.transports.first().sent.none {
+                it is TerminalInput.Text && it.s.contains("codex")
+            }) delay(20)
+        }
+        fc.transports.first().close() // uzaktan kopma → retry
+        withTimeout(10_000) { while (fc.opens.get() < 2) delay(20) }
+        awaitActive(c)
+        val t2 = fc.transports.last()
+        withTimeout(5_000) {
+            while (t2.sent.none {
+                it is TerminalInput.Text && it.s.contains("tmux new-session -A -s 'pa-keep0001'")
+            }) delay(20)
+        }
+        delay(700) // açılış komutu gelseydi bu pencerede gelirdi
+        assertTrue(
+            "reattach'te açılış komutu yinelenmemeli",
+            t2.sent.filterIsInstance<TerminalInput.Text>().none { it.s.contains("codex") },
+        )
+        c.disconnect()
+    }
+
     @Test fun authFailureDuringRetryHardStops() = runBlocking {
         pin()
         // İlk open başarılı; kopma sonrası retry'daki open auth hatası versin
@@ -300,6 +331,56 @@ class AutoRetryTest {
         delay(300)
         assertEquals("hard-stop: ek deneme olmamalı", 2, fc.opens.get())
         c.disconnect()
+    }
+}
+
+// Kopma/reattach/kill testleri: exec komutlarını kaydeden transport.
+class ExecRecordingTransport(
+    val inner: FakeSshTransport = FakeSshTransport(),
+) : SshTransport by inner, ExecCapable {
+    val execs = java.util.concurrent.CopyOnWriteArrayList<String>()
+    override suspend fun exec(cmd: String, timeoutMs: Int): Pair<Int, String> {
+        execs.add(cmd)
+        return 0 to ""
+    }
+}
+
+// Kullanıcı kapatması uzak tmux'u öldürür; beklenmedik kopma öldürmez —
+// içindeki agent hayatta kalır ve reattach ile geri alınır.
+class RemoteKillTest {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val store = TofuHostKeyStore(File.createTempFile("khst", null).apply { delete() })
+    private val conn = SavedConnection("t", "h", 22, "u", "ram:password", id = "c1")
+
+    private fun controllerWith(transport: ExecRecordingTransport): TerminalController {
+        val connector = object : SshConnector {
+            override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport {
+                transport.inner.openPty("xterm-256color", size)
+                return transport
+            }
+        }
+        return TerminalController(scope, connector, store)
+    }
+
+    @Test fun closeWithKillRemoteSendsTmuxKill() = runBlocking {
+        val transport = ExecRecordingTransport()
+        val c = controllerWith(transport)
+        c.connect(conn, Secret.Password("pw"), tmuxName = "pa-dead0001")
+        withTimeout(5_000) { while (c.state.value != ConnectionState.ACTIVE) delay(10) }
+        c.disconnect(killRemote = true)
+        withTimeout(5_000) {
+            while (transport.execs.none { it.contains("tmux kill-session -t 'pa-dead0001'") }) delay(20)
+        }
+    }
+
+    @Test fun plainDisconnectLeavesRemoteTmuxAlive() = runBlocking {
+        val transport = ExecRecordingTransport()
+        val c = controllerWith(transport)
+        c.connect(conn, Secret.Password("pw"), tmuxName = "pa-live0001")
+        withTimeout(5_000) { while (c.state.value != ConnectionState.ACTIVE) delay(10) }
+        c.disconnect() // killRemote=false — tmux host'ta çalışmaya devam eder
+        delay(400)
+        assertTrue(transport.execs.none { it.contains("kill-session") })
     }
 }
 

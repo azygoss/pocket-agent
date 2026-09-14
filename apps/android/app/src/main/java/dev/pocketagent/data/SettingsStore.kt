@@ -73,25 +73,35 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
     }
 
     // Açık terminal oturumları — kullanıcı kapatmadıkça uygulama yeniden
-    // başlayınca geri yüklenir (tmux re-attach ile kaldığı yerden devam eder).
-    // Kayıt: "connId" ya da "connId|urlEncodedAd" (özel oturum adı opsiyonel).
+    // başlayınca geri yüklenir. tmux adı sayesinde uzak oturum aynı ada
+    // reattach edilir; içindeki agent/süreç hayatta kalır.
+    // Kayıt: "connId" | "connId|urlEncodedAd" | "connId|urlEncodedAd|tmuxAd".
     private val openSessionsKey = stringPreferencesKey("open_sessions")
 
-    suspend fun loadOpenSessions(): List<Pair<String, String?>> =
+    suspend fun loadOpenSessions(): List<OpenSession> =
         context.prefs.data.first()[openSessionsKey]
             ?.split(',')?.filter { it.isNotBlank() }
             ?.map { e ->
-                val i = e.indexOf('|')
-                if (i < 0) e to null
-                else e.substring(0, i) to
-                    java.net.URLDecoder.decode(e.substring(i + 1), "UTF-8").ifBlank { null }
+                val f = e.split('|')
+                OpenSession(
+                    connId = f[0],
+                    name = f.getOrNull(1)?.let { n ->
+                        java.net.URLDecoder.decode(n, "UTF-8").ifBlank { null }
+                    },
+                    tmux = f.getOrNull(2)?.ifBlank { null },
+                )
             } ?: emptyList()
 
-    suspend fun saveOpenSessions(sessions: List<Pair<String, String?>>) {
+    suspend fun saveOpenSessions(sessions: List<OpenSession>) {
         context.prefs.edit {
-            it[openSessionsKey] = sessions.joinToString(",") { (id, name) ->
-                if (name.isNullOrBlank()) id else "$id|${java.net.URLEncoder.encode(name, "UTF-8")}"
+            it[openSessionsKey] = sessions.joinToString(",") { s ->
+                val n = s.name?.let { n -> java.net.URLEncoder.encode(n, "UTF-8") } ?: ""
+                "${s.connId}|$n|${s.tmux ?: ""}"
             }
         }
     }
 }
+
+// Geri yüklenen oturum kaydı: bağlantı kimliği + opsiyonel özel ad +
+// host'taki tmux oturum adı (reattach hedefi).
+data class OpenSession(val connId: String, val name: String?, val tmux: String?)

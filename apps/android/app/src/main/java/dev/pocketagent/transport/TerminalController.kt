@@ -37,6 +37,9 @@ class TerminalController(
     private var lastConn: SavedConnection? = null
     private var lastSecret: Secret? = null
     private var lastStartupCommand: String? = null
+    // Oturumun host'taki tmux adı (pa-xxxxxxxx): kopma/yeniden açılışta
+    // reattach edilir; kullanıcı kapatırsa kill-session ile temizlenir.
+    private var tmuxName: String? = null
 
     // Kopmada otomatik yeniden bağlanma (SessionManager ayarından beslenir).
     // Auth/host-key hataları hard-stop kalır (P08) — yalnız ağ kopması/EOF retried edilir.
@@ -52,33 +55,47 @@ class TerminalController(
     companion object { const val MAX_RETRY = 5 }
 
     @Synchronized
-    fun connect(conn: SavedConnection, secret: Secret?, startupCommand: String? = null) {
+    fun connect(conn: SavedConnection, secret: Secret?, startupCommand: String? = null, tmuxName: String? = null) {
         if (_state.value == ConnectionState.CONNECTING || _state.value == ConnectionState.ACTIVE) return
         retryJob?.cancel()
         _retryAttempt.value = 0
         lastConn = conn
         lastSecret = secret
         lastStartupCommand = startupCommand
+        // SessionManager kalıcı ad verir (restore'da reattach); yoksa üret.
+        // Bir kez atandıktan sonra aynı kalır — yeniden connect çağrısı
+        // (örn. host-key onayı) adı değiştirmez, yoksa reattach ıskalanır.
+        this.tmuxName = tmuxName?.ifBlank { null } ?: this.tmuxName
+            ?: "pa-" + java.util.UUID.randomUUID().toString().take(8)
         doConnect(conn, secret, startupCommand)
     }
 
     // Son bağlantıyı (varsa) yeniden kurar; secret RAM'de tutulanla aynı.
+    // Reattach: açılış komutu tekrar GÖNDERİLMEZ (tmux'ta çalışan agent'a
+    // ikinci `codex` yazılırdı) ve yerel scrollback silinmez.
     fun reconnect(): Boolean {
         val c = lastConn ?: return false
         if (_state.value == ConnectionState.CONNECTING || _state.value == ConnectionState.ACTIVE) return false
         disconnect()
-        doConnect(c, lastSecret, lastStartupCommand)
+        doConnect(c, lastSecret, null, fresh = false)
         return true
     }
 
     fun canReconnect(): Boolean =
         lastConn != null && (_state.value == ConnectionState.CLOSED || _state.value == ConnectionState.FAILED)
 
-    private fun doConnect(conn: SavedConnection, secret: Secret?, startupCommand: String? = null) {
+    // fresh=false: kopma/retry sonrası reattach — yerel buffer korunur
+    // (tmux zaten pane'i yeniden çizer; scrollback silinmesin).
+    private fun doConnect(
+        conn: SavedConnection,
+        secret: Secret?,
+        startupCommand: String? = null,
+        fresh: Boolean = true,
+    ) {
         manualClose = false
         _failure.value = null
         _pendingHostKey.value = null
-        vm.clear()
+        if (fresh) vm.clear()
         vm.setBadge(TerminalTransport.SSH)
         _state.value = ConnectionState.CONNECTING
         job = scope.launch {
@@ -95,11 +112,19 @@ class TerminalController(
                 // Açılış komutları: kabuk hazır olsun diye kısa gecikme.
                 // `clear` en başta: MOTD/banner/son-giriş bilgisi silinir,
                 // prompt üstte temiz açılır. tmux attach'ten ÖNCE çalışır —
-                // var olan pane içeriği silinmez (attach alt-screen'e geçer).
+                // yeni login shell'i temizler; var olan pane içeriği attach
+                // alt-screen'inde korunur (reattach'te de zararsız).
+                // Her oturum kendi pa-<id> tmux'una sarılır: kopma veya
+                // uygulama yeniden açılışı reattach ile devam eder, içerik
+                // (agent dahil) korunur. tmux yoksa `|| :` ile düz shell'de
+                // kalınır. Açık `tmux ...` komutu verilirse sarma atlanır
+                // (Agents akışı var olan oturuma kendisi attach olur).
+                val explicit = startupCommand?.trim()?.takeIf { it.isNotEmpty() }
+                val wrapsInTmux = explicit?.startsWith("tmux") != true
                 val startupCmds = buildList {
                     add("clear")
-                    if (conn.autoTmux) add("tmux new-session -A -s main")
-                    startupCommand?.trim()?.takeIf { it.isNotEmpty() }?.let { add(it) }
+                    if (wrapsInTmux) tmuxName?.let { add("tmux new-session -A -s '$it' 2>/dev/null || :") }
+                    explicit?.let { add(it) }
                 }
                 scope.launch {
                     startupCmds.forEach { cmd ->
@@ -196,17 +221,29 @@ class TerminalController(
     }
 
     @Synchronized
-    fun disconnect() {
+    fun disconnect(killRemote: Boolean = false) {
         manualClose = true
         retryJob?.cancel()
         retryJob = null
         _retryAttempt.value = 0
         retryCount = 0
         job?.cancel()
-        runCatching { transport?.close() }
+        val t = transport
+        val tmux = tmuxName
         transport = null
         _connectedTo.value = null
         _state.value = ConnectionState.CLOSED
+        // Kullanıcı kapattıysa uzak tmux oturumunu da öldür — agent/süreçler
+        // host'ta çalışmaya devam etmesin. Exec ayrı kanal olduğundan tmux
+        // içindeki shell'i de vurabilir; kopmuş transport'ta sessiz no-op.
+        scope.launch {
+            if (killRemote && tmux != null) {
+                runCatching {
+                    (t as? ExecCapable)?.exec("tmux kill-session -t '$tmux' 2>/dev/null || :", 3_000)
+                }
+            }
+            runCatching { t?.close() }
+        }
     }
 
     // Beklenmeyen kopma (EOF/ağ) sonrası üstel geri çekilmeyle yeniden dener.
@@ -223,7 +260,9 @@ class TerminalController(
                 _retryAttempt.value = retryCount
                 kotlinx.coroutines.delay(delayMs)
                 if (manualClose || _state.value != ConnectionState.CLOSED) break
-                doConnect(c, s, lastStartupCommand)
+                // Reattach: açılış komutu yinelenmez (agent'ı duplike ederdi),
+                // yerel buffer silinmez; yalnız aynı tmux'a geri bağlanılır.
+                doConnect(c, s, null, fresh = false)
                 // CONNECTING çözümlenene kadar bekle (maks 15s)
                 var waited = 0L
                 while (_state.value == ConnectionState.CONNECTING && waited < 15_000) {

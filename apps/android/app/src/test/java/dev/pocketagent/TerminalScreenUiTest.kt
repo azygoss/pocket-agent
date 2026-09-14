@@ -153,7 +153,9 @@ class TerminalScreenUiTest {
         rule.waitForIdle()
         rule.onNodeWithContentDescription("Önizleme").assertIsEnabled().performClick()
         rule.waitForIdle()
-        rule.onNodeWithText("127.0.0.1:8080").assertIsDisplayed()
+        // ss/netstat bulguları "localhost" hedefiyle listelenir (host'ta
+        // resolve edilir — v4/v6 bind farkını kapsar).
+        rule.onNodeWithText("localhost:8080").assertIsDisplayed()
         m.closeAll()
     }
 }

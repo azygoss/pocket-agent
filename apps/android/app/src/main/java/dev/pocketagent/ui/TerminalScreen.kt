@@ -139,7 +139,8 @@ import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.LocalForwarder
 import dev.pocketagent.transport.TcpipCapable
 import dev.pocketagent.transport.parseListenPorts
-import dev.pocketagent.transport.previewPortsFromTexts
+import dev.pocketagent.transport.PreviewTarget
+import dev.pocketagent.transport.previewTargetsFromTexts
 import dev.pocketagent.transport.SessionHandle
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalController
@@ -615,7 +616,7 @@ private fun ActiveTerminal(
     // ── Web önizleme: host loopback'indeki yayın (kimi web, dev server,
     // agent web-TUI) port seçici → SSH-içi direct-tcpip forward → WebView.
     var previewPicker by remember { mutableStateOf(false) }
-    var previewPort by remember { mutableStateOf<Int?>(null) }
+    var previewTarget by remember { mutableStateOf<PreviewTarget?>(null) }
 
     Column(Modifier.fillMaxSize()) {
         // Oturum bilgisi yalnız üstteki şeritte yaşar (ad + durum noktası +
@@ -1111,7 +1112,7 @@ private fun ActiveTerminal(
     // + elle giriş. Seçim önizleme sheet'ini açar.
     if (previewPicker) {
         PreviewPortDialog(
-            detected = previewPortsFromTexts(lines.takeLast(400).map { it.text }),
+            detected = previewTargetsFromTexts(lines.takeLast(400).map { it.text }),
             probe = {
                 val e = controller.exec() ?: return@PreviewPortDialog emptyList()
                 try {
@@ -1121,13 +1122,13 @@ private fun ActiveTerminal(
                 }
             },
             onDismiss = { previewPicker = false },
-            onOpen = { previewPicker = false; previewPort = it },
+            onOpen = { previewPicker = false; previewTarget = it },
         )
     }
-    previewPort?.let { port ->
-        val t = controller.tcpip()
-        if (t == null) previewPort = null
-        else PreviewSheet(t, port) { previewPort = null }
+    previewTarget?.let { target ->
+        // Sağlayıcı her accept'te GÜNCEL transport'u çözer — SSH kopup retry
+        // ile yeni transport gelince forwarder kapanmadan toparlanır.
+        PreviewSheet({ controller.tcpip() }, target) { previewTarget = null }
     }
 }
 
@@ -1212,10 +1213,10 @@ private fun TerminalKeyBar(
 
 @Composable
 private fun PreviewPortDialog(
-    detected: List<Int>,
+    detected: List<PreviewTarget>,
     probe: suspend () -> List<Int>,
     onDismiss: () -> Unit,
-    onOpen: (Int) -> Unit,
+    onOpen: (PreviewTarget) -> Unit,
 ) {
     var manual by remember { mutableStateOf("") }
     var listening by remember { mutableStateOf<List<Int>?>(null) }
@@ -1230,14 +1231,19 @@ private fun PreviewPortDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                val ports = (detected + (listening ?: emptyList())).distinct().sorted()
+                // Çıktıda görünen URL'ler önce gelir (path/token'ları korunur);
+                // ss/netstat bulguları "localhost" hedefiyle eklenir.
+                val detectedPorts = detected.map { it.port }.toSet()
+                val targets = (detected +
+                    (listening ?: emptyList()).map { PreviewTarget("localhost", it) })
+                    .distinctBy { it.port }
                 when {
                     listening == null -> Text(
                         "Dinlenen portlar aranıyor…",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    ports.isEmpty() -> Text(
+                    targets.isEmpty() -> Text(
                         "Dinlenen port bulunamadı — portu elle gir.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1246,24 +1252,25 @@ private fun PreviewPortDialog(
                         Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        ports.forEach { p ->
+                        targets.forEach { t ->
                             Surface(
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 shape = MaterialTheme.shapes.small,
-                                modifier = Modifier.fillMaxWidth().clickable { onOpen(p) },
+                                modifier = Modifier.fillMaxWidth().clickable { onOpen(t) },
                             ) {
                                 Row(
                                     Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
-                                        "127.0.0.1:$p",
+                                        "${t.host}:${t.port}",
                                         fontFamily = LocalMonoFont.current,
                                         fontSize = 12.5.sp,
                                         color = MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.weight(1f),
+                                        maxLines = 1,
                                     )
-                                    if (p in detected) {
+                                    if (t.port in detectedPorts) {
                                         Text(
                                             "çıktıda",
                                             fontFamily = LocalMonoFont.current,
@@ -1288,7 +1295,7 @@ private fun PreviewPortDialog(
         confirmButton = {
             TextButton(
                 enabled = manual.toIntOrNull() in 1..65535,
-                onClick = { onOpen(manual.toInt()) },
+                onClick = { onOpen(PreviewTarget("localhost", manual.toInt())) },
             ) { Text("Aç") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
@@ -1296,11 +1303,12 @@ private fun PreviewPortDialog(
 }
 
 // Tam ekran önizleme: forwarder telefonda 127.0.0.1:<yerel> dinler, her
-// bağlantı host'un 127.0.0.1:<port>'una SSH içinden bağlanır. WebView
-// http://localhost:<yerel> yükler (network_security_config cleartext'i
-// yalnız localhost'a açıyor — 127.0.0.1 yerine localhost şart).
+// bağlantı host'un loopback'ine (target.host — localhost/127.x/::1) SSH
+// içinden bağlanır. WebView http://127.0.0.1:<yerel><path> yükler —
+// 127.0.0.1 cleartext allowlist'te ve resolver belirsizliği yok
+// (localhost Android'de ::1'e çözülebilir; soketimiz IPv4).
 @Composable
-private fun PreviewSheet(tcpip: TcpipCapable, port: Int, onClose: () -> Unit) {
+private fun PreviewSheet(tcpipProvider: () -> TcpipCapable?, target: PreviewTarget, onClose: () -> Unit) {
     Dialog(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -1308,12 +1316,23 @@ private fun PreviewSheet(tcpip: TcpipCapable, port: Int, onClose: () -> Unit) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column {
                 val fwdScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
-                val forwarder = remember(port) { LocalForwarder(fwdScope, tcpip, port) }
+                // Kopan SSH yerine yenisini kullanan sarmalayıcı — yerel
+                // dinleyici ayakta kalır, bağlantılar yeni kanala düşer.
+                val tcpip = remember {
+                    object : TcpipCapable {
+                        override suspend fun openTcpip(host: String, port: Int) =
+                            (tcpipProvider() ?: throw java.io.IOException("SSH bağlı değil"))
+                                .openTcpip(host, port)
+                    }
+                }
+                val forwarder = remember(target) {
+                    LocalForwarder(fwdScope, tcpip, target.port, target.host)
+                }
                 var localPort by remember { mutableIntStateOf(0) }
                 var error by remember { mutableStateOf<String?>(null) }
                 var webView by remember { mutableStateOf<android.webkit.WebView?>(null) }
                 val ctx = androidx.compose.ui.platform.LocalContext.current
-                LaunchedEffect(port) {
+                LaunchedEffect(target) {
                     try {
                         localPort = forwarder.start()
                     } catch (e: Exception) {
@@ -1335,7 +1354,7 @@ private fun PreviewSheet(tcpip: TcpipCapable, port: Int, onClose: () -> Unit) {
                         Icon(Icons.Filled.Close, contentDescription = "Önizlemeyi kapat")
                     }
                     Text(
-                        "127.0.0.1:$port",
+                        "${target.host}:${target.port}",
                         fontFamily = LocalMonoFont.current,
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1354,7 +1373,9 @@ private fun PreviewSheet(tcpip: TcpipCapable, port: Int, onClose: () -> Unit) {
                                 ctx.startActivity(
                                     android.content.Intent(
                                         android.content.Intent.ACTION_VIEW,
-                                        android.net.Uri.parse("http://localhost:$localPort/"),
+                                        android.net.Uri.parse(
+                                            "http://127.0.0.1:$localPort${target.path}",
+                                        ),
                                     ),
                                 )
                             }
@@ -1385,7 +1406,7 @@ private fun PreviewSheet(tcpip: TcpipCapable, port: Int, onClose: () -> Unit) {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
                                     webViewClient = android.webkit.WebViewClient()
-                                    loadUrl("http://localhost:$localPort/")
+                                    loadUrl("http://127.0.0.1:$localPort${target.path}")
                                     webView = this
                                 }
                             },

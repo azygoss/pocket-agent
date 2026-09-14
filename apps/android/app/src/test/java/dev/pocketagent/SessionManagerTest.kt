@@ -101,15 +101,47 @@ class SessionManagerTest {
         assertEquals("restore-adı", m.customNames.value[id])
         m.closeAll()
     }
+
+    // Restore akışı: kalıcı tmux adı kayıtlı gelir ve kapanana dek durur.
+    @Test fun tmuxNameRegisteredUntilClose() = runBlocking {
+        val m = manager()
+        m.open(c1, Secret.Password("p"), tmuxName = "pa-restore1")
+        val id = m.sessions.value.single().id
+        assertEquals("pa-restore1", m.tmuxNames.value[id])
+        m.close(id)
+        assertNull(m.tmuxNames.value[id])
+    }
+
+    // Ad verilmezse her oturuma benzersiz pa-<id> üretilir — paralel
+    // oturumlar aynı uzak tmux'a çakışmaz.
+    @Test fun openGeneratesUniqueTmuxNames() = runBlocking {
+        val m = manager()
+        m.open(c1, Secret.Password("p"))
+        m.open(c1, Secret.Password("p"), forceNew = true)
+        val names = m.sessions.value.mapNotNull { m.tmuxNames.value[it.id] }
+        assertEquals(2, names.size)
+        assertEquals(2, names.toSet().size)
+        assertTrue(names.all { it.startsWith("pa-") })
+        m.closeAll()
+    }
 }
 
-// open_sessions kaydı: "connId|urlEncodedAd" formatı — virgüllü/özel
-// karakterli adlar ve adsız (eski format) kayıtlar doğru çözülmeli.
+// open_sessions kaydı: "connId|urlEncodedAd|tmuxAd" — virgüllü/özel
+// karakterli adlar ve eksik alanlı (eski format) kayıtlar doğru çözülmeli.
 @RunWith(RobolectricTestRunner::class)
 class OpenSessionsStoreTest {
-    @Test fun openSessionsNameRoundtrip() = runBlocking {
+    @Test fun openSessionsRoundtripWithTmux() = runBlocking {
         val store = dev.pocketagent.data.DataStoreSettingsStore(RuntimeEnvironment.getApplication())
-        store.saveOpenSessions(listOf("c1" to "web, özel ·1", "c2" to null))
-        assertEquals(listOf("c1" to "web, özel ·1", "c2" to null), store.loadOpenSessions())
+        store.saveOpenSessions(listOf(
+            dev.pocketagent.data.OpenSession("c1", "web, özel ·1", "pa-abc12345"),
+            dev.pocketagent.data.OpenSession("c2", null, null),
+        ))
+        assertEquals(
+            listOf(
+                dev.pocketagent.data.OpenSession("c1", "web, özel ·1", "pa-abc12345"),
+                dev.pocketagent.data.OpenSession("c2", null, null),
+            ),
+            store.loadOpenSessions(),
+        )
     }
 }
