@@ -140,3 +140,40 @@ fun previewTargetsFromTexts(texts: List<String>): List<PreviewTarget> =
         .toList()
         .asReversed() // en son basılan URL en üstte
         .distinctBy { it.port }
+
+// kimi web banner'ındaki `Token: <v>` satırı — URL fragment'ı wrap'te
+// kırılsa bile bu kısa satır sağlam kalır. En yenisi alınır (rotate-token
+// sonrası eski değer scrollback'te kalabilir).
+private val tokenLineRe = Regex("""(?i)\btoken:\s*([A-Za-z0-9._~-]{6,})""")
+
+fun previewTokenFromTexts(texts: List<String>): String? =
+    texts.asReversed().asSequence()
+        .mapNotNull { tokenLineRe.find(it)?.groupValues?.get(1) }
+        .firstOrNull()
+
+// Yerel önizleme URL'inin path+fragment kısmı: token varsa `#token=` olarak
+// enjekte edilir (kimi web UI boot'ta fragment'tan okur, sonra scrub'lar).
+// Var olan (kırpılmış olabilen) token değeri tam değerle değiştirilir;
+// başka fragment varsa (SPA route) `&token=` ile korunarak eklenir.
+fun PreviewTarget.localPath(token: String?): String {
+    if (token == null) return path
+    val tokRe = Regex("""([#&]token=)[^&\s]*""")
+    return when {
+        tokRe.containsMatchIn(path) -> tokRe.replace(path) { m -> m.groupValues[1] + token }
+        '#' in path -> "$path&token=$token"
+        else -> "$path#token=$token"
+    }
+}
+
+// Önizleme sondası: tek exec'te dinleyen portlar + varsa kimi server
+// token'ı (~/.kimi-code/server.token — kullanıcının kendi credential'ı,
+// yalnızca kendi host'unda, saklanmaz/loglanmaz).
+data class PreviewProbe(val ports: List<Int>, val token: String?)
+
+const val PREVIEW_PROBE_CMD =
+    "ss -tlnH 2>/dev/null || netstat -tln 2>/dev/null; echo '@@PA-TOK@@'; cat ~/.kimi-code/server.token 2>/dev/null"
+
+fun parsePreviewProbe(out: String): PreviewProbe {
+    val tok = out.substringAfter("@@PA-TOK@@", "").trim().ifBlank { null }
+    return PreviewProbe(parseListenPorts(out.substringBefore("@@PA-TOK@@")), tok)
+}
