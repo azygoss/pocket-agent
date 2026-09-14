@@ -1360,11 +1360,15 @@ private fun PreviewSheet(
                 }
                 var localPort by remember { mutableIntStateOf(0) }
                 var error by remember { mutableStateOf<String?>(null) }
+                var pageError by remember { mutableStateOf<String?>(null) }
                 var webView by remember { mutableStateOf<android.webkit.WebView?>(null) }
                 val ctx = androidx.compose.ui.platform.LocalContext.current
                 LaunchedEffect(target) {
                     try {
-                        localPort = forwarder.start()
+                        // Uzak portla aynı yerel port → Host/Origin birebir
+                        // eşleşir (kimi'nin DNS-rebinding kontrolü); doluysa
+                        // rastgele porta düşer.
+                        localPort = forwarder.start(target.port)
                     } catch (e: Exception) {
                         error = e.message ?: "tünel açılamadı"
                     }
@@ -1448,13 +1452,64 @@ private fun PreviewSheet(
                                 android.webkit.WebView(c).apply {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
-                                    webViewClient = android.webkit.WebViewClient()
+                                    webViewClient = object : android.webkit.WebViewClient() {
+                                        override fun onReceivedError(
+                                            v: android.webkit.WebView,
+                                            req: android.webkit.WebResourceRequest,
+                                            err: android.webkit.WebResourceError,
+                                        ) {
+                                            if (req.isForMainFrame) {
+                                                pageError = err.description.toString()
+                                            }
+                                        }
+                                        override fun onReceivedHttpError(
+                                            v: android.webkit.WebView,
+                                            req: android.webkit.WebResourceRequest,
+                                            resp: android.webkit.WebResourceResponse,
+                                        ) {
+                                            if (req.isForMainFrame) {
+                                                pageError = "HTTP ${resp.statusCode}"
+                                            }
+                                        }
+                                        override fun onPageFinished(
+                                            v: android.webkit.WebView,
+                                            url: String,
+                                        ) {
+                                            pageError = null
+                                        }
+                                    }
                                     loadUrl("http://127.0.0.1:$localPort${target.localPath(token)}")
                                     webView = this
                                 }
                             },
                             modifier = Modifier.fillMaxSize(),
                         )
+                    }
+                    // Ana frame hatası: beyaz ekran yerine görünür mesaj +
+                    // kanal teşhisi + tekrar dene.
+                    pageError?.let { pe ->
+                        Column(
+                            Modifier.align(Alignment.Center).padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                "Sayfa yüklenemedi: $pe",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            forwarder.lastChannelError?.let {
+                                Text(
+                                    "tünel: $it",
+                                    fontFamily = LocalMonoFont.current,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            TextButton(onClick = {
+                                pageError = null
+                                webView?.reload()
+                            }) { Text("Tekrar dene") }
+                        }
                     }
                 }
             }

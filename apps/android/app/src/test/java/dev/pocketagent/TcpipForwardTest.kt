@@ -123,6 +123,50 @@ class TcpipForwardTest {
         assertEquals(listOf(22), parsePreviewProbe("LISTEN 0 1 127.0.0.1:22 0.0.0.0:*").ports)
     }
 
+    @Test fun forwarderPrefersRemotePortLocally() = runBlocking {
+        // Boş port → aynı portta dinler (Host/Origin uzak servisle eşleşir).
+        val free = ServerSocket(0).use { it.localPort }
+        val fwd = LocalForwarder(this, LoopbackTcpip(), free)
+        try {
+            assertEquals(free, fwd.start(free))
+        } finally {
+            fwd.close()
+        }
+    }
+
+    @Test fun forwarderFallsBackWhenPreferredPortTaken() = runBlocking {
+        // Port dolu → rastgele porta düşer, yine de dinler.
+        val taken = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
+        val fwd = LocalForwarder(this, LoopbackTcpip(), taken.localPort)
+        try {
+            val p = fwd.start(taken.localPort)
+            org.junit.Assert.assertTrue(p in 1..65535 && p != taken.localPort)
+        } finally {
+            fwd.close()
+            taken.close()
+        }
+    }
+
+    @Test fun channelErrorIsSurfaced() = runBlocking {
+        // openTcpip fırlatırsa lastChannelError'a yazılır (sshd
+        // AllowTcpForwarding=no teşhisi sessiz kalmaz).
+        val failing = object : TcpipCapable {
+            override suspend fun openTcpip(host: String, port: Int): TcpipChannel =
+                throw java.io.IOException("administratively prohibited")
+        }
+        val fwd = LocalForwarder(this, failing, 9999)
+        val local = fwd.start()
+        try {
+            Socket("127.0.0.1", local).use { it.getOutputStream().write(1) }
+            kotlinx.coroutines.withTimeout(3000) {
+                while (fwd.lastChannelError == null) kotlinx.coroutines.delay(10)
+            }
+            assertEquals("administratively prohibited", fwd.lastChannelError)
+        } finally {
+            fwd.close()
+        }
+    }
+
     @Test fun forwarderRelaysBytes() = runBlocking {
         // Yerel echo server: gelen ilk baytları geri yazar.
         val echo = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
