@@ -42,11 +42,24 @@ class LocalForwarder(
     private val socks = java.util.Collections.synchronizedSet(mutableSetOf<Socket>())
     val localPort: Int get() = server?.localPort ?: 0
 
-    fun start(): Int {
+    // Son kanal açma hatası (örn. sshd AllowTcpForwarding=no) — UI tanısı
+    // için yüzeye çıkarılır; bağlantı başına overwrite edilir.
+    @Volatile var lastChannelError: String? = null
+        private set
+
+    // preferredPort: uzak portla AYNI yerel portta dinlemeyi dene — kimi web
+    // gibi servisler Host/Origin başlığını bind ettiği portla doğrular
+    // (DNS-rebinding koruması); port eşleşince kontrol birebir geçer ve
+    // SPA'nın mutlak URL'leri (127.0.0.1:<port>/...) da doğru yere düşer.
+    // Yerel port doluysa sessizce rastgele porta düşülür.
+    fun start(preferredPort: Int = 0): Int {
         require(loopbackOk(remoteHost) && remotePort in 1..65535) { "bad tunnel target" }
         val s = ServerSocket()
         s.reuseAddress = true
-        s.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 16)
+        val bound = preferredPort in 1..65535 && runCatching {
+            s.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), preferredPort), 16)
+        }.isSuccess
+        if (!bound) s.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 16)
         server = s
         scope.launch(Dispatchers.IO) {
             while (true) {
@@ -61,7 +74,8 @@ class LocalForwarder(
         socks.add(sock)
         val ch = try {
             tcpip.openTcpip(remoteHost, remotePort)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            lastChannelError = e.message ?: e.javaClass.simpleName
             closeBoth(sock, null)
             return
         }
