@@ -148,6 +148,12 @@ class TerminalController(
     // Aktif transport gateway tüneli açabiliyorsa döner (P11 workspace erişimi).
     fun gateway(): GatewayTunnel? = transport as? GatewayTunnel
 
+    // Önizleme tüneli: host loopback'indeki web yayınını telefona taşır.
+    fun tcpip(): TcpipCapable? = transport as? TcpipCapable
+
+    // ss/netstat gibi kısa port sondaları için exec kanalı.
+    fun exec(): ExecCapable? = transport as? ExecCapable
+
     // User confirmed the fingerprint: pin it, then retry the same connection.
     fun acceptHostKeyAndReconnect() {
         val p = _pendingHostKey.value ?: return
