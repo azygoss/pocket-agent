@@ -39,6 +39,12 @@ class SessionManager(
     private val _customNames = MutableStateFlow<Map<String, String>>(emptyMap())
     val customNames: StateFlow<Map<String, String>> = _customNames
 
+    // Oturumun host'taki tmux adı (session id → "pa-xxxxxxxx"). Açılış
+    // kaydına gömülür — uygulama yeniden açılınca aynı ada reattach edilir,
+    // içinde çalışan agent/süreç hayatta kalır.
+    private val _tmuxNames = MutableStateFlow<Map<String, String>>(emptyMap())
+    val tmuxNames: StateFlow<Map<String, String>> = _tmuxNames
+
     var onConnected: ((SavedConnection) -> Unit)? = null
 
     // Kopmada otomatik yeniden bağlanma tercihi (Ayarlar'dan beslenir).
@@ -51,12 +57,14 @@ class SessionManager(
     // forceNew=true: aynı host'ta paralel oturum — dedupe atlanır.
     // startupCommand: bağlanınca gönderilecek komut (hazır profiller; dedupe
     // dalında çalışmaz — komutla açmak için forceNew kullan).
+    // tmuxName: restore akışından gelen kalıcı ad; nullsa benzersiz üretilir.
     fun open(
         conn: SavedConnection,
         secret: Secret?,
         forceNew: Boolean = false,
         startupCommand: String? = null,
         customName: String? = null,
+        tmuxName: String? = null,
     ): TerminalController {
         if (!forceNew) _sessions.value.firstOrNull { it.conn.id == conn.id }?.let { h ->
             _activeId.value = h.id
@@ -83,8 +91,11 @@ class SessionManager(
         customName?.trim()?.ifBlank { null }?.let { n ->
             _customNames.value = _customNames.value + (handle.id to n)
         }
+        val tmux = tmuxName?.ifBlank { null }
+            ?: "pa-" + UUID.randomUUID().toString().take(8)
+        _tmuxNames.value = _tmuxNames.value + (handle.id to tmux)
         _activeId.value = handle.id
-        c.connect(conn, secret, startupCommand)
+        c.connect(conn, secret, startupCommand, tmux)
         return c
     }
 
@@ -95,11 +106,13 @@ class SessionManager(
         _customNames.value = if (n == null) _customNames.value - id else _customNames.value + (id to n)
     }
 
+    // Kullanıcı kapattı: uzak tmux da öldürülür (içindeki agent/süreç biter).
     fun close(id: String) {
         val h = _sessions.value.firstOrNull { it.id == id } ?: return
-        h.controller.disconnect()
+        h.controller.disconnect(killRemote = true)
         _sessions.value = _sessions.value - h
         _customNames.value = _customNames.value - id
+        _tmuxNames.value = _tmuxNames.value - id
         if (_activeId.value == id) _activeId.value = _sessions.value.lastOrNull()?.id
         refreshAnyActive()
     }
@@ -109,9 +122,10 @@ class SessionManager(
     }
 
     fun closeAll() {
-        _sessions.value.forEach { it.controller.disconnect() }
+        _sessions.value.forEach { it.controller.disconnect(killRemote = true) }
         _sessions.value = emptyList()
         _customNames.value = emptyMap()
+        _tmuxNames.value = emptyMap()
         _activeId.value = null
         _anyActive.value = false
     }

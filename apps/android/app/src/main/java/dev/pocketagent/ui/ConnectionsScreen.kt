@@ -809,7 +809,6 @@ private fun ConnectionDialog(
     var authKind by remember { mutableStateOf(if (initial?.credentialRef == "ram:pem") "pem" else "password") }
     var secretText by remember { mutableStateOf("") }
     var remember by remember { mutableStateOf(false) }
-    var autoTmux by remember { mutableStateOf(initial?.autoTmux ?: false) }
     var errors by remember { mutableStateOf<List<String>>(emptyList()) }
     // Bağlantıyı sına + üretilen anahtarın public parçası diyalogda gösterilir.
     var probing by remember { mutableStateOf(false) }
@@ -919,17 +918,6 @@ private fun ConnectionDialog(
                     Checkbox(checked = remember, onCheckedChange = { remember = it })
                     Text("Keystore ile şifreli sakla")
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = autoTmux, onCheckedChange = { autoTmux = it })
-                    Column {
-                        Text("tmux'a otomatik bağlan")
-                        Text(
-                            "tmux new-session -A -s main — oturum kopmaya dayanıklı olur",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
                 if (errors.isNotEmpty()) {
                     Text(
                         "Eksik/hatalı: ${errors.joinToString()}",
@@ -954,7 +942,7 @@ private fun ConnectionDialog(
                     user = user.trim(),
                     credentialRef = cred,
                     transportOrder = listOf(TerminalTransport.SSH),
-                    autoTmux = autoTmux,
+                    autoTmux = initial?.autoTmux ?: false,
                     id = initial?.id ?: "",
                     lastConnectedAt = initial?.lastConnectedAt ?: 0L,
                 )

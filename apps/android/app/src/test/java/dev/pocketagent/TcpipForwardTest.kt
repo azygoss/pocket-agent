@@ -4,8 +4,9 @@ package dev.pocketagent
 import dev.pocketagent.transport.LocalForwarder
 import dev.pocketagent.transport.TcpipCapable
 import dev.pocketagent.transport.TcpipChannel
+import dev.pocketagent.transport.PreviewTarget
 import dev.pocketagent.transport.parseListenPorts
-import dev.pocketagent.transport.previewPortsFromTexts
+import dev.pocketagent.transport.previewTargetsFromTexts
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
@@ -53,14 +54,30 @@ class TcpipForwardTest {
         assertEquals(listOf(3000, 8080), parseListenPorts(netstat))
     }
 
-    @Test fun previewPortsNewestFirst() {
+    @Test fun previewTargetsNewestFirst() {
         val texts = listOf(
             "kimi web listening at http://localhost:8080/",
             "dev server: http://127.0.0.1:9000",
             "duplicate http://localhost:8080",
         )
-        assertEquals(listOf(8080, 9000), previewPortsFromTexts(texts))
-        assertEquals(emptyList<Int>(), previewPortsFromTexts(listOf("https://example.com:443")))
+        // Port başına tek hedef; en yeni URL önce.
+        assertEquals(
+            listOf(
+                PreviewTarget("localhost", 8080, "/"),
+                PreviewTarget("127.0.0.1", 9000, "/"),
+            ),
+            previewTargetsFromTexts(texts),
+        )
+        assertEquals(emptyList<PreviewTarget>(), previewTargetsFromTexts(listOf("https://example.com:443")))
+    }
+
+    @Test fun previewTargetsPreservesPathAndQuery() {
+        // kimi web bazı kurulumlarda token'lı path basar — yol korunmalı.
+        val texts = listOf("open http://127.0.0.1:4321/ui?token=abc123 to start")
+        assertEquals(
+            listOf(PreviewTarget("127.0.0.1", 4321, "/ui?token=abc123")),
+            previewTargetsFromTexts(texts),
+        )
     }
 
     @Test fun forwarderRelaysBytes() = runBlocking {
@@ -89,8 +106,9 @@ class TcpipForwardTest {
                 }
                 assertEquals("ping", String(buf, 0, off))
             }
-            // Tünel hedefi her zaman host loopback'i.
-            assertEquals(listOf("127.0.0.1" to echo.localPort), tcpip.targets)
+            // Tünel hedefi varsayılan olarak "localhost" — host tarafında
+            // resolve edilir, ::1/127.0.0.1 bind farkını kapsar.
+            assertEquals(listOf("localhost" to echo.localPort), tcpip.targets)
         } finally {
             fwd.close()
             echo.close()

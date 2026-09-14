@@ -137,14 +137,16 @@ fun PocketAgentApp(
         val conns = connections2.value
         if (conns.isEmpty()) return@LaunchedEffect
         sessionsRestored = true
-        app.settingsStore.loadOpenSessions().forEach { (id, name) ->
-            conns.firstOrNull { it.id == id }?.let { c ->
+        app.settingsStore.loadOpenSessions().forEach { os ->
+            conns.firstOrNull { it.id == os.connId }?.let { c ->
                 app.connections.secret(c.id)?.let { s ->
-                    // Aynı host'ta birden çok kayıtlı oturum → paralel aç.
+                    // Aynı host'ta birden çok kayıtlı oturum → paralel aç;
+                    // kayıtlı tmux adı aynı uzak oturuma reattach eder.
                     sessions.open(
                         c, s,
                         forceNew = sessions.sessions.value.any { it.conn.id == c.id },
-                        customName = name,
+                        customName = os.name,
+                        tmuxName = os.tmux,
                     )
                 }
             }
@@ -155,8 +157,14 @@ fun PocketAgentApp(
     // kayda gömülür; ad değişimi liste değişmeden tetikler (combine).
     LaunchedEffect(sessionsRestored) {
         if (!sessionsRestored) return@LaunchedEffect
-        kotlinx.coroutines.flow.combine(sessions.sessions, sessions.customNames) { list, names ->
-            list.map { it.conn.id to names[it.id] }
+        kotlinx.coroutines.flow.combine(
+            sessions.sessions,
+            sessions.customNames,
+            sessions.tmuxNames,
+        ) { list, names, tmuxes ->
+            list.map {
+                dev.pocketagent.data.OpenSession(it.conn.id, names[it.id], tmuxes[it.id])
+            }
         }.collect { app.settingsStore.saveOpenSessions(it) }
     }
 

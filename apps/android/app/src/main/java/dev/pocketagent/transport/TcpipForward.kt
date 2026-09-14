@@ -32,7 +32,9 @@ class LocalForwarder(
     private val scope: CoroutineScope,
     private val tcpip: TcpipCapable,
     private val remotePort: Int,
-    private val remoteHost: String = "127.0.0.1",
+    // "localhost" host tarafında resolve edilir — servis ::1 ya da 127.0.0.1
+    // hangisine bind ettiyse ikisini de kapsar (kimi web IPv6-only olabilir).
+    private val remoteHost: String = "localhost",
 ) {
     private var server: ServerSocket? = null
     // Açık relay soketleri: forwarder kapanırken bloklu read'leri kırmak için
@@ -115,15 +117,26 @@ fun parseListenPorts(out: String): List<Int> =
         .sorted()
         .toList()
 
-// Terminal scrollback'inde görünen loopback URL'lerinden port adayları —
-// kimi web gibi araçlar "http://localhost:PORT" satırını basar.
-private val previewUrlRe =
-    Regex("""https?://(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?)(?::(\d{1,5}))?""")
+// Terminal scrollback'inde görünen loopback URL'lerinden hedef adayları —
+// kimi web gibi araçlar "http://localhost:PORT/<yol>?token=…" basar; path
+// ve host varyantı (localhost/127.x/[::1]) aynen taşınır.
+data class PreviewTarget(val host: String, val port: Int, val path: String = "/")
 
-fun previewPortsFromTexts(texts: List<String>): List<Int> =
+private val previewUrlRe =
+    Regex("""https?://(localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\]|::1)(?::(\d{1,5}))?([/?#][^\s"'<>)\]]*)?""")
+
+fun previewTargetsFromTexts(texts: List<String>): List<PreviewTarget> =
     texts.asSequence()
         .flatMap { previewUrlRe.findAll(it) }
-        .mapNotNull { it.groupValues[1].toIntOrNull()?.takeIf { p -> p in 1..65535 } }
+        .mapNotNull { m ->
+            val host = m.groupValues[1].removePrefix("[").removeSuffix("]")
+                .let { if (it == "0.0.0.0") "127.0.0.1" else it }
+            val port = m.groupValues[2].toIntOrNull()?.takeIf { it in 1..65535 }
+                ?: return@mapNotNull null
+            val path = m.groupValues[3].ifBlank { "/" }
+                .let { if (it.startsWith("/")) it else "/$it" }
+            PreviewTarget(host, port, path)
+        }
         .toList()
         .asReversed() // en son basılan URL en üstte
-        .distinct()
+        .distinctBy { it.port }
