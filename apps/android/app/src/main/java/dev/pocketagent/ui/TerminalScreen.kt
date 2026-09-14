@@ -41,6 +41,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.RectangleShape
@@ -59,10 +61,14 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardHide
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -123,10 +129,17 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import dev.pocketagent.transport.ConnectionState
+import dev.pocketagent.transport.LocalForwarder
+import dev.pocketagent.transport.TcpipCapable
+import dev.pocketagent.transport.parseListenPorts
+import dev.pocketagent.transport.previewPortsFromTexts
 import dev.pocketagent.transport.SessionHandle
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalController
@@ -138,6 +151,10 @@ import dev.pocketagent.ui.theme.TermAmber
 import dev.pocketagent.ui.theme.LocalMonoFont
 import dev.pocketagent.ui.theme.LocalConsoleTheme
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 // Görünmez IME yakalayıcı: alan kontrollü tutulur, her değişim PTY'ye
@@ -594,6 +611,11 @@ private fun ActiveTerminal(
             attachStatus = null
         }
     }
+
+    // ── Web önizleme: host loopback'indeki yayın (kimi web, dev server,
+    // agent web-TUI) port seçici → SSH-içi direct-tcpip forward → WebView.
+    var previewPicker by remember { mutableStateOf(false) }
+    var previewPort by remember { mutableStateOf<Int?>(null) }
 
     Column(Modifier.fillMaxSize()) {
         // Oturum bilgisi yalnız üstteki şeritte yaşar (ad + durum noktası +
@@ -1067,6 +1089,8 @@ private fun ActiveTerminal(
                 snippets = settings.snippetList(),
                 attachEnabled = connected && !uploading && controller.sftp() != null,
                 onAttach = { attachLauncher.launch("*/*") },
+                previewEnabled = connected && controller.tcpip() != null,
+                onPreview = { previewPicker = true },
                 onCtrl = { ctrl = !ctrl },
                 onKey = { sendText(it) },
                 onPaste = {
@@ -1082,6 +1106,29 @@ private fun ActiveTerminal(
             )
         }
     }
+
+    // Port seçici: scrollback'teki loopback URL'leri + `ss`/`netstat` sondası
+    // + elle giriş. Seçim önizleme sheet'ini açar.
+    if (previewPicker) {
+        PreviewPortDialog(
+            detected = previewPortsFromTexts(lines.takeLast(400).map { it.text }),
+            probe = {
+                val e = controller.exec() ?: return@PreviewPortDialog emptyList()
+                try {
+                    parseListenPorts(e.exec("ss -tlnH 2>/dev/null || netstat -tln 2>/dev/null").second)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            },
+            onDismiss = { previewPicker = false },
+            onOpen = { previewPicker = false; previewPort = it },
+        )
+    }
+    previewPort?.let { port ->
+        val t = controller.tcpip()
+        if (t == null) previewPort = null
+        else PreviewSheet(t, port) { previewPort = null }
+    }
 }
 
 // Alt tuş şeridi: solda ctrl mandalı, ortada kaydırılabilir tuşlar, sağda
@@ -1094,6 +1141,8 @@ private fun TerminalKeyBar(
     snippets: List<Pair<String, String>> = emptyList(),
     attachEnabled: Boolean = false,
     onAttach: () -> Unit = {},
+    previewEnabled: Boolean = false,
+    onPreview: () -> Unit = {},
     onCtrl: () -> Unit,
     onKey: (String) -> Unit,
     onPaste: () -> Unit,
@@ -1151,7 +1200,201 @@ private fun TerminalKeyBar(
             onTap = onKeyboard,
         )
         TermIconKey(Icons.Filled.AttachFile, "Dosya ekle", attachEnabled, onAttach)
+        TermIconKey(Icons.Filled.Language, "Önizleme", previewEnabled, onPreview)
         TermIconKey(Icons.Filled.ContentPaste, "Yapıştır", enabled, onPaste)
+    }
+}
+
+// ── Web önizleme ──────────────────────────────────────────────────────────
+// Host loopback'indeki web yayınını (kimi web'in bastığı http://localhost:PORT
+// gibi) SSH-içi forward üzerinden WebView'de açar. Port adayları: terminal
+// çıktısındaki loopback URL'leri ("çıktıda" rozeti) + ss/netstat sondası.
+
+@Composable
+private fun PreviewPortDialog(
+    detected: List<Int>,
+    probe: suspend () -> List<Int>,
+    onDismiss: () -> Unit,
+    onOpen: (Int) -> Unit,
+) {
+    var manual by remember { mutableStateOf("") }
+    var listening by remember { mutableStateOf<List<Int>?>(null) }
+    LaunchedEffect(Unit) { listening = probe() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Önizleme") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Host'ta dinleyen web arayüzünü (kimi web, dev server) SSH üzerinden aç.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val ports = (detected + (listening ?: emptyList())).distinct().sorted()
+                when {
+                    listening == null -> Text(
+                        "Dinlenen portlar aranıyor…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    ports.isEmpty() -> Text(
+                        "Dinlenen port bulunamadı — portu elle gir.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    else -> Column(
+                        Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        ports.forEach { p ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier.fillMaxWidth().clickable { onOpen(p) },
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "127.0.0.1:$p",
+                                        fontFamily = LocalMonoFont.current,
+                                        fontSize = 12.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    if (p in detected) {
+                                        Text(
+                                            "çıktıda",
+                                            fontFamily = LocalMonoFont.current,
+                                            fontSize = 9.sp,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    manual,
+                    { manual = it.filter(Char::isDigit).take(5) },
+                    label = { Text("Port") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = manual.toIntOrNull() in 1..65535,
+                onClick = { onOpen(manual.toInt()) },
+            ) { Text("Aç") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+    )
+}
+
+// Tam ekran önizleme: forwarder telefonda 127.0.0.1:<yerel> dinler, her
+// bağlantı host'un 127.0.0.1:<port>'una SSH içinden bağlanır. WebView
+// http://localhost:<yerel> yükler (network_security_config cleartext'i
+// yalnız localhost'a açıyor — 127.0.0.1 yerine localhost şart).
+@Composable
+private fun PreviewSheet(tcpip: TcpipCapable, port: Int, onClose: () -> Unit) {
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column {
+                val fwdScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+                val forwarder = remember(port) { LocalForwarder(fwdScope, tcpip, port) }
+                var localPort by remember { mutableIntStateOf(0) }
+                var error by remember { mutableStateOf<String?>(null) }
+                var webView by remember { mutableStateOf<android.webkit.WebView?>(null) }
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                LaunchedEffect(port) {
+                    try {
+                        localPort = forwarder.start()
+                    } catch (e: Exception) {
+                        error = e.message ?: "tünel açılamadı"
+                    }
+                }
+                DisposableEffect(Unit) {
+                    onDispose {
+                        forwarder.close()
+                        fwdScope.cancel()
+                        webView?.destroy()
+                    }
+                }
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Filled.Close, contentDescription = "Önizlemeyi kapat")
+                    }
+                    Text(
+                        "127.0.0.1:$port",
+                        fontFamily = LocalMonoFont.current,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                    )
+                    IconButton(
+                        onClick = { webView?.reload() },
+                        enabled = localPort != 0,
+                    ) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Yenile")
+                    }
+                    IconButton(
+                        onClick = {
+                            if (localPort != 0) {
+                                ctx.startActivity(
+                                    android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse("http://localhost:$localPort/"),
+                                    ),
+                                )
+                            }
+                        },
+                        enabled = localPort != 0,
+                    ) {
+                        Icon(Icons.Filled.OpenInNew, contentDescription = "Tarayıcıda aç")
+                    }
+                }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    when {
+                        error != null -> Text(
+                            "Tünel açılamadı: $error",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                        )
+                        localPort == 0 -> Text(
+                            "Tünel açılıyor…",
+                            fontFamily = LocalMonoFont.current,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                        else -> AndroidView(
+                            factory = { c ->
+                                android.webkit.WebView(c).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    webViewClient = android.webkit.WebViewClient()
+                                    loadUrl("http://localhost:$localPort/")
+                                    webView = this
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

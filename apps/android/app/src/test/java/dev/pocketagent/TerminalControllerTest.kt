@@ -14,6 +14,9 @@ import dev.pocketagent.transport.TerminalInput
 import dev.pocketagent.transport.TerminalSize
 import dev.pocketagent.transport.TofuHostKeyStore
 import dev.pocketagent.transport.SftpSession
+import dev.pocketagent.transport.ExecCapable
+import dev.pocketagent.transport.TcpipCapable
+import dev.pocketagent.transport.TcpipChannel
 import dev.pocketagent.transport.RemoteFile
 import dev.pocketagent.transport.TransportFailure
 import dev.pocketagent.transport.UnknownHostKeyException
@@ -310,6 +313,14 @@ class SftpFakeTransport : SshTransport by FakeSshTransport(), SftpSession {
     override suspend fun readBytes(path: String, maxBytes: Long) = files[path] ?: ByteArray(0)
     override suspend fun writeBytes(path: String, data: ByteArray) { files[path] = data }
     override suspend fun mkdir(path: String) { dirs.add(path) }
+}
+
+// Önizleme testleri: TcpipCapable + ExecCapable (ss çıktısı sabit).
+class TunnelFakeTransport : SshTransport by FakeSshTransport(), TcpipCapable, ExecCapable {
+    override suspend fun openTcpip(host: String, port: Int): TcpipChannel =
+        throw UnsupportedOperationException("test ortamında tünel yok")
+    override suspend fun exec(cmd: String, timeoutMs: Int): Pair<Int, String> =
+        0 to "LISTEN 0 511 127.0.0.1:8080 0.0.0.0:*\n"
 }
 
 class AgentUploadTest {

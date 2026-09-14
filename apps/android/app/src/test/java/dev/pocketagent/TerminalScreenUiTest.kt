@@ -39,6 +39,11 @@ private class UiSftpConnector : SshConnector {
         SftpFakeTransport().also { it.openPty("xterm-256color", size) }
 }
 
+private class UiTunnelConnector : SshConnector {
+    override suspend fun open(conn: SavedConnection, secret: Secret?, size: TerminalSize): SshTransport =
+        TunnelFakeTransport().also { it.openPty("xterm-256color", size) }
+}
+
 @RunWith(RobolectricTestRunner::class)
 class TerminalScreenUiTest {
     @get:Rule val rule = createComposeRule()
@@ -121,6 +126,34 @@ class TerminalScreenUiTest {
         m.open(conn, Secret.Password("pw"))
         rule.waitForIdle()
         rule.onNodeWithContentDescription("Dosya ekle").assertIsEnabled()
+        m.closeAll()
+    }
+
+    @Test fun previewButtonDisabledWithoutTunnel() {
+        // FakeSshTransport TcpipCapable uygulamaz → düğme pasif.
+        val m = manager()
+        rule.setContent {
+            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {})
+        }
+        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
+        m.open(conn, Secret.Password("pw"))
+        rule.waitForIdle()
+        rule.onNodeWithContentDescription("Önizleme").assertIsNotEnabled()
+        m.closeAll()
+    }
+
+    @Test fun previewButtonOpensPortPicker() {
+        // Tünel+exec fake'i: diyalog açılır, ss sondası 8080'i listeler.
+        val m = manager(UiTunnelConnector())
+        rule.setContent {
+            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {})
+        }
+        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
+        m.open(conn, Secret.Password("pw"))
+        rule.waitForIdle()
+        rule.onNodeWithContentDescription("Önizleme").assertIsEnabled().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("127.0.0.1:8080").assertIsDisplayed()
         m.closeAll()
     }
 }

@@ -156,7 +156,7 @@ class SshjTransport(
     private val shell: Session.Shell,
     private var size: TerminalSize,
     private val readScope: CoroutineScope,
-) : SshTransport, SftpSession, GatewayTunnel, ExecCapable {
+) : SshTransport, SftpSession, GatewayTunnel, ExecCapable, TcpipCapable {
     override val transport = TerminalTransport.SSH
     private val chan = Channel<TerminalFrame>(Channel.UNLIMITED)
     @Volatile private var closed = false
@@ -208,6 +208,22 @@ class SshjTransport(
                 parseHttpResponse(raw.toByteArray(), maxBytes)
             } finally {
                 runCatching { dc.close() }
+            }
+        }
+
+    // Önizleme tüneli: host loopback'inde dinleyen servise kalıcı
+    // direct-tcpip kanalı (gatewayGet'in tek-atış halinin stream versiyonu).
+    // Hedef loopback'e kilitli — port-forward SSRF köprüsü olamaz.
+    override suspend fun openTcpip(host: String, port: Int): TcpipChannel =
+        withContext(Dispatchers.IO) {
+            check(!closed) { "transport closed" }
+            require(loopbackOk(host) && port in 1..65535) { "bad tunnel target" }
+            val dc = ssh.newDirectConnection(host, port)
+            dc.open()
+            object : TcpipChannel {
+                override val input: java.io.InputStream get() = dc.inputStream
+                override val output: java.io.OutputStream get() = dc.outputStream
+                override fun close() { runCatching { dc.close() } }
             }
         }
 
