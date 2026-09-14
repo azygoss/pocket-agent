@@ -18,4 +18,6 @@ interface SftpSession {
     // En fazla maxBytes okur (preview için); daha büyük dosyalar download'a.
     suspend fun readBytes(path: String, maxBytes: Long): ByteArray
     suspend fun writeBytes(path: String, data: ByteArray)
+    // Dizini üstleriyle birlikte oluşturur (mkdir -p; varsa no-op).
+    suspend fun mkdir(path: String)
 }

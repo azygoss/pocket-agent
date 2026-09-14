@@ -2,6 +2,8 @@
 package dev.pocketagent.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -48,6 +50,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Fullscreen
@@ -558,6 +561,40 @@ private fun ActiveTerminal(
         imeBuf = if (next.length > IME_MAX) "" else next
     }
 
+    // ── Agent eki: telefondan dosya/resim seç → SFTP ile
+    // ~/.pocket-agent/uploads altına yükle → uzak yolu PTY'ye yaz.
+    // Agent'ın input'una düşer; kullanıcı devamını yazıp Enter'lar.
+    var uploading by remember { mutableStateOf(false) }
+    var attachStatus by remember { mutableStateOf<Pair<String, Boolean>?>(null) } // (metin, hata mı)
+    val attachLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val (rawName, bytes) = pickedFile(context, uri) ?: return@rememberLauncherForActivityResult
+        if (bytes.size > 10 * 1024 * 1024) { // dosya sekmesiyle aynı P15 tavanı
+            attachStatus = "10MB sınırı aşıldı" to true
+            return@rememberLauncherForActivityResult
+        }
+        val name = sanitizeRemoteName(rawName)
+        uploading = true
+        attachStatus = "yükleniyor: $name" to false
+        scope.launch {
+            try {
+                val path = controller.uploadForSession(name, bytes)
+                emit(path)
+                attachStatus = "yüklendi → $path" to false
+            } catch (e: Exception) {
+                attachStatus = "yüklenemedi: ${e.message ?: "hata"}" to true
+            } finally {
+                uploading = false
+            }
+        }
+    }
+    LaunchedEffect(attachStatus) {
+        if (attachStatus != null) {
+            kotlinx.coroutines.delay(4000)
+            attachStatus = null
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         // Oturum bilgisi yalnız üstteki şeritte yaşar (ad + durum noktası +
         // retry rozeti); panel başlığı artık bunları tekrarlamaz.
@@ -893,6 +930,28 @@ private fun ActiveTerminal(
                                 }
                             }
                         }
+
+                        // Ek yükleme durumu: geçici pill — "yükleniyor… /
+                        // yüklendi → yol / yüklenemedi" (4sn sonra silinir).
+                        attachStatus?.let { (msg, isError) ->
+                            Surface(
+                                color = if (isError) MaterialTheme.colorScheme.errorContainer
+                                else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = CircleShape,
+                                shadowElevation = 6.dp,
+                                modifier = Modifier.align(Alignment.BottomStart).padding(10.dp),
+                            ) {
+                                Text(
+                                    msg,
+                                    color = if (isError) MaterialTheme.colorScheme.onErrorContainer
+                                    else MaterialTheme.colorScheme.onSurface,
+                                    fontFamily = LocalMonoFont.current,
+                                    fontSize = 10.5.sp,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                )
+                            }
+                        }
                     }
 
                 }
@@ -1006,6 +1065,8 @@ private fun ActiveTerminal(
                 enabled = connected,
                 typing = typing,
                 snippets = settings.snippetList(),
+                attachEnabled = connected && !uploading && controller.sftp() != null,
+                onAttach = { attachLauncher.launch("*/*") },
                 onCtrl = { ctrl = !ctrl },
                 onKey = { sendText(it) },
                 onPaste = {
@@ -1031,6 +1092,8 @@ private fun TerminalKeyBar(
     enabled: Boolean,
     typing: Boolean,
     snippets: List<Pair<String, String>> = emptyList(),
+    attachEnabled: Boolean = false,
+    onAttach: () -> Unit = {},
     onCtrl: () -> Unit,
     onKey: (String) -> Unit,
     onPaste: () -> Unit,
@@ -1087,6 +1150,7 @@ private fun TerminalKeyBar(
             enabled = enabled,
             onTap = onKeyboard,
         )
+        TermIconKey(Icons.Filled.AttachFile, "Dosya ekle", attachEnabled, onAttach)
         TermIconKey(Icons.Filled.ContentPaste, "Yapıştır", enabled, onPaste)
     }
 }

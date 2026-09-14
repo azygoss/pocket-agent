@@ -2,6 +2,8 @@
 package dev.pocketagent
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -32,14 +34,19 @@ private class UiFakeConnector : SshConnector {
         FakeSshTransport().also { it.openPty("xterm-256color", size) }
 }
 
+private class UiSftpConnector : SshConnector {
+    override suspend fun open(conn: SavedConnection, secret: Secret?, size: TerminalSize): SshTransport =
+        SftpFakeTransport().also { it.openPty("xterm-256color", size) }
+}
+
 @RunWith(RobolectricTestRunner::class)
 class TerminalScreenUiTest {
     @get:Rule val rule = createComposeRule()
 
-    private fun manager(): SessionManager {
+    private fun manager(connector: SshConnector = UiFakeConnector()): SessionManager {
         val scope = CoroutineScope(Dispatchers.IO)
         val store = TofuHostKeyStore(File.createTempFile("hostkeys", ".db"))
-        return SessionManager(scope, store) { UiFakeConnector() }
+        return SessionManager(scope, store) { connector }
     }
 
     @Test fun emptyTerminalShowsHint() {
@@ -89,6 +96,31 @@ class TerminalScreenUiTest {
         rule.onNodeWithContentDescription("Tam ekrandan çık").performClick()
         rule.waitForIdle()
         org.junit.Assert.assertEquals(false, fullscreenSeen)
+        m.closeAll()
+    }
+
+    @Test fun attachButtonDisabledWithoutSftp() {
+        // FakeSshTransport SFTP uygulamaz → ek düğmesi görünür ama pasif.
+        val m = manager()
+        rule.setContent {
+            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {})
+        }
+        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
+        m.open(conn, Secret.Password("pw"))
+        rule.waitForIdle()
+        rule.onNodeWithContentDescription("Dosya ekle").assertIsNotEnabled()
+        m.closeAll()
+    }
+
+    @Test fun attachButtonEnabledWithSftp() {
+        val m = manager(UiSftpConnector())
+        rule.setContent {
+            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {})
+        }
+        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
+        m.open(conn, Secret.Password("pw"))
+        rule.waitForIdle()
+        rule.onNodeWithContentDescription("Dosya ekle").assertIsEnabled()
         m.closeAll()
     }
 }
