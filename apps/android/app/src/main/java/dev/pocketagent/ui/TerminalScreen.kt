@@ -54,6 +54,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
@@ -138,9 +139,13 @@ import androidx.core.view.WindowInsetsControllerCompat
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.LocalForwarder
 import dev.pocketagent.transport.TcpipCapable
-import dev.pocketagent.transport.parseListenPorts
+import dev.pocketagent.transport.PREVIEW_PROBE_CMD
+import dev.pocketagent.transport.PreviewProbe
 import dev.pocketagent.transport.PreviewTarget
+import dev.pocketagent.transport.localPath
+import dev.pocketagent.transport.parsePreviewProbe
 import dev.pocketagent.transport.previewTargetsFromTexts
+import dev.pocketagent.transport.previewTokenFromTexts
 import dev.pocketagent.transport.SessionHandle
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalController
@@ -617,6 +622,7 @@ private fun ActiveTerminal(
     // agent web-TUI) port seçici → SSH-içi direct-tcpip forward → WebView.
     var previewPicker by remember { mutableStateOf(false) }
     var previewTarget by remember { mutableStateOf<PreviewTarget?>(null) }
+    var previewToken by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize()) {
         // Oturum bilgisi yalnız üstteki şeritte yaşar (ad + durum noktası +
@@ -1113,22 +1119,27 @@ private fun ActiveTerminal(
     if (previewPicker) {
         PreviewPortDialog(
             detected = previewTargetsFromTexts(lines.takeLast(400).map { it.text }),
+            scrollToken = previewTokenFromTexts(lines.takeLast(400).map { it.text }),
             probe = {
-                val e = controller.exec() ?: return@PreviewPortDialog emptyList()
+                val e = controller.exec() ?: return@PreviewPortDialog PreviewProbe(emptyList(), null)
                 try {
-                    parseListenPorts(e.exec("ss -tlnH 2>/dev/null || netstat -tln 2>/dev/null").second)
+                    parsePreviewProbe(e.exec(PREVIEW_PROBE_CMD).second)
                 } catch (_: Exception) {
-                    emptyList()
+                    PreviewProbe(emptyList(), null)
                 }
             },
             onDismiss = { previewPicker = false },
-            onOpen = { previewPicker = false; previewTarget = it },
+            onOpen = { t, tok ->
+                previewPicker = false
+                previewTarget = t
+                previewToken = tok
+            },
         )
     }
     previewTarget?.let { target ->
         // Sağlayıcı her accept'te GÜNCEL transport'u çözer — SSH kopup retry
         // ile yeni transport gelince forwarder kapanmadan toparlanır.
-        PreviewSheet({ controller.tcpip() }, target) { previewTarget = null }
+        PreviewSheet({ controller.tcpip() }, target, previewToken) { previewTarget = null }
     }
 }
 
@@ -1214,13 +1225,21 @@ private fun TerminalKeyBar(
 @Composable
 private fun PreviewPortDialog(
     detected: List<PreviewTarget>,
-    probe: suspend () -> List<Int>,
+    scrollToken: String?,
+    probe: suspend () -> PreviewProbe,
     onDismiss: () -> Unit,
-    onOpen: (PreviewTarget) -> Unit,
+    onOpen: (PreviewTarget, String?) -> Unit,
 ) {
     var manual by remember { mutableStateOf("") }
     var listening by remember { mutableStateOf<List<Int>?>(null) }
-    LaunchedEffect(Unit) { listening = probe() }
+    // Scrollback'teki `Token:` satırı öncelikli; yoksa sondanın okuduğu
+    // ~/.kimi-code/server.token. Web UI credential'ı fragment'tan okur.
+    var probeToken by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        val p = probe()
+        listening = p.ports
+        probeToken = p.token
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Önizleme") },
@@ -1256,7 +1275,9 @@ private fun PreviewPortDialog(
                             Surface(
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 shape = MaterialTheme.shapes.small,
-                                modifier = Modifier.fillMaxWidth().clickable { onOpen(t) },
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    onOpen(t, scrollToken ?: probeToken)
+                                },
                             ) {
                                 Row(
                                     Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -1295,7 +1316,9 @@ private fun PreviewPortDialog(
         confirmButton = {
             TextButton(
                 enabled = manual.toIntOrNull() in 1..65535,
-                onClick = { onOpen(PreviewTarget("localhost", manual.toInt())) },
+                onClick = {
+                    onOpen(PreviewTarget("localhost", manual.toInt()), scrollToken ?: probeToken)
+                },
             ) { Text("Aç") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
@@ -1306,9 +1329,16 @@ private fun PreviewPortDialog(
 // bağlantı host'un loopback'ine (target.host — localhost/127.x/::1) SSH
 // içinden bağlanır. WebView http://127.0.0.1:<yerel><path> yükler —
 // 127.0.0.1 cleartext allowlist'te ve resolver belirsizliği yok
-// (localhost Android'de ::1'e çözülebilir; soketimiz IPv4).
+// (localhost Android'de ::1'e çözülebilir; soketimiz IPv4). kimi web'in
+// bearer credential'ı varsa `#token=` fragment'ıyla otomatik oturum açar;
+// başlıktaki kopyala düğmesi token-giriş sayfasına elle yapıştırma yedeğidir.
 @Composable
-private fun PreviewSheet(tcpipProvider: () -> TcpipCapable?, target: PreviewTarget, onClose: () -> Unit) {
+private fun PreviewSheet(
+    tcpipProvider: () -> TcpipCapable?,
+    target: PreviewTarget,
+    token: String?,
+    onClose: () -> Unit,
+) {
     Dialog(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -1361,6 +1391,19 @@ private fun PreviewSheet(tcpipProvider: () -> TcpipCapable?, target: PreviewTarg
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                     )
+                    if (token != null) {
+                        val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                        IconButton(
+                            onClick = {
+                                clipboard.setText(androidx.compose.ui.text.AnnotatedString(token))
+                            },
+                        ) {
+                            Icon(
+                                Icons.Filled.ContentCopy,
+                                contentDescription = "Token'ı kopyala",
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = { webView?.reload() },
                         enabled = localPort != 0,
@@ -1374,7 +1417,7 @@ private fun PreviewSheet(tcpipProvider: () -> TcpipCapable?, target: PreviewTarg
                                     android.content.Intent(
                                         android.content.Intent.ACTION_VIEW,
                                         android.net.Uri.parse(
-                                            "http://127.0.0.1:$localPort${target.path}",
+                                            "http://127.0.0.1:$localPort${target.localPath(token)}",
                                         ),
                                     ),
                                 )
@@ -1406,7 +1449,7 @@ private fun PreviewSheet(tcpipProvider: () -> TcpipCapable?, target: PreviewTarg
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
                                     webViewClient = android.webkit.WebViewClient()
-                                    loadUrl("http://127.0.0.1:$localPort${target.path}")
+                                    loadUrl("http://127.0.0.1:$localPort${target.localPath(token)}")
                                     webView = this
                                 }
                             },

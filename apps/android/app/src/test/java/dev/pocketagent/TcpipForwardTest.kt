@@ -5,8 +5,11 @@ import dev.pocketagent.transport.LocalForwarder
 import dev.pocketagent.transport.TcpipCapable
 import dev.pocketagent.transport.TcpipChannel
 import dev.pocketagent.transport.PreviewTarget
+import dev.pocketagent.transport.localPath
 import dev.pocketagent.transport.parseListenPorts
+import dev.pocketagent.transport.parsePreviewProbe
 import dev.pocketagent.transport.previewTargetsFromTexts
+import dev.pocketagent.transport.previewTokenFromTexts
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
@@ -78,6 +81,46 @@ class TcpipForwardTest {
             listOf(PreviewTarget("127.0.0.1", 4321, "/ui?token=abc123")),
             previewTargetsFromTexts(texts),
         )
+    }
+
+    @Test fun previewTokenFromBannerLine() {
+        // kimi web banner'ı: "Token:   <v>" — en yeni satır kazanır
+        // (rotate-token sonrası eski değer scrollback'te kalır).
+        val texts = listOf(
+            "Local:   http://127.0.0.1:58627/#token=eski-deger",
+            "Token:   eski-deger",
+            "Stop:    Ctrl+C",
+            "Token:   yeni-deger.123",
+        )
+        assertEquals("yeni-deger.123", previewTokenFromTexts(texts))
+        assertEquals(null, previewTokenFromTexts(listOf("token yok burada")))
+    }
+
+    @Test fun localPathInjectsTokenFragment() {
+        // Token yoksa path aynen; varsa #token= enjekte/değiştirilir.
+        assertEquals("/", PreviewTarget("localhost", 1, "/").localPath(null))
+        assertEquals("/#token=abc", PreviewTarget("localhost", 1, "/").localPath("abc"))
+        // Wrap'te kırılmış fragment tam değerle değiştirilir.
+        assertEquals("/#token=tam", PreviewTarget("x", 1, "/#token=kir").localPath("tam"))
+        // SPA route fragment'ı korunur.
+        assertEquals("/ui#/dash&token=t", PreviewTarget("x", 1, "/ui#/dash").localPath("t"))
+        // Token yoksa var olan fragment olduğu gibi kalır.
+        assertEquals("/#token=url", PreviewTarget("x", 1, "/#token=url").localPath(null))
+    }
+
+    @Test fun parsePreviewProbeSplitsPortsAndToken() {
+        val out = """
+            LISTEN 0      511          127.0.0.1:8080      0.0.0.0:*
+            @@PA-TOK@@
+            gizli-token-123
+        """.trimIndent()
+        val p = parsePreviewProbe(out)
+        assertEquals(listOf(8080), p.ports)
+        assertEquals("gizli-token-123", p.token)
+        // Token dosyası yoksa marker sonrası boş → token null.
+        assertEquals(null, parsePreviewProbe("LISTEN 0 1 127.0.0.1:22 0.0.0.0:*\n@@PA-TOK@@\n").token)
+        // Marker hiç yoksa da port parse çalışır.
+        assertEquals(listOf(22), parsePreviewProbe("LISTEN 0 1 127.0.0.1:22 0.0.0.0:*").ports)
     }
 
     @Test fun forwarderRelaysBytes() = runBlocking {
