@@ -50,6 +50,9 @@ class App : Application() {
     val sessions: SessionManager by lazy {
         SessionManager(appScope, hostKeys) { SshjConnector(hostKeys, appScope) }.apply {
             onConnected = { conn -> appScope.launch { connections.touch(conn.id) } }
+            // Cihazlar-arası oturum keşfi: registry'nin d= alanı bununla
+            // karşılaştırılır (başka cihazın oturumu → close'da detach-only).
+            deviceId = this@App.deviceId
         }
     }
 
