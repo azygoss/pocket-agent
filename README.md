@@ -2,190 +2,190 @@
 
 [![CI](https://github.com/azygoss/pocket-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/azygoss/pocket-agent/actions)
 [![npm](https://img.shields.io/npm/v/pocket-agent-cli)](https://www.npmjs.com/package/pocket-agent-cli)
-[![Lisans: GPL-3.0-or-later](https://img.shields.io/badge/lisans-GPL--3.0--or--later-blue)](LICENSE)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-Self-hosted Android terminal ve agent companion. Telefondan host'una SSH ile
-bağlan, tmux oturumlarını yönet, dosyalara SFTP ile eriş, agent onaylarını
-cebinden karşıla — üçüncü taraf bulut yok, terminal ve dosya trafiği doğrudan
-senin SSH bağlantın üzerinden akar.
+Self-hosted Android terminal and agent companion. SSH from your phone into
+your own host, manage tmux sessions, browse files over SFTP, and answer agent
+approvals from your pocket — no third-party cloud. Terminal and file traffic
+flows over your direct SSH connection.
 
-Backend yalnızca agent olay özetlerini ve onay metadatasını görür; terminal
-çıktısı, dosya içeriği, diff ve sohbet backend'e uğramaz.
+The backend only ever sees agent event summaries and approval metadata;
+terminal output, file contents, diffs, and chat never reach it.
 
-## Ne yapar?
+## What it does
 
-- **Gerçek SSH terminali** — TOFU host-key pinning, ed25519/RSA key auth,
-  tam ANSI/VT parser (alternate screen, scroll region, synchronized output,
-  DSR/DA/DECRQM sorguları); Codex, vim, htop, tmux gibi TUI'larla çalışır
-- **Kalıcı tmux oturumları** — isimli oturumlar, çoklu oturum, bağlantı
-  kopsa bile oturum host'ta yaşar, yeniden attach
-- **SFTP dosya yöneticisi** — listeleme, okuma, yazma, indirme ve paylaşma
-- **Gateway + workspace** — SSH loopback üzerinden workspace dosyaları,
-  git diff ve HTTP preview tüneli (jail'li, token'lı)
-- **Agent hook'ları** — Claude/Codex event akışı: bildirimler, onay
-  istekleri, mesaj görünümlü çıktı, 24 saat TTL'li özet inbox
-- **Android UX** — temalar, fontlar, pinch-zoom, OSC52 clipboard,
-  OSC8 hyperlink, tuş şeridi, çoklu terminal sekmesi
-- **Mosh bootstrap** — host'ta `mosh-server` paketlenir; roaming istemci
-  tarafı deneysel (bkz. Durum ve sınırlar)
+- **Real SSH terminal** — TOFU host-key pinning, ed25519/RSA key auth, full
+  ANSI/VT parser (alternate screen, scroll regions, synchronized output,
+  DSR/DA/DECRQM queries); works with Codex, vim, htop, tmux, and other TUIs
+- **Persistent tmux sessions** — named sessions, multi-session tabs,
+  reconnect-attach; sessions survive connection drops on the host
+- **SFTP file manager** — list, read, write, download, and share
+- **Gateway + workspace** — workspace files, git diffs, and HTTP preview
+  tunneled over SSH loopback (jailed, token-authenticated)
+- **Agent hooks** — Claude/Codex event stream: notifications, approval
+  requests, chat-style output, 24h-TTL summary inbox
+- **Android UX** — themes, fonts, pinch-zoom, OSC52 clipboard, OSC8
+  hyperlinks, key bar, multiple terminal tabs
+- **Mosh bootstrap** — `mosh-server` is packaged for the host; the roaming
+  client side is experimental (see Status and limits)
 
-## Mimari ve veri sınırı
+## Architecture and data boundary
 
 ```
-Android uygulaması ──SSH/PTY+SFTP──► Host (sshd + tmux + gateway :loopback)
-       │                                 │
-       └──HTTPS──► Backend ◄──flusher────┘ pocket-agent daemon
-                   (event özeti,             (journal → özet POST)
-                    onay, inbox)
+Android app ──SSH/PTY+SFTP──► Host (sshd + tmux + gateway :loopback)
+    │                            │
+    └──HTTPS──► Backend ◄──flusher──┘ pocket-agent daemon
+                (event summaries,       (journal → summary POST)
+                 approvals, inbox)
 ```
 
-| Backend'e **giden** | Backend'e **asla gitmeyen** |
+| Sent to the backend | **Never** sent to the backend |
 |---|---|
-| Agent olay özeti (kaynak, kategori, mesaj) | Terminal çıktısı / keystroke |
-| Onay isteği + karar metadatası | Dosya içeriği, diff, sohbet |
-| Pairing claim, tenant sınırı | SSH anahtarı, gateway token |
+| Agent event summary (source, category, message) | Terminal output / keystrokes |
+| Approval request + decision metadata | File contents, diffs, chat |
+| Pairing claim, tenant boundary | SSH keys, gateway token |
 
-Backend özetleri 24 saat TTL ile saklar; tokenlar hash-only tutulur.
+The backend stores summaries with a 24-hour TTL; tokens are stored hash-only.
 
-## Hızlı kurulum
+## Quick install
 
-Gereksinimler: host'ta Node 18+ (npm kurulumu için) ve sshd; backend için
-Docker + Compose; Android 10+ (minSdk 29).
+Requirements: Node 18+ on the host (for npm install) plus sshd; Docker +
+Compose for the backend; Android 10+ (minSdk 29).
 
 ```bash
-# 1) Backend (opsiyonel ama önerilir — agent event/onay akışı için)
-cd deploy/docker-compose && cp .env.example .env   # alan adını doldur
-docker compose up -d                               # veya ./bootstrap.sh
+# 1) Backend (optional but recommended — powers agent events/approvals)
+cd deploy/docker-compose && cp .env.example .env   # fill in your domain
+docker compose up -d                               # or ./bootstrap.sh
 
-# 2) Host CLI — Go gerekmez, binary paketten gelir
+# 2) Host CLI — no Go toolchain needed, binaries ship in the package
 npm install -g pocket-agent-cli
-pocket-agent onboard --backend https://<alan-adın>
+pocket-agent onboard --backend https://<your-domain>
 
 # 3) Android APK
 # https://github.com/azygoss/pocket-agent/releases/latest → app-release.apk
-# Uygulamada QR'ı tara veya XXXX-XXXX kodunu gir
+# In the app, scan the QR code or enter the XXXX-XXXX pairing code
 ```
 
-npm paketi Linux/macOS x64 + arm64 ve Windows x64 (deneysel) binary içerir;
-`pocket-agent` ve `pocket-agent-hook` komutları kurulur.
+The npm package ships Linux/macOS x64 + arm64 and Windows x64 (experimental)
+binaries; it installs the `pocket-agent` and `pocket-agent-hook` commands.
 
-## Günlük CLI komutları
+## Everyday CLI commands
 
-| Komut | İş |
+| Command | What it does |
 |---|---|
-| `pocket-agent onboard` | Daemon + gateway + hook'lar + pair QR tek komutta |
-| `pocket-agent pair / unpair` | QR + XXXX-XXXX üret / eşleşmeyi kaldır |
-| `pocket-agent doctor --json` | sshd, port, disk, backend kontrolleri |
-| `pocket-agent status --json` | Sürüm + sağlık özeti |
-| `pocket-agent hooks install` | Claude/Codex hook'larını config'e işle |
-| `pocket-agent service install` | systemd user unit (daemon + gateway) |
-| `pocket-agent servers` | Aktif tmux oturumlarını listele |
-| `pocket-agent gateway serve` | Dosya/diff sunucusu (yalnız loopback) |
-| `pocket-agent completion bash` | Kabuk tamamlama (bash/zsh/fish) |
-| `pocket-agent version` | Sürüm |
+| `pocket-agent onboard` | Daemon + gateway + hooks + pair QR in one step |
+| `pocket-agent pair / unpair` | Generate QR + XXXX-XXXX code / remove pairing |
+| `pocket-agent doctor --json` | sshd, port, disk, backend checks |
+| `pocket-agent status --json` | Version + health summary |
+| `pocket-agent hooks install` | Register Claude/Codex hooks in their config |
+| `pocket-agent service install` | systemd user units (daemon + gateway) |
+| `pocket-agent servers` | List active tmux sessions |
+| `pocket-agent gateway serve` | File/diff server (loopback only) |
+| `pocket-agent completion bash` | Shell completion (bash/zsh/fish) |
+| `pocket-agent version` | Version |
 
-Tam liste: `pocket-agent help`.
+Full list: `pocket-agent help`.
 
-## Android özellikleri
+## Android features
 
-- **Terminal**: tam ekran VT100/xterm emülasyonu, alternate screen,
-  synchronized output (DECSET 2026) ile atomik TUI çizimi, 50k satır
-  scrollback, pinch-zoom, seçim + OSC52 kopyalama
-- **Bağlantı**: SSH keepalive, otomatik reconnect, TOFU pin değişiminde
-  hard-stop uyarısı, Mosh deneysel roaming
-- **Oturumlar**: isimli tmux oturumları, oturum kartları, bağlantı
-  kesilse bile host'ta yaşayan süreçler
-- **Dosyalar**: SFTP browser, upload/download/paylaş, workspace +
-  git diff görünümü, HTTP preview
-- **Uygulama**: Material 3 tema, font/boyut ayarları, tuş şeridi,
-  agent bildirimleri ve onay diyalogları
+- **Terminal**: full-screen VT100/xterm emulation, alternate screen,
+  atomic TUI frames via synchronized output (DECSET 2026), 50k-line
+  scrollback, pinch-zoom, selection + OSC52 copy
+- **Connection**: SSH keepalive, automatic reconnect, hard-stop warning on
+  TOFU pin change, experimental Mosh roaming
+- **Sessions**: named tmux sessions, session cards, processes that keep
+  running on the host even when the link drops
+- **Files**: SFTP browser, upload/download/share, workspace + git diff
+  view, HTTP preview
+- **App**: Material 3 theming, font/size settings, key bar, agent
+  notifications and approval dialogs
 
-## Kaynak koddan derleme
+## Build from source
 
-Gereksinimler: Go (go.mod'daki sürüm), JDK 17, Android SDK 34 + NDK/CMake,
-Buf (proto lint için).
+Requirements: Go (version in go.mod), JDK 17, Android SDK 34 + NDK/CMake,
+Buf (for proto lint).
 
 ```bash
-sudo ./scripts/setup-dev-environment.sh   # toolchain (bir kez)
+sudo ./scripts/setup-dev-environment.sh   # toolchain (one time)
 source ./scripts/dev-env.sh
 ./scripts/verify-dev-environment.sh
 
 make gates        # secret-scan + license + packaging + buf lint + canary
 make go           # go test + vet + build
 make android      # lintDebug + testDebugUnitTest + assembleDebug
-make live-up && make live-test   # env-gated canlı süitler (SSH/SFTP/gateway)
+make live-up && make live-test   # env-gated live suites (SSH/SFTP/gateway)
 make npm-package  # dist/pocket-agent-cli-*.tgz
 ```
 
-Çıktılar: `apps/android/app/build/outputs/apk/debug/app-debug.apk`,
-`dist/` (CLI tarball + checksums).
+Artifacts: `apps/android/app/build/outputs/apk/debug/app-debug.apk`,
+`dist/` (CLI tarballs + checksums).
 
-## Depo yapısı
+## Repository layout
 
-| Yol | İçerik |
+| Path | Contents |
 |---|---|
-| `apps/android/` | Kotlin + Compose uygulama (ui/ transport/ data/ net/ service/ security/) |
+| `apps/android/` | Kotlin + Compose app (ui/ transport/ data/ net/ service/ security/) |
 | `cmd/pocket-agent-hook/` + `host/` | Go CLI + daemon (pairing, gateway, hooks, journal, ssh, tmux) |
 | `backend/` | Go API (api/ approvals/ auth/ inbox/ store) + PostgreSQL |
-| `protocol/` | Buf v2 proto sözleşmeleri (v1 donduruldu) |
-| `deploy/docker-compose/` | Backend + Caddy kurulumu, backup/restore |
-| `packages/npm/` | npm paketi (`pocket-agent-cli`) |
-| `native/mosh/` | Mosh kaynak/build metadata + `libmoshclient.so` hashleri |
-| `scripts/` `tests/` | Kapılar, paketleme, e2e/fuzz/perf/protocol testleri |
-| `docs/` | Kurulum, güvenlik, yedekleme, rollback belgeleri |
+| `protocol/` | Buf v2 proto contracts (v1 frozen) |
+| `deploy/docker-compose/` | Backend + Caddy deployment, backup/restore |
+| `packages/npm/` | npm package (`pocket-agent-cli`) |
+| `native/mosh/` | Mosh source/build metadata + `libmoshclient.so` hashes |
+| `scripts/` `tests/` | Gates, packaging, e2e/fuzz/perf/protocol tests |
+| `docs/` | Install, security, backup, rollback docs |
 
-## Güvenlik modeli
+## Security model
 
-- **SSH TOFU** — ilk bağlantıda host key pin'lenir; değişimde hard-stop,
-  kullanıcı onayı olmadan devam edilmez
-- **Anahtarlar** — Android Keystore-backed; özel anahtar plaintext diske
-  yazılmaz, repoda hiçbir secret bulunmaz (`make gates` tarar)
-- **Gateway** — yalnız loopback bind, 0600 token dosyası, workspace jail,
-  path-traversal ve SSRF koruması
-- **Backend** — tokenlar hash-only, pairing kodu tek kullanım + kısa TTL,
-  tenant sınırı her sorguda zorlanır, özetler 24 saat TTL
-- **İmza** — CLI `update` yalnız imzalı manifest kabul eder; release APK
-  `apksigner verify` ile doğrulanır. Debug APK üretim imzalı değildir.
+- **SSH TOFU** — the host key is pinned on first connect; a pin change
+  hard-stops and requires explicit user approval
+- **Keys** — Android Keystore-backed; private keys are never written to
+  disk in plaintext and no secrets live in this repo (`make gates` scans)
+- **Gateway** — loopback-only bind, 0600 token file, workspace jail,
+  path-traversal and SSRF protection
+- **Backend** — hash-only tokens, single-use short-TTL pairing codes,
+  tenant isolation enforced on every query, 24h summary TTL
+- **Signing** — CLI `update` accepts only signed manifests; release APKs
+  are verified with `apksigner verify`. Debug APKs are not release-signed.
 
-Ayrıntı: [`docs/security/privacy.md`](docs/security/privacy.md),
+Details: [`docs/security/privacy.md`](docs/security/privacy.md),
 [`threat-model.md`](docs/security/threat-model.md),
 [`incident-response.md`](docs/security/incident-response.md).
 
-## Durum ve sınırlar
+## Status and limits
 
-- Çalışır ve canlı testli: SSH/PTY, SFTP, tmux, gateway, pairing,
-  backend event/onay akışı, npm CLI kurulumu
-- **Mosh**: host bootstrap + native client paketli; roaming istemcinin
-  gerçek cihaz saha testi sürüyor
-- **ET (Eternal Terminal)**: ertelendi
-- Emülatör/cihaz-gerektiren testler (frame pacing, biyometrik, bazı a11y
-  akışları) CI'da Robolectric ile kısmen kapsanır
-- Üretim backend'i TLS + alan adı ister; `network_security_config`
-  cleartext'i yalnız localhost/emülatöre açar
-- Sürümler: Android `v0.31.0`, npm CLI `0.1.0`
+- Working and live-tested: SSH/PTY, SFTP, tmux, gateway, pairing,
+  backend event/approval flow, npm CLI install
+- **Mosh**: host bootstrap + native client packaged; real-device roaming
+  field testing is still in progress
+- **ET (Eternal Terminal)**: deferred
+- Emulator/device-dependent tests (frame pacing, biometrics, some a11y
+  flows) are partially covered in CI via Robolectric
+- A production backend requires TLS + a domain; `network_security_config`
+  only permits cleartext to localhost/emulator addresses
+- Current versions: Android `v0.31.0`, npm CLI `0.1.0`
 
-## Testler
+## Testing
 
 ```bash
-make gates && make go && make android   # tam kapı seti
-make live-up && make live-test          # gerçek sshd/backend/gateway'e karşı
+make gates && make go && make android   # full gate set
+make live-up && make live-test          # against a real sshd/backend/gateway
 ```
 
-Canlı süitler env-gated'dir (`PA_LIVE_SSH`, `PA_LIVE_BACKEND`, `PA_LIVE_GW`);
-`scripts/live-env.sh` yerel fixture'ı kurar (test kullanıcısı, loopback
-gateway, preview sunucu).
+Live suites are env-gated (`PA_LIVE_SSH`, `PA_LIVE_BACKEND`, `PA_LIVE_GW`);
+`scripts/live-env.sh` sets up the local fixture (test user, loopback
+gateway, preview server).
 
-## Katkı
+## Contributing
 
-Kurallar ve test katmanları: [`CONTRIBUTING.md`](CONTRIBUTING.md).
-Reproducible build ve hash doğrulaması: [`REPRODUCING.md`](REPRODUCING.md).
-Üçüncü taraf bileşen listesi: [`NOTICE`](NOTICE).
+Rules and test layers: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Reproducible builds and hash verification: [`REPRODUCING.md`](REPRODUCING.md).
+Third-party component list: [`NOTICE`](NOTICE).
 
-Clean-room kuralı: referans ürünlerin marka/kod/asset'i kopyalanmaz;
-`docs/reference/` yalnız herkese açık davranışsal kaynak linki içerir ve
-hiçbir release artefaktına girmez.
+Clean-room rule: no brand, code, or assets are copied from reference
+products; `docs/reference/` only contains links to publicly available
+behavioral sources and never ships in any release artifact.
 
-## Lisans
+## License
 
-`GPL-3.0-or-later` — bkz. [`LICENSE`](LICENSE) ve [`NOTICE`](NOTICE).
-Upstream Mosh/ET kaynakları `native/` altında kendi lisanslarıyla.
+`GPL-3.0-or-later` — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+Upstream Mosh/ET sources under `native/` keep their own licenses.
