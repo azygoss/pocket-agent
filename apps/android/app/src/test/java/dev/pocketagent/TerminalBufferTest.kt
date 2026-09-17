@@ -141,6 +141,29 @@ class TerminalBufferTest {
         assertEquals("next", b.snapshot().last().text.trimEnd())
     }
 
+    @Test fun combinedPrivateModesParsed() {
+        // DEC private modlar noktalı virgülle birleşebilir: ?25;1049l tek
+        // dizide hem imleci gizler hem alt ekrandan çıkar.
+        val b = TerminalBuffer(cols = 40, rows = 4)
+        b.feed("\u001B[?1049h")
+        assertTrue(b.altScreenActive)
+        b.feed("\u001B[?25;1049l")
+        assertFalse(b.altScreenActive)
+        assertFalse(b.cursorVisible)
+    }
+
+    @Test fun softResetRearmsStaleCursorGuardInSameFrame() {
+        // Inline TUI çıkışı tek SSH frame'inde gelir: konumlandırma + CSI ! p
+        // + prompt. cursorPositioned reset'te düşürülmezse prompt eski
+        // metnin üstüne yazar; düşürülünce kelepçe prompt'u alta taşır.
+        val b = TerminalBuffer(cols = 40, rows = 10)
+        b.feed("agent satır 1\r\nagent satır 2\r\nagent satır 3\r\n")
+        b.feed("\u001B[2;1H\u001B[!proot@devbox:~# ")
+        val lines = b.snapshot().map { it.text }
+        assertEquals("agent satır 2", lines[1].trimEnd())
+        assertTrue("prompt içerik altında olmalı: $lines", lines[3].startsWith("root@devbox"))
+    }
+
     @Test fun softResetRestoresScrollRegion() {
         // Inline TUI çıkışı (DECSRR): daraltılmış scroll bölgesi sıfırlanmazsa
         // imleç eski metnin içinde hapsolur — pi/claude tarzı agent'ların

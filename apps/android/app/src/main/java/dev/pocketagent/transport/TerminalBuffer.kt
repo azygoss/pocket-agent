@@ -419,6 +419,7 @@ class TerminalBuffer(
         originMode = false
         cursorVisible = true
         wrapPending = false
+        cursorPositioned = false
     }
 
     private fun osc(s: String, i: Int): Int {
@@ -535,29 +536,30 @@ class TerminalBuffer(
     }
 
     private fun privateMode(final: Char, raw: String) {
-        val mode = raw.toIntOrNull() ?: return
-        when (mode) {
-            1049 -> if (final == 'h') { enterAlt(saveCursor = true, clear = true); cursorPositioned = true } else exitAlt(restoreCursor = true)
-            1047 -> if (final == 'h') { enterAlt(saveCursor = false, clear = false); cursorPositioned = true } else exitAlt(restoreCursor = false)
-            1048 -> { // yalnız imleç kaydet/geri yükle
-                val s = active()
-                cursorPositioned = true
-                if (final == 'h') { s.savedRow = s.crow; s.savedCol = s.ccol }
-                else { s.crow = s.savedRow; s.ccol = s.savedCol; s.clampCursor() }
+        raw.split(';').mapNotNull { it.toIntOrNull() }.forEach { mode ->
+            when (mode) {
+                1049 -> if (final == 'h') { enterAlt(saveCursor = true, clear = true); cursorPositioned = true } else exitAlt(restoreCursor = true)
+                1047 -> if (final == 'h') { enterAlt(saveCursor = false, clear = false); cursorPositioned = true } else exitAlt(restoreCursor = false)
+                1048 -> { // yalnız imleç kaydet/geri yükle
+                    val s = active()
+                    cursorPositioned = true
+                    if (final == 'h') { s.savedRow = s.crow; s.savedCol = s.ccol }
+                    else { s.crow = s.savedRow; s.ccol = s.savedCol; s.clampCursor() }
+                }
+                47 -> if (final == 'h') { enterAlt(saveCursor = false, clear = false); cursorPositioned = true } else exitAlt(restoreCursor = false)
+                25 -> cursorVisible = final == 'h'
+                7 -> autowrap = final == 'h'
+                6 -> { // DECOM: imleç adresleme kaydırma bölgesine göreli olur.
+                    originMode = final == 'h'
+                    cursorPositioned = true
+                    val s = active()
+                    s.crow = if (originMode) s.scrollTop else 0
+                    s.ccol = 0
+                    wrapPending = false
+                }
+                2004 -> bracketedPaste = final == 'h'
+                else -> {} // 1 (app cursor) vb: yoksay
             }
-            47 -> if (final == 'h') { enterAlt(saveCursor = false, clear = false); cursorPositioned = true } else exitAlt(restoreCursor = false)
-            25 -> cursorVisible = final == 'h'
-            7 -> autowrap = final == 'h'
-            6 -> { // DECOM: imleç adresleme kaydırma bölgesine göreli olur.
-                originMode = final == 'h'
-                cursorPositioned = true
-                val s = active()
-                s.crow = if (originMode) s.scrollTop else 0
-                s.ccol = 0
-                wrapPending = false
-            }
-            2004 -> bracketedPaste = final == 'h'
-            else -> {} // 1 (app cursor) vb: yoksay
         }
     }
 

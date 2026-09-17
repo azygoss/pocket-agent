@@ -50,7 +50,7 @@ class FakeSshTransport : SshTransport {
 }
 
 // Ekran ViewModel'i: TerminalBuffer (satır-tabanlı, stilli) + giriş + boyut +
-// transport rozeti + komut geçmişi. frames = düz metin görünüm (test uyumu).
+// transport rozeti + komut geçmişi.
 class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_000) {
     private val buffer = TerminalBuffer(maxLines)
     private val _lines = MutableStateFlow<List<TermLine>>(emptyList())
@@ -81,8 +81,6 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     // Bracketed paste: uzak taraf 2004 açtıysa çok satırlı yapıştırma
     // ESC[200~ ... ESC[201~ arasına sarılır (yanlışlıkla çalıştırma yok).
     val bracketedPaste: Boolean get() = buffer.bracketedPaste
-    private val _frames = MutableStateFlow<List<String>>(emptyList())
-    val frames: StateFlow<List<String>> = _frames
     // Varsayılan değil son ölçülen viewport ile başla: yeni oturumun PTY'si
     // gerçek ekran boyutuyla açılır — aksi halde 80×24 açılıp hemen ardından
     // resize gider ve uzak shell (zsh/fish) her SIGWINCH'te prompt'u yeniden
@@ -108,7 +106,6 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
         buffer.feed(String(all, 0, safe, Charsets.UTF_8))
         val snap = buffer.snapshot()
         _lines.value = snap
-        _frames.value = snap.map { it.text }
         _cursor.value = buffer.cursorPosition()
         _altScreen.value = buffer.altScreenActive
         badge = f.transport.name
@@ -132,7 +129,7 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     }
 
     fun setBadge(t: TerminalTransport) { badge = t.name }
-    fun clear() { buffer.clear(); pendingBytes = ByteArray(0); _lines.value = emptyList(); _frames.value = emptyList(); _cursor.value = null; _altScreen.value = false }
+    fun clear() { buffer.clear(); pendingBytes = ByteArray(0); _lines.value = emptyList(); _cursor.value = null; _altScreen.value = false }
 
     // Viewport ölçüsü değişti: buffer yeniden boyutlanır (üstten taşan satırlar
     // scrollback'e gider); PTY resize'ı UI katmanında transport'a gönderilir.
@@ -143,7 +140,6 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
         buffer.setScreenSize(newSize.cols, newSize.rows)
         val snap = buffer.snapshot()
         _lines.value = snap
-        _frames.value = snap.map { it.text }
         _cursor.value = buffer.cursorPosition()
     }
 

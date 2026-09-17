@@ -45,7 +45,7 @@ cmd_up() {
     [ -f "$KEY" ] || { echo "hata: $KEY yok" >&2; exit 1; }
     go build -o /tmp/pa-backend ./backend/cmd/server
     go build -o /tmp/pa-hook ./cmd/pocket-agent-hook
-    [ -f "$PREV/index.html" ] || echo "PA_PREVIEW_OK" >"$PREV/index.html"
+    echo "PA_PREVIEW_OK pa-preview-marker" >"$PREV/index.html"
     spawn backend 8080 /tmp/pa-backend
     spawn gateway 24543 env "POCKET_GATEWAY_TOKEN=$GW_TOKEN" /tmp/pa-hook gateway serve --root "$WS"
     spawn preview 8899 python3 -m http.server 8899 --bind 127.0.0.1 --directory "$PREV"
@@ -65,6 +65,7 @@ export PA_LIVE_PEM=$KEY
 export PA_LIVE_BACKEND=http://127.0.0.1:8080
 export PA_LIVE_GW=1
 export PA_LIVE_GW_TOKEN=$GW_TOKEN
+export POCKET_HOME=/home/$LIVE_USER
 EOF
 }
 

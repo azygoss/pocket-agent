@@ -919,8 +919,11 @@ private fun ActiveTerminal(
                                         val hasMatch = matchSet.contains(idx)
                                         val cur = cursor
                                         val cursorCol = if (cur != null && cur.first == idx) cur.second else -1
+                                        val annotated = remember(line, cursorCol, console.term.ansi, console.term.cursor) {
+                                            line.toAnnotatedString(cursorCol, Color(console.term.cursor), console.term.ansi)
+                                        }
                                         Text(
-                                            line.toAnnotatedString(cursorCol, Color(console.term.cursor), console.term.ansi),
+                                            annotated,
                                             color = termFg,
                                             fontFamily = LocalMonoFont.current,
                                             fontSize = (13 * settings.theme.fontScale).sp,

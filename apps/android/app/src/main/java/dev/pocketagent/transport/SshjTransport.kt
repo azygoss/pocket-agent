@@ -158,7 +158,7 @@ class SshjTransport(
     private val readScope: CoroutineScope,
 ) : SshTransport, SftpSession, GatewayTunnel, ExecCapable, TcpipCapable {
     override val transport = TerminalTransport.SSH
-    private val chan = Channel<TerminalFrame>(Channel.UNLIMITED)
+    private val chan = Channel<TerminalFrame>(64)
     @Volatile private var closed = false
     @Volatile private var sftpClient: net.schmizz.sshj.sftp.SFTPClient? = null
 
@@ -295,7 +295,7 @@ class SshjTransport(
                 while (!closed) {
                     val n = shell.inputStream.read(buf)
                     if (n < 0) break
-                    if (n > 0) chan.trySend(TerminalFrame(buf.copyOf(n), transport))
+                    if (n > 0) chan.send(TerminalFrame(buf.copyOf(n), transport))
                 }
             } catch (_: Throwable) {
             } finally {

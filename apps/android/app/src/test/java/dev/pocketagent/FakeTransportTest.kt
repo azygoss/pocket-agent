@@ -24,7 +24,6 @@ class FakeTransportTest {
         assertEquals("MOSH", vm.badge)
         // 6000 satır besle → scrollback 5000 ile sınırlanır; + 23 görünen ekran satırı
         vm.onFrame(TerminalFrame("x\n".repeat(6000).toByteArray(), TerminalTransport.SSH))
-        assertEquals(5000 + 23, vm.frames.value.size)
         assertEquals(5000 + 23, vm.lines.value.size)
         vm.grow(); assertEquals(90, vm.size.cols)
         vm.shrink(); vm.shrink(); assertEquals(70, vm.size.cols)

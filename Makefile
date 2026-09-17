@@ -51,7 +51,7 @@ live-env: ## PA_LIVE_* export satırlarını bas (eval ile kullan)
 	./scripts/live-env.sh env
 
 live-test: live-up ## Tüm canlı env-gated süitler
-	cd apps/android && eval `../scripts/live-env.sh env` && \
+	cd apps/android && eval `../../scripts/live-env.sh env` && \
 	  ./gradlew :app:testDebugUnitTest --tests 'dev.pocketagent.*LiveTest' --tests 'dev.pocketagent.MoshBootstrapTest' --tests 'dev.pocketagent.PairingLiveTest'
 
 package: ## CLI tarball'ları (dist/)

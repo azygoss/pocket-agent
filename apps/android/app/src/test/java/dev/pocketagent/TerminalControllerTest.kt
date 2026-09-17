@@ -90,7 +90,7 @@ class TerminalControllerTest {
         assertNotNull(store.lookup("h", 22))
 
         c.send(TerminalInput.Text("whoami\n"))
-        await { c.vm.frames.value.any { it.contains("> whoami") } }
+        await { c.vm.lines.value.any { it.text.contains("> whoami") } }
         c.disconnect()
         assertEquals(ConnectionState.CLOSED, c.state.value)
         assertNull(c.connectedTo.value)
@@ -204,13 +204,17 @@ class AutoTmuxTest {
             tmuxName = "pa-test0001",
         )
         withTimeout(5000) {
-            while (transport.sent.filterIsInstance<TerminalInput.Text>().size < 3) delay(20)
+            while (transport.sent.none { it is TerminalInput.Text && it.s.contains("codex") }) delay(20)
         }
         val texts = transport.sent.filterIsInstance<TerminalInput.Text>().map { it.s }
-        // clear → tmux → profil komutu: temiz açılış, komut tmux'un içine düşer.
-        assertTrue(texts[0].contains("clear"))
-        assertTrue(texts[1].contains("tmux new-session -A -s 'pa-test0001'"))
-        assertTrue(texts[2].contains("codex"))
+        // Açılış komutları tek PTY yazısında gider: clear → tmux → profil
+        // komutu, bu sırayla — komut tmux oturumunun içine düşer.
+        assertEquals(1, texts.size)
+        val one = texts.single()
+        val iClear = one.indexOf("clear")
+        val iTmux = one.indexOf("tmux new-session -A -s 'pa-test0001'")
+        val iCodex = one.indexOf("codex")
+        assertTrue("clear < tmux < codex sırası beklenirdi: $one", iClear >= 0 && iTmux > iClear && iCodex > iTmux)
         c.disconnect()
     }
 }

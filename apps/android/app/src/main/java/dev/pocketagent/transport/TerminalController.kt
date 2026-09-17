@@ -132,9 +132,9 @@ class TerminalController(
                     explicit?.let { add(it) }
                 }
                 scope.launch {
-                    startupCmds.forEach { cmd ->
-                        kotlinx.coroutines.delay(600)
-                        runCatching { t.send(TerminalInput.Text("$cmd\n")) }
+                    kotlinx.coroutines.delay(600)
+                    runCatching {
+                        t.send(TerminalInput.Text(startupCmds.joinToString("\n", postfix = "\n")))
                     }
                 }
                 readLoop(t)
@@ -295,14 +295,15 @@ class TerminalController(
                 val first = t.read()
                 // Burst toplama: hazır bekleyen frame'leri tek güncellemeye
                 // kat — UI her 1KB parçada değil, batch başına recombine olur.
-                var bytes = first.bytes
+                val out = java.io.ByteArrayOutputStream(first.bytes.size.coerceAtLeast(32 * 1024))
+                out.write(first.bytes)
                 var drained = 0
-                while (drained < 64 && bytes.size < 256 * 1024) {
+                while (drained < 64 && out.size() < 256 * 1024) {
                     val nxt = t.poll() ?: break
-                    bytes += nxt.bytes
+                    out.write(nxt.bytes)
                     drained++
                 }
-                vm.onFrame(TerminalFrame(bytes, first.transport))
+                vm.onFrame(TerminalFrame(out.toByteArray(), first.transport))
             }
         } catch (_: Exception) {
             // channel closed / EOF / remote hangup
