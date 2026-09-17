@@ -1,0 +1,28 @@
+{
+  "name": "pocket-agent-cli",
+  "version": "0.1.0",
+  "description": "Host CLI for the Pocket Agent Android terminal companion",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/azygoss/pocket-agent.git"
+  },
+  "homepage": "https://github.com/azygoss/pocket-agent",
+  "bugs": "https://github.com/azygoss/pocket-agent/issues",
+  "bin": {
+    "pocket-agent": "bin/pocket-agent.js",
+    "pocket-agent-hook": "bin/pocket-agent.js"
+  },
+  "files": [
+    "bin",
+    "vendor",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": ["ssh", "terminal", "agent", "self-hosted"]
+}

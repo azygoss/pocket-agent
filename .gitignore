@@ -14,6 +14,7 @@ apps/android/local.properties
 dist/
 *.test
 /vendor/
+/packages/npm/vendor/
 
 # Secrets — never commit
 *.jks

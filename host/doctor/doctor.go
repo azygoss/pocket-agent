@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"syscall"
 	"time"
 )
 
@@ -127,21 +126,7 @@ func sshdProbe() Check {
 	return Check{Name: "sshd", OK: true, Info: ":22 dinliyor"}
 }
 
-// diskFree: home dosya sisteminde boş alan (%5 altı veya <100MB fail).
-func diskFree(home string) Check {
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(home, &st); err != nil {
-		return Check{Name: "disk", OK: true, Info: "ölçülemedi"}
-	}
-	free := st.Bavail * uint64(st.Bsize)
-	total := st.Blocks * uint64(st.Bsize)
-	pct := 0
-	if total > 0 {
-		pct = int(free * 100 / total)
-	}
-	ok := free > 100<<20 && pct > 5
-	return Check{Name: "disk", OK: ok, Info: fmt.Sprintf("%.1fGiB boş (%%%d)", float64(free)/(1<<30), pct)}
-}
+// diskFree platform dosyalarında: disk_unix.go (statfs) / disk_windows.go (stub).
 
 // systemdUser: user unit'leri çalışıyor mu? (service install için önkoşul)
 func systemdUser() Check {

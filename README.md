@@ -36,7 +36,7 @@ source ./scripts/dev-env.sh
 
 1. **Backend**: `deploy/docker-compose`'ta `.env` doldur → `docker compose up -d`
    (ayrıntı: `docs/install.md`, tek komutluk kurulum: `deploy/docker-compose/bootstrap.sh`)
-2. **Host**: `pocket-agent onboard` — daemon + gateway + agent hook'ları + eşleştirme QR'ı
+2. **Host**: `npm install -g pocket-agent-cli` → `pocket-agent onboard` — daemon + gateway + agent hook'ları + eşleştirme QR'ı
 3. **Android**: QR'ı tara ya da XXXX-XXXX kodu gir — bitti.
 
 ## Clean-room kuralı

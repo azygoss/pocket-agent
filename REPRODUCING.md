@@ -57,6 +57,7 @@ Env yoksa release, debug anahtarıyla imzalanır — bu çıktı dağıtım içi
 
 ```bash
 ./scripts/package-cli.sh   # dist/: linux/mac amd64+arm64 tarballs + SHA256SUMS
+./scripts/package-npm.sh    # dist/pocket-agent-cli-0.1.0.tgz (5 platform binary + Node wrapper)
 ./scripts/sbom.sh          # dist/sbom-go.json (go modülleri) + imaj listesi
 ```
 

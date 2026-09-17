@@ -1,6 +1,6 @@
 # Pocket Agent — tek giriş noktası. HANDOFF.md §5'in hedeflere çevrilmiş hali.
 .PHONY: all gates go proto android lint unit apk release live-up live-test \
-        package sbom ccs mosh clean help
+        package npm-package sbom ccs mosh clean help
 
 GRADLE := apps/android/gradlew
 export ANDROID_HOME ?= /opt/android-sdk
@@ -56,6 +56,9 @@ live-test: live-up ## Tüm canlı env-gated süitler
 
 package: ## CLI tarball'ları (dist/)
 	./scripts/package-cli.sh
+
+npm-package: ## npm host CLI paketi (dist/pocket-agent-cli-*.tgz)
+	./scripts/package-npm.sh
 
 sbom: ## SBOM üret
 	./scripts/sbom.sh

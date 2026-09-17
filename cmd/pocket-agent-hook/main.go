@@ -20,7 +20,8 @@ import (
 	hosttmux "github.com/pocket-agent/pocket-agent/host/tmux"
 )
 
-const version = "0.1.0-p03"
+// Paketleme/release build'leri -X main.version ile gerçek sürümü basar.
+var version = "dev"
 
 func home() string {
 	if h := os.Getenv("POCKET_HOME"); h != "" {

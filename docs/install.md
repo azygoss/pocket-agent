@@ -24,8 +24,15 @@ Yedekleme: `./backup.sh` → `backup-YYYY-MM-DD.sql`. Geri yükleme:
 ## 2) Host (pocket-agent CLI)
 
 ```bash
+npm install -g pocket-agent-cli
+pocket-agent onboard          # tek komut: daemon+gateway+hooks+QR
+```
+
+Node.js 18+ gerekir. Paket Linux/macOS x64-arm64 ve Windows x64 binary'lerini içerir; hostta Go gerekmez. Tarball ile çevrimdışı kurulum alternatifi:
+
+```bash
 tar xzf dist/pocket-agent-*-linux-amd64.tar.gz
-./pocket-agent-hook-linux-amd64 onboard          # tek komut: daemon+gateway+hooks+QR
+./pocket-agent-hook-linux-amd64 onboard
 ```
 
 `onboard` şunları yapar (hepsi idempotent):
