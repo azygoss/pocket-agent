@@ -18,5 +18,3 @@ Kaynaklar:
 - https://getmoshi.app/docs/hooks
 - https://getmoshi.app/privacy
 - https://getmoshi.app/terms
-
-Sonraki adım (P00): `feature-matrix.md` iskeletini çıkar — her satır: özellik | kaynak URL | Pocket Agent karşılığı (Pxx).

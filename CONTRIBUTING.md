@@ -8,7 +8,7 @@
 4. Canlı özellik (SSH/backend/gateway/SFTP) değiştirdiysen:
    `make live-up && make live-test`.
 5. Conventional commit: `feat(Pxx): …`, `fix(Pxx): …`.
-6. Davranışsal bir karar verdiysen `decisions.tsv`'ye satır ekle (append-only).
+6. Davranış/mimari değişikliği PR açıklamasında gerekçe ve test kanıtı taşımalı.
 
 ## Test katmanları
 
@@ -31,4 +31,4 @@
 
 - `apps/android` versionCode/versionName bump + `scripts/build-release.sh`
   (imzalı APK+AAB, `apksigner verify`, `release-checksums`).
-- CLI paketleri: `make package` → `dist/`.
+- CLI paketleri: `make package` → `dist/`; npm paketi: `make npm-package`.

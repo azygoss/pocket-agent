@@ -1,7 +1,9 @@
 # AGENTS — Pocket Agent
 
-Agent/agentik oturumlar için proje gerçekleri. Detay durum: `HANDOFF.md`,
-tek doğruluk kaynağı: `plan.md` (v2), kararlar: `decisions.tsv` (append-only).
+Agent/agentik oturumlar için proje gerçekleri. Public doğruluk kaynağı:
+`README.md` + `docs/`. `HANDOFF.md` / `plan.md` / `decisions.tsv` gibi iç
+geliştirme kayıtları `.gitignore`'dür — cihazda bulunabilir ama asla
+commit edilmez/push edilmez.
 
 ## Derleme / test
 
@@ -22,7 +24,7 @@ make live-test    # canlı süitler (SSH/backend/SFTP/gateway/mosh/pairing)
 ## Kurallar
 
 - Conventional commits: `feat(Pxx): …` / `fix(Pxx): …`.
-- `decisions.tsv` append-only — karar kaydı eklerken satır ekle, düzenleme.
+- Davranış/mimari karar commit mesajı + PR açıklamasında gerekçeyle belgelenir.
 - Clean-room: referans projenin marka/kod/asset'ini kopyalamak yasak; `scripts/secret-scan.sh` kapısı (ayrıntı README).
 - `docs/reference/**` yayın paketine girmez (`check-packaging.sh`).
 - Secret'lar asla loglanmaz/diskte plaintext durmaz; tokenlar hash-only.

@@ -39,4 +39,15 @@ upload-keystore*
 # (packaging scripts must explicitly exclude docs/reference/)
 dist-checksums.txt
 build/release-keys/
-apps/android/.kotlin/
+
+# Local project records / generated design sources — cihazda kalır, public repoya girmez
+/HANDOFF.md
+/plan.md
+/decisions.tsv
+/environment.yaml
+/apps/android/README.md
+/apps/android/.kotlin/
+/assets/icon-source.jpg
+/assets/icon-v2.png
+/native/et/
+/web/diff-viewer/

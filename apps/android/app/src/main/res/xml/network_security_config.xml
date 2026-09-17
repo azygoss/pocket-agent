@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- P02/P04: cleartext HTTP yalnız self-hosted DEV backend adresine açık.
+<!-- P02/P04: cleartext HTTP yalnız yerel geliştirme/emülatör adreslerine açık.
      Prod kurulum Caddy arkasında TLS zorunlu (deploy/docker-compose);
      SSH/SFTP trafiği ham soket olduğundan bu kuraldan etkilenmez. -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">203.0.113.10</domain>
         <domain includeSubdomains="false">localhost</domain>
         <domain includeSubdomains="false">127.0.0.1</domain>
         <domain includeSubdomains="true">10.0.2.2</domain>
