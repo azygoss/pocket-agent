@@ -149,6 +149,8 @@ class TerminalBuffer(
     private var link: String? = null // OSC 8 açık link
     var bracketedPaste = false
         private set
+    var synchronizedOutput = false
+        private set
     private var wrapPending = false
     private var insertMode = false // IRM (CSI 4 h)
     private var originMode = false // DECOM (CSI ? 6 h) — CUP bölge-göreli
@@ -163,6 +165,8 @@ class TerminalBuffer(
     var onTitle: ((String) -> Unit)? = null
     // BEL (\u0007): uzaktan zil — UI katmanı haptic/bildirime çevirir.
     var onBell: (() -> Unit)? = null
+    // DSR/DA/DECRQM sorgu cevapları — uygulama PTY'ye geri yazar.
+    var onResponse: ((String) -> Unit)? = null
 
     var totalFed: Long = 0L
         private set
@@ -175,6 +179,8 @@ class TerminalBuffer(
         val s = active()
         return (if (useAlt) s.crow else scrollback.size + s.crow) to s.ccol
     }
+
+    fun endSynchronizedOutput() { synchronizedOutput = false }
 
     val scrollbackSize: Int get() = scrollback.size
     val lineCount: Int get() = (if (useAlt) 0 else scrollback.size) + if (activeIsBlank()) 0 else active().usedRows()
@@ -198,6 +204,7 @@ class TerminalBuffer(
         decGraphics = false
         wrapPending = false
         pending = ""
+        synchronizedOutput = false
     }
 
     fun setScreenSize(newCols: Int, newRows: Int) {
@@ -405,6 +412,7 @@ class TerminalBuffer(
         insertMode = false
         originMode = false
         wrapPending = false
+        synchronizedOutput = false
     }
 
     // DECSRR (ESC [ ! p): ekran içeriği korunur; bölge/modlar normale döner.
@@ -420,6 +428,7 @@ class TerminalBuffer(
         cursorVisible = true
         wrapPending = false
         cursorPositioned = false
+        synchronizedOutput = false
     }
 
     private fun osc(s: String, i: Int): Int {
@@ -471,6 +480,17 @@ class TerminalBuffer(
     }
 
     private fun handleCsi(final: Char, raw: String) {
+        // DECRQM (CSI ? mode $ p): mod durumu sorgusu — 1 set, 2 reset, 0 bilinmiyor.
+        if (final == 'p' && raw.startsWith('?') && raw.endsWith('$')) {
+            raw.substring(1, raw.length - 1).toIntOrNull()?.let { mode ->
+                val state = when (mode) {
+                    2026 -> if (synchronizedOutput) 1 else 2
+                    else -> 0
+                }
+                onResponse?.invoke("\u001B[?$mode;$state\$y")
+            }
+            return
+        }
         if (raw.startsWith('?')) { privateMode(final, raw.substring(1)); return }
         // DECSRR (ESC [ ! p): soft reset — scroll bölgesi sıfırlanır, modlar
         // normale döner. İşlenmezse daraltılmış bölge kalır ve imleç eski
@@ -531,6 +551,14 @@ class TerminalBuffer(
             }
             's' -> { s.savedRow = s.crow; s.savedCol = s.ccol }
             'u' -> { s.crow = s.savedRow; s.ccol = s.savedCol; s.clampCursor(); wrapPending = false }
+            'n' -> when (p(0, 0)) {
+                5 -> onResponse?.invoke("\u001B[0n")
+                6 -> {
+                    val row = s.crow - if (originMode) s.scrollTop else 0
+                    onResponse?.invoke("\u001B[${row + 1};${s.ccol + 1}R")
+                }
+            }
+            'c' -> if (raw.isEmpty() || raw == "0") onResponse?.invoke("\u001B[?1;2c")
             else -> {} // t/h/l dışı modlar, raporlar, fare: yoksay
         }
     }
@@ -558,6 +586,7 @@ class TerminalBuffer(
                     wrapPending = false
                 }
                 2004 -> bracketedPaste = final == 'h'
+                2026 -> synchronizedOutput = final == 'h'
                 else -> {} // 1 (app cursor) vb: yoksay
             }
         }

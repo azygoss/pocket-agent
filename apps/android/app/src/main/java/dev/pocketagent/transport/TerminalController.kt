@@ -19,6 +19,9 @@ class TerminalController(
 ) {
     val vm = TerminalViewModel(SessionId("session:local"))
 
+    // Terminal sorgu cevapları (DSR/DA/DECRQM) PTY'ye geri yazılır.
+    init { vm.onResponse = { send(TerminalInput.Text(it)) } }
+
     private val _state = MutableStateFlow(ConnectionState.CLOSED)
     val state: StateFlow<ConnectionState> = _state
 
@@ -45,6 +48,7 @@ class TerminalController(
     // Auth/host-key hataları hard-stop kalır (P08) — yalnız ağ kopması/EOF retried edilir.
     var autoReconnectOnDrop: Boolean = true
     var retryBaseMs: Long = 2_000 // testlerde kısaltılır
+    var synchronizedOutputTimeoutMs: Long = 1_000 // ?2026 takılırsa emniyet süresi
     private var manualClose: Boolean = true
     private var retryCount = 0
 
@@ -292,7 +296,18 @@ class TerminalController(
     private suspend fun readLoop(t: SshTransport) {
         try {
             while (currentCoroutineContext().isActive) {
-                val first = t.read()
+                // ?2026 açıkken yeni frame beklenir ama kapanış hiç gelmezse
+                // (ölü TUI) ekran donuk kalmasın: kısa inaktivite sonrası
+                // sync'i kapatıp birikmiş içeriği yayınla.
+                val first = if (vm.synchronizedOutput) {
+                    kotlinx.coroutines.withTimeoutOrNull(synchronizedOutputTimeoutMs) { t.read() }
+                } else {
+                    t.read()
+                }
+                if (first == null) {
+                    vm.flushSynchronizedOutput()
+                    continue
+                }
                 // Burst toplama: hazır bekleyen frame'leri tek güncellemeye
                 // kat — UI her 1KB parçada değil, batch başına recombine olur.
                 val out = java.io.ByteArrayOutputStream(first.bytes.size.coerceAtLeast(32 * 1024))

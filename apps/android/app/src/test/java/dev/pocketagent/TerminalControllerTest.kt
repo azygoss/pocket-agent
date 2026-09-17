@@ -122,6 +122,52 @@ class TerminalControllerTest {
         c.disconnect()
         assertFalse(c.canReconnect() && c.state.value == ConnectionState.ACTIVE)
     }
+
+    private fun pinnedController(transport: FakeSshTransport): TerminalController {
+        val f = File.createTempFile("khst", null).apply { delete() }
+        val store = TofuHostKeyStore(f)
+        store.pin(PresentedKey("h", 22, "ssh-ed25519", byteArrayOf(1, 2, 3)))
+        val connector = object : SshConnector {
+            override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport =
+                transport.also { it.openPty("xterm-256color", size) }
+        }
+        return TerminalController(scope, connector, store)
+    }
+
+    // ?2026 açıkken tutulan çıktı, kapanış dizisi gelmezse inaktivite
+    // timeout'unda flush'lanır — ekran donuk kalmaz.
+    @Test fun synchronizedOutputFlushesAfterInactivityTimeout() = runBlocking {
+        val transport = FakeSshTransport()
+        val c = pinnedController(transport)
+        c.synchronizedOutputTimeoutMs = 1_000
+        c.connect(conn, Secret.Password("pw"))
+        await { c.state.value == ConnectionState.ACTIVE }
+        transport.emitOutput("before\r\n")
+        await { c.vm.lines.value.any { it.text.contains("before") } }
+        transport.emitOutput("\u001B[?2026hheld")
+        await { c.vm.synchronizedOutput } // frame işlendi, sync açık
+        assertTrue(
+            "sync sürerken satır yayınlanmamalı",
+            c.vm.lines.value.none { it.text.contains("held") },
+        )
+        await { c.vm.lines.value.any { it.text.contains("held") } }
+        c.disconnect()
+    }
+
+    // CSI 6n → buffer onResponse → controller → PTY'ye CPR yazılır.
+    @Test fun cursorReportResponseFlowsToTransport() = runBlocking {
+        val transport = FakeSshTransport()
+        val c = pinnedController(transport)
+        c.connect(conn, Secret.Password("pw"))
+        await { c.state.value == ConnectionState.ACTIVE }
+        transport.emitOutput("\u001B[6n")
+        await {
+            transport.sent.any {
+                it is TerminalInput.Text && it.s.matches(Regex("\u001B\\[\\d+;\\d+R"))
+            }
+        }
+        c.disconnect()
+    }
 }
 
 // Her oturum kendi pa-<id> tmux'una sarılır (0.28.6+): kopma/yeniden

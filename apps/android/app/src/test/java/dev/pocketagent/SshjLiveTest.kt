@@ -12,6 +12,7 @@ import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
@@ -53,6 +54,19 @@ class SshjLiveTest {
         }
         assertTrue(sb.toString().contains("PA_ALIVE_42"))
         assertTrue(sb.toString().contains(user))
+
+        // 3) Boşta dayanıklılık: 17s bekle → yeni komut. 10s SO_TIMEOUT ve
+        // başlamayan keepalive altında bu okuma ölürdü; 15s heartbeat
+        // bağlantıyı ayakta tutmalı.
+        delay(17_000)
+        t.send(TerminalInput.Text("echo PA_IDLE_OK\n"))
+        val idleSb = StringBuilder()
+        withTimeout(15_000) {
+            while (!idleSb.contains("PA_IDLE_OK")) {
+                idleSb.append(t.read().bytes.decodeToString())
+            }
+        }
+        assertTrue(idleSb.toString().contains("PA_IDLE_OK"))
         t.close()
     }
 }

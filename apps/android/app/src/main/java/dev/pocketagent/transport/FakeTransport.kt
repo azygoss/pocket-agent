@@ -47,6 +47,11 @@ class FakeSshTransport : SshTransport {
 
     override suspend fun resize(size: TerminalSize) = send(TerminalInput.Resize(size))
     override fun close() { closed = true; outbox.close() }
+
+    // Testlerde uzaktan çıktıyı kuyruğa enjekte eder (controller'a send gerekmez).
+    fun emitOutput(text: String) {
+        outbox.trySend(TerminalFrame(text.toByteArray(), transport))
+    }
 }
 
 // Ekran ViewModel'i: TerminalBuffer (satır-tabanlı, stilli) + giriş + boyut +
@@ -74,6 +79,7 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
         buffer.onTitle = { _windowTitle.value = it }
         buffer.onClipboard = { _pendingClipboard.value = it }
         buffer.onBell = { _bellCount.value += 1 }
+        buffer.onResponse = { onResponse?.invoke(it) }
     }
 
     fun consumeClipboard() { _pendingClipboard.value = null }
@@ -81,6 +87,10 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     // Bracketed paste: uzak taraf 2004 açtıysa çok satırlı yapıştırma
     // ESC[200~ ... ESC[201~ arasına sarılır (yanlışlıkla çalıştırma yok).
     val bracketedPaste: Boolean get() = buffer.bracketedPaste
+    // ?2026 synchronized output: açıkken buffer beslenir ama yayın bekler.
+    val synchronizedOutput: Boolean get() = buffer.synchronizedOutput
+    // Buffer'ın sorgu cevapları (DSR/DA/DECRQM) — controller PTY'ye yazar.
+    var onResponse: ((String) -> Unit)? = null
     // Varsayılan değil son ölçülen viewport ile başla: yeni oturumun PTY'si
     // gerçek ekran boyutuyla açılır — aksi halde 80×24 açılıp hemen ardından
     // resize gider ve uzak shell (zsh/fish) her SIGWINCH'te prompt'u yeniden
@@ -104,12 +114,21 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
         pendingBytes = all.copyOfRange(safe, all.size)
         if (safe == 0) return
         buffer.feed(String(all, 0, safe, Charsets.UTF_8))
+        // ?2026 açıkken frame'ler birikir — kapanışta atomik yayınlanır.
+        if (!buffer.synchronizedOutput) publish()
+        badge = f.transport.name
+    }
+
+    private fun publish() {
         val snap = buffer.snapshot()
         _lines.value = snap
         _cursor.value = buffer.cursorPosition()
         _altScreen.value = buffer.altScreenActive
-        badge = f.transport.name
     }
+
+    // Sync kapanışı gelmeden takılı kalırsa (zombie TUI/resize) dışarıdan
+    // bitir + birikmiş içeriği yayınla.
+    fun flushSynchronizedOutput() { buffer.endSynchronizedOutput(); publish() }
 
     // Sondaki eksik UTF-8 dizisinin başlangıcını döner (tamamsa size).
     private fun utf8SafeEnd(b: ByteArray): Int {
@@ -138,9 +157,8 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
         size = newSize
         lastViewportSize = newSize
         buffer.setScreenSize(newSize.cols, newSize.rows)
-        val snap = buffer.snapshot()
-        _lines.value = snap
-        _cursor.value = buffer.cursorPosition()
+        buffer.endSynchronizedOutput()
+        publish()
     }
 
     val altScreenActive: Boolean get() = buffer.altScreenActive

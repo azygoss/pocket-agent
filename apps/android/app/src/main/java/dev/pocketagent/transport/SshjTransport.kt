@@ -66,7 +66,6 @@ class SshjConnector(
             val verifier = TofuVerifier(hostKeys, conn.host, conn.port)
             ssh.addHostKeyVerifier(verifier)
             ssh.connectTimeout = connectTimeoutMs
-            ssh.timeout = connectTimeoutMs
             try {
                 ssh.connect(conn.host, conn.port)
             } catch (e: TransportException) {
@@ -80,6 +79,13 @@ class SshjConnector(
                 }
                 throw e
             }
+            // 15s heartbeat: NAT/boşta kesilmelere karşı bağlantı canlı kalır.
+            // Interval'i connect'ten ÖNCE set etmek yasak: onConnect thread'i
+            // doKex'ten önce başlatır ve Heartbeater IGNORE'u KEXINIT'ten önce
+            // yollar — strict-KEX sshd bağlantıyı keser. Elle başlatılır;
+            // disconnect() interrupt eder.
+            ssh.connection.keepAlive.keepAliveInterval = 15
+            ssh.connection.keepAlive.start()
             try {
                 authenticate(ssh, conn, secret)
             } catch (e: Exception) {
@@ -89,8 +95,6 @@ class SshjConnector(
             val session = ssh.startSession()
             session.allocatePTY("xterm-256color", size.cols, size.rows, 0, 0, emptyMap())
             val shell = session.startShell()
-            // 30s heartbeat: NAT/boşta kesilmelere karşı bağlantı canlı kalır.
-            runCatching { ssh.connection.keepAlive.keepAliveInterval = 30 }
             SshjTransport(ssh, session, shell, size, readScope).also { it.startReader() }
         }
 

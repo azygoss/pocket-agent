@@ -28,4 +28,15 @@ class FakeTransportTest {
         vm.grow(); assertEquals(90, vm.size.cols)
         vm.shrink(); vm.shrink(); assertEquals(70, vm.size.cols)
     }
+    @Test fun synchronizedOutputPublishesAtomically() {
+        val vm = TerminalViewModel(SessionId("s2"))
+        vm.onFrame(TerminalFrame("old\r\n".toByteArray(), TerminalTransport.SSH))
+        assertEquals("old", vm.lines.value.last().text.trimEnd())
+        // ?2026h açıkken buffer beslenir ama satırlar yayınlanmaz.
+        vm.onFrame(TerminalFrame("\u001B[?2026h\u001B[2J\u001B[Hpartial".toByteArray(), TerminalTransport.SSH))
+        assertEquals("old", vm.lines.value.last().text.trimEnd())
+        // ?2026l kapanışıyla tam içerik atomik görünür.
+        vm.onFrame(TerminalFrame("-done\u001B[?2026l".toByteArray(), TerminalTransport.SSH))
+        assertEquals("partial-done", vm.lines.value.last().text.trimEnd())
+    }
 }

@@ -164,6 +164,43 @@ class TerminalBufferTest {
         assertTrue("prompt içerik altında olmalı: $lines", lines[3].startsWith("root@devbox"))
     }
 
+    @Test fun synchronizedOutputModeToggles() {
+        val b = TerminalBuffer()
+        assertFalse(b.synchronizedOutput)
+        b.feed("\u001B[?2026h")
+        assertTrue(b.synchronizedOutput)
+        b.feed("\u001B[?2026l")
+        assertFalse(b.synchronizedOutput)
+        b.feed("\u001B[?2026h")
+        b.endSynchronizedOutput()
+        assertFalse(b.synchronizedOutput)
+        // CSI ! p soft reset de sync'i kapatır.
+        b.feed("\u001B[?2026h\u001B[!p")
+        assertFalse(b.synchronizedOutput)
+    }
+
+    @Test fun deviceQueriesGetExactResponses() {
+        // DSR 5/6, primary DA ve DECRQM ?2026$p — cevaplar onResponse'a akar.
+        val b = TerminalBuffer(cols = 40, rows = 10)
+        val got = mutableListOf<String>()
+        b.onResponse = { got.add(it) }
+        b.feed("\u001B[5n")         // DSR: status OK
+        b.feed("ab\r\ncd")          // imleç satır 1, sütun 2 (0-based)
+        b.feed("\u001B[6n")         // CPR → 2;3
+        b.feed("\u001B[c\u001B[0c") // primary DA (boş ve açık 0)
+        b.feed("\u001B[>c")         // secondary DA → cevap yok
+        b.feed("\u001B[?2026\$p")   // DECRQM: sync kapalı → 2 (reset)
+        b.feed("\u001B[?2026h")
+        b.feed("\u001B[?2026\$p")   // DECRQM: sync açık → 1 (set)
+        assertEquals(
+            listOf(
+                "\u001B[0n", "\u001B[2;3R", "\u001B[?1;2c", "\u001B[?1;2c",
+                "\u001B[?2026;2\$y", "\u001B[?2026;1\$y",
+            ),
+            got,
+        )
+    }
+
     @Test fun softResetRestoresScrollRegion() {
         // Inline TUI çıkışı (DECSRR): daraltılmış scroll bölgesi sıfırlanmazsa
         // imleç eski metnin içinde hapsolur — pi/claude tarzı agent'ların
