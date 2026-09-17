@@ -13,7 +13,9 @@ class FakeSshTransport : SshTransport {
     private var opened = false
     private val outbox = Channel<TerminalFrame>(Channel.UNLIMITED)
     val resizes = mutableListOf<TerminalSize>()
-    val sent = mutableListOf<TerminalInput>()
+    // Testler `sent`'i poll ederken controller coroutine'i ekler — iterasyon
+    // güvenli olmalı.
+    val sent = java.util.concurrent.CopyOnWriteArrayList<TerminalInput>()
     override val transport = TerminalTransport.SSH
     private var closed = false
 

@@ -19,6 +19,7 @@ data class TermStyle(
     val bgIndex: Int? = null,
     val bold: Boolean = false,
     val underline: Boolean = false,
+    val italic: Boolean = false,
     val link: String? = null, // OSC 8 hyperlink
 )
 
@@ -497,8 +498,12 @@ class TerminalBuffer(
         // metnin içinde hapsolur.
         if (final == 'p' && raw.startsWith("!")) { softResetTerminal(); return }
         val parts = raw.split(';')
-        fun p(idx: Int, default: Int): Int =
-            parts.getOrNull(idx)?.toIntOrNull() ?: default
+        // Sıfır parametre komutun varsayılanını verir (CSI 0 r = satır sayısı);
+        // varsayılanı 0 olan mod komutlarında (ED/EL/DSR) sıfır korunur.
+        fun p(idx: Int, default: Int): Int {
+            val value = parts.getOrNull(idx)?.toIntOrNull()
+            return if (value == null || value == 0 && default != 0) default else value
+        }
         val s = active()
         // İmleci konumlandıran finaller (CUP/CUU/CUD/CUF/CUB/CNL/CPL/CHA/
         // HPA/VPA/HPR/CHT/CBT/save/restore): canlı TUI sinyali. 'r'
@@ -690,7 +695,10 @@ class TerminalBuffer(
             when (val p = parts[i]) {
                 0 -> { style = TermStyle(); inverse = false }
                 1 -> style = style.copy(bold = true)
+                2 -> {} // faint: varsayılan foreground UI katmanında bilinmediği için güvenli no-op
                 22 -> style = style.copy(bold = false)
+                3 -> style = style.copy(italic = true)
+                23 -> style = style.copy(italic = false)
                 4 -> style = style.copy(underline = true)
                 24 -> style = style.copy(underline = false)
                 7 -> inverse = true

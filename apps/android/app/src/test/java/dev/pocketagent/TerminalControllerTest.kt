@@ -66,6 +66,17 @@ private class FakeConnector(
     }
 }
 
+// "A" gönderimini kasıtlı yavaşlatan kayıtçı transport — sendMutex +
+// UNDISPATCHED olmadan eşzamanlı iki launch kaydı B,A üretirdi.
+private class DelayedATransport(private val inner: FakeSshTransport) : SshTransport by inner {
+    val recorded = java.util.concurrent.CopyOnWriteArrayList<String>()
+    override suspend fun send(input: TerminalInput) {
+        if (input is TerminalInput.Text && input.s == "A") delay(150)
+        if (input is TerminalInput.Text) recorded.add(input.s)
+        inner.send(input)
+    }
+}
+
 class TerminalControllerTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val conn = SavedConnection("t", "h", 22, "u", "ram:password", id = "c1")
@@ -166,6 +177,39 @@ class TerminalControllerTest {
                 it is TerminalInput.Text && it.s.matches(Regex("\u001B\\[\\d+;\\d+R"))
             }
         }
+        c.disconnect()
+    }
+
+    // Kullanıcı girdisi PTY'ye çağrı sırasında yazılır: A'nın transport'ta
+    // yavaşlaması B'yi öne geçirmez — mutex + UNDISPATCHED garantisi.
+    @Test fun sendsReachPtyInCallOrder() = runBlocking {
+        val transport = DelayedATransport(FakeSshTransport())
+        val connector = object : SshConnector {
+            override suspend fun open(c: SavedConnection, s: Secret?, size: TerminalSize): SshTransport =
+                transport.also { it.openPty("xterm-256color", size) }
+        }
+        val store = TofuHostKeyStore(File.createTempFile("khst", null).apply { delete() })
+        val c = TerminalController(scope, connector, store)
+        c.connect(conn, Secret.Password("pw"))
+        await { c.state.value == ConnectionState.ACTIVE }
+        transport.recorded.clear() // açılış yazısını listeden ayıkla
+        c.send(TerminalInput.Text("A"))
+        c.send(TerminalInput.Text("B"))
+        await { transport.recorded.size == 2 }
+        assertEquals(listOf("A", "B"), transport.recorded)
+        c.disconnect()
+    }
+
+    // Açılış yazısı ACTIVE'ten önce tamamlanır — kullanıcı girdisi
+    // clear/tmux'tan önce PTY'ye ulaşamaz (eski 600ms yarış penceresi yok).
+    @Test fun startupWriteCompletesBeforeActive() = runBlocking {
+        val transport = FakeSshTransport()
+        val c = pinnedController(transport)
+        c.connect(conn, Secret.Password("pw"), tmuxName = "pa-test0002")
+        await { c.state.value == ConnectionState.ACTIVE }
+        val texts = transport.sent.filterIsInstance<TerminalInput.Text>()
+        assertEquals(1, texts.size)
+        assertTrue(texts.single().s.contains("tmux new-session -A -s 'pa-test0002'"))
         c.disconnect()
     }
 }

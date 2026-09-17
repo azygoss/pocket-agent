@@ -214,6 +214,31 @@ class TerminalBufferTest {
         assertEquals(sb0 + 1, b.scrollbackSize)
     }
 
+    @Test fun zeroParamDecstbmResetsBottomToFull() {
+        // Codex'ten yakalanan CSI 1;0r: Pn=0 komutun varsayılanı demek
+        // (DECSTBM'de satır sayısı). Literal 0 alınırsa bölge dar kalır ve
+        // dipteki LF tam ekranı kaydırmaz.
+        val b = TerminalBuffer(cols = 20, rows = 6)
+        for (i in 0 until 6) b.feed("l$i\r\n") // ekran dolar, l0 scrollback'e
+        b.feed("\u001B[2;5r") // bölge daralt
+        b.feed("\u001B[1;0r") // top=1, bottom=0→varsayılan 6 → tam bölge
+        val sb0 = b.scrollbackSize
+        b.feed("\u001B[6;1H\nX") // dipten LF → tam bölge kayar → scrollback +1
+        assertEquals(sb0 + 1, b.scrollbackSize)
+        // Hareket komutlarında da Pn=0 varsayılan 1 demektir (CSI 0 C → 1 sağa).
+        val b2 = TerminalBuffer(cols = 20, rows = 4)
+        b2.feed("ab\u001B[0Ccd")
+        assertEquals("ab cd", b2.snapshot().single().text)
+    }
+
+    @Test fun sgrItalicTurnsOnAndOff() {
+        val b = TerminalBuffer()
+        b.feed("\u001B[3mit\u001B[23mdüz\r\n")
+        val spans = b.snapshot().single().spans
+        assertTrue(spans[0].style.italic)
+        assertFalse(spans[1].style.italic)
+    }
+
     @Test fun repRepeatsLastChar() {
         val b = TerminalBuffer(cols = 40, rows = 5)
         b.feed("x\u001B[4b") // x + 4 kez x

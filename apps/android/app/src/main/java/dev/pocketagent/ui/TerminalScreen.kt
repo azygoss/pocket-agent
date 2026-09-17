@@ -120,6 +120,7 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -198,6 +199,7 @@ fun TermLine.toAnnotatedString(cursorCol: Int = -1, cursorBg: Color = Color.Unsp
                 ?: if (s.style.link != null) Color(0xFF5FA8F5) else Color.Unspecified,
             background = resolve(s.style.bg, s.style.bgIndex) ?: Color.Unspecified,
             fontWeight = if (s.style.bold) FontWeight.Bold else null,
+            fontStyle = if (s.style.italic) FontStyle.Italic else null,
             textDecoration = if (s.style.underline || s.style.link != null) TextDecoration.Underline else null,
         )
         val block: AnnotatedString.Builder.() -> Unit = {

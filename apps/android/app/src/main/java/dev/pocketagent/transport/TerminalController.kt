@@ -2,12 +2,15 @@
 package dev.pocketagent.transport
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 // P06/P08: session lifecycle. Auth and host-key failures are terminal
 // (hard-stop, no fallback — P08 rule); network failures are reported as-is
@@ -37,6 +40,7 @@ class TerminalController(
     private var job: Job? = null
     private var retryJob: Job? = null
     private var transport: SshTransport? = null
+    private val sendMutex = Mutex()
     private var lastConn: SavedConnection? = null
     private var lastSecret: Secret? = null
     private var lastStartupCommand: String? = null
@@ -108,12 +112,8 @@ class TerminalController(
                 lastPtySize = vm.size
                 val t = connector.open(conn, secret, vm.size)
                 transport = t
-                _connectedTo.value = conn
-                _state.value = ConnectionState.ACTIVE
-                _retryAttempt.value = 0
-                retryCount = 0
-                onConnected?.invoke(conn)
-                // Açılış komutları: kabuk hazır olsun diye kısa gecikme.
+                // Açılış komutları ACTIVE'ten önce senkron gönderilir —
+                // kullanıcı girdisi clear/tmux'tan önce PTY'ye ulaşamaz.
                 // `clear` en başta: MOTD/banner/son-giriş bilgisi silinir,
                 // prompt üstte temiz açılır. tmux attach'ten ÖNCE çalışır —
                 // yeni login shell'i temizler; var olan pane içeriği attach
@@ -135,12 +135,14 @@ class TerminalController(
                     }
                     explicit?.let { add(it) }
                 }
-                scope.launch {
-                    kotlinx.coroutines.delay(600)
-                    runCatching {
-                        t.send(TerminalInput.Text(startupCmds.joinToString("\n", postfix = "\n")))
-                    }
+                sendMutex.withLock {
+                    t.send(TerminalInput.Text(startupCmds.joinToString("\n", postfix = "\n")))
                 }
+                _connectedTo.value = conn
+                _state.value = ConnectionState.ACTIVE
+                _retryAttempt.value = 0
+                retryCount = 0
+                onConnected?.invoke(conn)
                 readLoop(t)
             } catch (e: UnknownHostKeyException) {
                 _pendingHostKey.value = e.presented
@@ -220,9 +222,14 @@ class TerminalController(
             // prompt eski metnin üstüne biner.
             lastPtySize = input.size
         }
-        scope.launch {
+        // Mutex send sırasını kurar (girdi/resize/DSR-DA cevapları);
+        // UNDISPATCHED ile kuyruğa mutex'e çağrı sırasında girilir.
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
-                t.send(input)
+                sendMutex.withLock {
+                    // Yeniden bağlanmada bayat kuyruk yeni transport'a yazmaz.
+                    if (transport === t) t.send(input)
+                }
             } catch (_: Exception) {
                 // dead transport; read loop reports the state change
             }

@@ -2,6 +2,7 @@
 package dev.pocketagent
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
 import dev.pocketagent.transport.TermLine
 import dev.pocketagent.transport.TermStyle
 import dev.pocketagent.ui.toAnnotatedString
@@ -38,5 +39,11 @@ class TerminalRenderTest {
     @Test fun hiddenCursorWhenNoBg() {
         val s = line("ls").toAnnotatedString(cursorCol = 5, cursorBg = Color.Unspecified)
         assertEquals("ls", s.text)
+    }
+
+    @Test fun italicStyleMapsToFontStyleItalic() {
+        val line = TermLine(listOf(TermLine.Span("it", TermStyle(italic = true))))
+        val s = line.toAnnotatedString()
+        assertEquals(FontStyle.Italic, s.spanStyles.single().item.fontStyle)
     }
 }
