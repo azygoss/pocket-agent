@@ -87,6 +87,14 @@ class SessionManager(
             if (h.controller.canReconnect()) h.controller.reconnect()
             return h.controller
         }
+        // Aynı tmux'a ikinci attach (çift dokunuş / restore yarışı): mevcut
+        // oturuma geç — aynı uzak oturum iki kart olarak görünmez.
+        tmuxName?.let { t ->
+            _sessions.value.firstOrNull { _tmuxNames.value[it.id] == t }?.let { h ->
+                _activeId.value = h.id
+                return h.controller
+            }
+        }
         val c = TerminalController(scope, connectorFactory(), hostKeys)
         c.autoReconnectOnDrop = autoReconnectOnDrop
         c.onConnected = { conn2 -> onConnected?.invoke(conn2) }
@@ -110,6 +118,9 @@ class SessionManager(
         val tmux = tmuxName?.ifBlank { null }
             ?: "pa-" + UUID.randomUUID().toString().take(8)
         _tmuxNames.value = _tmuxNames.value + (handle.id to tmux)
+        // Adopt edilen tmux artık yerel — uzak listede kalırsa aynı oturum
+        // sonraki 15s poll'e kadar çift kart gösterirdi.
+        _remote.value = _remote.value.mapValues { (_, ts) -> ts.filter { it.tmux != tmux } }
         if (shared) _sharedIds.value = _sharedIds.value + handle.id
         _activeId.value = handle.id
         c.connect(conn, secret, startupCommand, tmux)

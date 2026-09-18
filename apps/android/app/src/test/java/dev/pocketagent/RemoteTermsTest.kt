@@ -157,4 +157,29 @@ class RemoteTermsTest {
         assertEquals(listOf(RemoteTerm("pa-other001", "uzak is", null)), m.remote.value["c1"])
         m.closeAll()
     }
+
+    @Test fun adoptDropsRemoteCardAndDedupesSecondAttach() = runBlocking {
+        // Regresyon: uzak karta dokunup attach edince _remote'ta kalan kayıt
+        // aynı oturumu iki kart gösteriyordu; çift dokunuş da iki handle
+        // açıyordu. open() artık adopt edilen tmux'u uzak listeden düşürür
+        // ve aynı tmux'a ikinci open'ı mevcut oturuma yönlendirir.
+        val t = ExecRecordingTransport()
+        t.execOut = "pa-other001\n@@REG@@\n@@F@@pa-other001\nn=uzak+is\nd=dev-B\n"
+        val m = manager(t)
+        m.open(conn, Secret.Password("pw"), forceNew = true, tmuxName = "pa-own00001")
+        awaitActive(m)
+        m.discoverRemote()
+        withTimeout(5_000) { while (m.remote.value["c1"].isNullOrEmpty()) delay(20) }
+        assertEquals("pa-other001", m.remote.value["c1"]!!.single().tmux)
+
+        m.open(conn, Secret.Password("pw"), forceNew = true, tmuxName = "pa-other001")
+        // Attach anında uzak kart düşer (15s poll beklenmez).
+        assertTrue(m.remote.value["c1"].orEmpty().none { it.tmux == "pa-other001" })
+
+        // Aynı tmux'a ikinci open (çift dokunuş yarışı): yeni handle yok.
+        val before = m.sessions.value.size
+        m.open(conn, Secret.Password("pw"), forceNew = true, tmuxName = "pa-other001")
+        assertEquals(before, m.sessions.value.size)
+        m.closeAll()
+    }
 }

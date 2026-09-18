@@ -68,6 +68,7 @@ fun HomeScreen(
     val sessionList by sessions.sessions.collectAsState()
     val activeId by sessions.activeId.collectAsState()
     val customNames by sessions.customNames.collectAsState()
+    val tmuxNames by sessions.tmuxNames.collectAsState()
     val remote by sessions.remote.collectAsState()
     val saved by connections.items.collectAsState()
     var renaming by remember { mutableStateOf<SessionHandle?>(null) }
@@ -111,10 +112,13 @@ fun HomeScreen(
             // Yerel açık oturumlar + host'ta yaşayan diğer pa-* oturumları
             // (bu cihazda açık olmayanlar; diğer cihazlar dahil) aynı satırda —
             // uzak kart "host" rozetli, dokun → aynı tmux'a attach.
+            val openTmux = tmuxNames.values.toSet()
             val remoteItems = remote.flatMap { (connId, terms) ->
                 saved.firstOrNull { it.id == connId }
                     ?.let { c -> terms.map { c to it } } ?: emptyList()
-            }
+                // Yerelde açık tmux uzak listede kalırsa (probe yarışı)
+                // aynı oturum iki kart gösterir — render'da da ele.
+            }.filter { it.second.tmux !in openTmux }
             if (sessionList.isNotEmpty() || remoteItems.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     SectionLabel("Oturumlar")
