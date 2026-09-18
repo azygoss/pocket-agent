@@ -481,14 +481,23 @@ class RemoteKillTest {
 
 // SFTP'li fake: AgentAttach akışının controller tarafını doğrular —
 // staging dizini oluşturma + yazma + dönen uzak yol.
-class SftpFakeTransport : SshTransport by FakeSshTransport(), SftpSession {
+class SftpFakeTransport(
+    val inner: FakeSshTransport = FakeSshTransport(),
+) : SshTransport by inner, SftpSession {
     val files = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
     val dirs = mutableListOf<String>()
+    val deleted = mutableListOf<String>()
+    val renamed = mutableListOf<Pair<String, String>>()
     override suspend fun home() = "/home/u"
     override suspend fun list(path: String) = emptyList<RemoteFile>()
     override suspend fun readBytes(path: String, maxBytes: Long) = files[path] ?: ByteArray(0)
     override suspend fun writeBytes(path: String, data: ByteArray) { files[path] = data }
     override suspend fun mkdir(path: String) { dirs.add(path) }
+    override suspend fun delete(path: String, isDir: Boolean) { files.remove(path); deleted.add(path) }
+    override suspend fun rename(from: String, to: String) {
+        renamed.add(from to to)
+        files[to] = files.remove(from) ?: ByteArray(0)
+    }
 }
 
 // Önizleme testleri: TcpipCapable + ExecCapable (ss çıktısı sabit).

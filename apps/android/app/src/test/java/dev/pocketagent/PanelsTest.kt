@@ -42,6 +42,73 @@ class PanelsTest {
         assertNull(vm.path)
         assertTrue(vm.entries.isEmpty())
     }
+    @Test fun filesLongPressOps() = kotlinx.coroutines.runBlocking {
+        // Uzun-basma aksiyonları: rename/delete/mkdir-inside SFTP'ye,
+        // "terminale yaz" aktif PTY'ye shell-quote'lu gider.
+        val transport = SftpFakeTransport()
+        val scope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
+        )
+        val store = dev.pocketagent.transport.TofuHostKeyStore(
+            java.io.File.createTempFile("khst", null).apply { delete() },
+        )
+        val connector = object : dev.pocketagent.transport.SshConnector {
+            override suspend fun open(
+                c: dev.pocketagent.transport.SavedConnection,
+                s: dev.pocketagent.transport.Secret?,
+                size: dev.pocketagent.transport.TerminalSize,
+            ): dev.pocketagent.transport.SshTransport {
+                transport.openPty("xterm-256color", size)
+                return transport
+            }
+        }
+        val mgr = dev.pocketagent.transport.SessionManager(scope, store) { connector }
+        val conn = dev.pocketagent.transport.SavedConnection(
+            "t", "h", 22, "u", "ram:password", id = "c1",
+        )
+        val ctl = mgr.open(conn, dev.pocketagent.transport.Secret.Password("pw"))
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (ctl.state.value != dev.pocketagent.transport.ConnectionState.ACTIVE) {
+                kotlinx.coroutines.delay(10)
+            }
+        }
+        val vm = FilesViewModel(mgr, scope, java.io.File.createTempFile("cache", "d"))
+        vm.open()
+        kotlinx.coroutines.withTimeout(5_000) { while (vm.path == null) kotlinx.coroutines.delay(10) }
+        assertEquals("/home/u", vm.path)
+
+        val f = dev.pocketagent.transport.RemoteFile("a.txt", "/home/u/a.txt", false, 3, 0)
+        transport.files[f.path] = byteArrayOf(1)
+
+        vm.rename(f, "b.txt")
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (transport.renamed.isEmpty()) kotlinx.coroutines.delay(10)
+        }
+        assertEquals("/home/u/a.txt" to "/home/u/b.txt", transport.renamed[0])
+
+        vm.delete(f)
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (transport.deleted.isEmpty()) kotlinx.coroutines.delay(10)
+        }
+        assertFalse(transport.files.containsKey("/home/u/a.txt"))
+
+        val dir = dev.pocketagent.transport.RemoteFile("sub", "/home/u/sub", true, 0, 0)
+        vm.mkdir("nested", inside = dir)
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (vm.path != "/home/u/sub") kotlinx.coroutines.delay(10)
+        }
+        assertTrue(transport.dirs.contains("/home/u/sub/nested"))
+
+        assertTrue(vm.pastePathToTerminal(dir))
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (transport.inner.sent.none {
+                it is dev.pocketagent.transport.TerminalInput.Text && it.s == "'/home/u/sub'"
+            }) {
+                kotlinx.coroutines.delay(10)
+            }
+        }
+        mgr.closeAll()
+    }
     @Test fun themeAndShortcuts() {
         val s = SettingsViewModel()
         val wasTheme = s.theme.themeId

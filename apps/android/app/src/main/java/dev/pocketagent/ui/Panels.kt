@@ -183,6 +183,10 @@ class UsageViewModel {
 
 enum class FilesMode { SFTP, WORKSPACE }
 
+// Önizleme koruması: ilk 8KB'da NUL varsa metin diyaloğuna binary basılmaz.
+internal fun looksBinary(bytes: ByteArray): Boolean =
+    bytes.take(8192).any { it == 0.toByte() }
+
 class FilesViewModel(
     private val manager: dev.pocketagent.transport.SessionManager,
     private val scope: kotlinx.coroutines.CoroutineScope,
@@ -315,7 +319,9 @@ class FilesViewModel(
             loading = true; error = null
             try {
                 val bytes = s.readBytes(f.path, 64 * 1024)
-                preview = f.name to bytes.decodeToString()
+                preview = f.name to
+                    if (looksBinary(bytes)) "(ikili dosya — önizleme yok)"
+                    else bytes.decodeToString()
             } catch (e: Exception) {
                 error = e.message ?: "Okunamadı"
             } finally {
@@ -356,6 +362,68 @@ class FilesViewModel(
                 loading = false
             }
         }
+    }
+
+    // Uzun-basma aksiyonları (SFTP modu; workspace gateway salt-okunur).
+    fun delete(f: dev.pocketagent.transport.RemoteFile) {
+        val p = path ?: return
+        val s = sftp() ?: return
+        scope.launch {
+            loading = true; error = null
+            try {
+                s.delete(f.path, f.isDir)
+                load(p)
+            } catch (e: Exception) {
+                error = e.message ?: "Silinemedi"
+                loading = false
+            }
+        }
+    }
+
+    fun rename(f: dev.pocketagent.transport.RemoteFile, newName: String) {
+        val clean = newName.trim()
+        if (clean.isEmpty() || clean == f.name || clean.contains('/')) return
+        val p = path ?: return
+        val s = sftp() ?: return
+        scope.launch {
+            loading = true; error = null
+            try {
+                s.rename(f.path, if (p.endsWith("/")) p + clean else "$p/$clean")
+                load(p)
+            } catch (e: Exception) {
+                error = e.message ?: "Ad değiştirilemedi"
+                loading = false
+            }
+        }
+    }
+
+    // inside verilirse o dizinin içinde oluşturulur ve içine girilir;
+    // yoksa cwd'de oluşturulur.
+    fun mkdir(name: String, inside: dev.pocketagent.transport.RemoteFile? = null) {
+        val clean = name.trim()
+        if (clean.isEmpty() || clean.contains('/')) return
+        val parent = inside?.path ?: path ?: return
+        val s = sftp() ?: return
+        scope.launch {
+            loading = true; error = null
+            try {
+                s.mkdir(if (parent.endsWith("/")) parent + clean else "$parent/$clean")
+                load(parent)
+            } catch (e: Exception) {
+                error = e.message ?: "Klasör oluşturulamadı"
+                loading = false
+            }
+        }
+    }
+
+    // Uzak yolu aktif PTY'ye shell-quote'lu yazar — cd/vim/agent input'una
+    // doğrudan düşer. Kullanıcı Enter'a kendisi basar (komut çalıştırılmaz).
+    fun pastePathToTerminal(f: dev.pocketagent.transport.RemoteFile): Boolean {
+        val c = manager.active() ?: return false
+        c.send(dev.pocketagent.transport.TerminalInput.Text(
+            dev.pocketagent.transport.shellQuote(f.path),
+        ))
+        return true
     }
 
     // ---- P11 workspace (gateway) ----

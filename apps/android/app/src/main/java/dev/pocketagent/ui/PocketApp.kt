@@ -288,7 +288,7 @@ fun PocketAgentApp(
                         onCollapse = { tab = AppTab.Home },
                         chrome = termChrome,
                     )
-                    AppTab.Files -> FilesScreen(files = files)
+                    AppTab.Files -> FilesScreen(files = files, onOpenTerminal = { tab = AppTab.Terminal })
                     AppTab.Settings -> SettingsScreen(
                         settings = settings,
                         usage = usage,

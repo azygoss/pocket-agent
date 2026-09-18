@@ -292,6 +292,21 @@ class SshjTransport(
         sftp().mkdirs(path)
     }
 
+    override suspend fun delete(path: String, isDir: Boolean) {
+        if (!isDir) {
+            withContext(Dispatchers.IO) { sftp().rm(path) }
+            return
+        }
+        // Dizin: SFTP rmdir yalnız boş dizini siler — tek yol rm -rf.
+        // Symlink'e rm -rf yalnız linki kaldırır (hedefe inmez).
+        val (rc, out) = exec("rm -rf -- " + shellQuote(path))
+        check(rc == 0) { out.trim().ifBlank { "silinemedi (rc=$rc)" } }
+    }
+
+    override suspend fun rename(from: String, to: String) = withContext(Dispatchers.IO) {
+        sftp().rename(from, to)
+    }
+
     fun startReader() {
         readScope.launch(Dispatchers.IO) {
             val buf = ByteArray(32768)

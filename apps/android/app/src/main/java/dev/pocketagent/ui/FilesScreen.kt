@@ -27,10 +27,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,7 +49,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -60,8 +65,22 @@ import dev.pocketagent.ui.theme.TermRed
 // P15: gerçek dosya sekmesi — aktif SSH oturumunun SFTP kanalı üzerinden
 // uzak dosya sistemi gezgini. Backend içerik görmez; trafik SSH içinde kalır.
 @Composable
-fun FilesScreen(files: FilesViewModel) {
+fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var notice by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(notice) {
+        if (notice != null) { kotlinx.coroutines.delay(2500); notice = null }
+    }
+
+    // Uzun-basma aksiyonları + yeni klasör + yola git diyalog durumları.
+    var actionFile by remember { mutableStateOf<RemoteFile?>(null) }
+    var renaming by remember { mutableStateOf<RemoteFile?>(null) }
+    var deleting by remember { mutableStateOf<RemoteFile?>(null) }
+    var mkdirIn by remember { mutableStateOf<RemoteFile?>(null) }
+    var mkdirOpen by remember { mutableStateOf(false) }
+    var gotoOpen by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
 
     // Oturum açıldığında home dizinine gir
     LaunchedEffect(files.hasActiveSftp()) { files.open() }
@@ -213,12 +232,37 @@ fun FilesScreen(files: FilesViewModel) {
                     Icon(Icons.Filled.Upload, contentDescription = "Dosya yükle")
                 }
             }
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Diğer")
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Yola git…") },
+                        onClick = { menuOpen = false; gotoOpen = true },
+                    )
+                    if (files.mode == FilesMode.SFTP) {
+                        DropdownMenuItem(
+                            text = { Text("Yeni klasör") },
+                            onClick = { menuOpen = false; mkdirOpen = true },
+                        )
+                    }
+                }
+            }
         }
 
         files.error?.let {
             Text(
                 it,
                 color = TermRed,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+        }
+        notice?.let {
+            Text(
+                it,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(vertical = 4.dp),
             )
@@ -236,7 +280,11 @@ fun FilesScreen(files: FilesViewModel) {
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(files.entries, key = { it.path }) { f ->
-                        RemoteFileRow(f, onClick = { files.onFile(f) })
+                        RemoteFileRow(
+                            f,
+                            onClick = { files.onFile(f) },
+                            onLongClick = { actionFile = f },
+                        )
                         SoftDivider(Modifier.padding(start = 62.dp))
                     }
                 }
@@ -247,8 +295,9 @@ fun FilesScreen(files: FilesViewModel) {
         }
 
         Text(
-            if (files.mode == FilesMode.WORKSPACE) "Gateway • SSH tüneli içinde • workspace jail"
-            else "SFTP • SSH oturumu içinde • indirme ≤10MB",
+            (if (files.mode == FilesMode.WORKSPACE) "Gateway • SSH tüneli içinde • workspace jail"
+            else "SFTP • SSH oturumu içinde • indirme ≤10MB") +
+                " • ${files.entries.size} öğe",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 4.dp),
@@ -287,6 +336,183 @@ fun FilesScreen(files: FilesViewModel) {
             },
         )
     }
+
+    // ── Uzun-basma aksiyon diyaloğu ─────────────────────────────────────────
+    actionFile?.let { f ->
+        AlertDialog(
+            onDismissRequest = { actionFile = null },
+            title = { Text(f.name, fontFamily = FontFamily.Monospace, fontSize = 15.sp) },
+            text = {
+                Column {
+                    Text(
+                        f.path,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    ActionRow("Yolu kopyala") {
+                        clipboard.setText(AnnotatedString(f.path))
+                        notice = "yol kopyalandı"
+                        actionFile = null
+                    }
+                    ActionRow("Terminale yaz") {
+                        if (files.pastePathToTerminal(f)) {
+                            actionFile = null
+                            onOpenTerminal()
+                        } else {
+                            notice = "aktif oturum yok"
+                            actionFile = null
+                        }
+                    }
+                    if (files.mode == FilesMode.SFTP) {
+                        if (!f.isDir) {
+                            ActionRow("İndir / paylaş") {
+                                files.download(f)
+                                actionFile = null
+                            }
+                        } else {
+                            ActionRow("İçinde yeni klasör") {
+                                mkdirIn = f
+                                actionFile = null
+                            }
+                        }
+                        ActionRow("Yeniden adlandır") {
+                            renaming = f
+                            actionFile = null
+                        }
+                        ActionRow("Sil", danger = true) {
+                            deleting = f
+                            actionFile = null
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { actionFile = null }) { Text("Kapat") } },
+        )
+    }
+
+    // Yeniden adlandır
+    renaming?.let { f ->
+        var name by remember { mutableStateOf(f.name) }
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Yeniden adlandır") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Yeni ad") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { files.rename(f, name); renaming = null }) { Text("Kaydet") }
+            },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Vazgeç") } },
+        )
+    }
+
+    // Yeni klasör (cwd veya uzun-basma ile seçilen dizin içi)
+    if (mkdirOpen || mkdirIn != null) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { mkdirOpen = false; mkdirIn = null },
+            title = { Text("Yeni klasör") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    mkdirIn?.let {
+                        Text(
+                            "İçinde: ${it.path}",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Klasör adı") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    files.mkdir(name, mkdirIn)
+                    mkdirOpen = false; mkdirIn = null
+                }) { Text("Oluştur") }
+            },
+            dismissButton = {
+                TextButton(onClick = { mkdirOpen = false; mkdirIn = null }) { Text("Vazgeç") }
+            },
+        )
+    }
+
+    // Yola git (derin uzak yolları elle girmek için)
+    if (gotoOpen) {
+        var target by remember {
+            mutableStateOf(if (files.mode == FilesMode.WORKSPACE) files.gwPath else files.path ?: "/")
+        }
+        AlertDialog(
+            onDismissRequest = { gotoOpen = false },
+            title = { Text("Yola git") },
+            text = {
+                OutlinedTextField(
+                    value = target,
+                    onValueChange = { target = it },
+                    label = { Text("Dizin yolu") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val t = target.trim()
+                    if (t.isNotEmpty()) {
+                        // SFTP'de göreli yol cwd'ye bağlanır; workspace zaten
+                        // jail-göreli çalışır.
+                        val abs = if (files.mode == FilesMode.SFTP && !t.startsWith("/")) {
+                            (files.path ?: "/").trimEnd('/') + "/" + t
+                        } else t
+                        files.cd(abs)
+                    }
+                    gotoOpen = false
+                }) { Text("Git") }
+            },
+            dismissButton = { TextButton(onClick = { gotoOpen = false }) { Text("Vazgeç") } },
+        )
+    }
+
+    // Silme onayı
+    deleting?.let { f ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Sil") },
+            text = {
+                Text(
+                    if (f.isDir) "'${f.name}' klasörü ve içindekiler kalıcı olarak silinsin mi?"
+                    else "'${f.name}' kalıcı olarak silinsin mi?",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { files.delete(f); deleting = null }) {
+                    Text("Sil", color = TermRed)
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Vazgeç") } },
+        )
+    }
+}
+
+// Aksiyon diyaloğu satırı: sola yaslı tam-genişlik metin düğmesi.
+@Composable
+private fun ActionRow(label: String, danger: Boolean = false, onClick: () -> Unit) {
+    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            label,
+            color = if (danger) TermRed else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }
 
 // Basit diff renklendirme: + yeşil, - kırmızı, @@ mor, başlıklar kalın.
@@ -318,7 +544,7 @@ private fun diffAnnotated(content: String): androidx.compose.ui.text.AnnotatedSt
     }
 
 @Composable
-private fun RemoteFileRow(f: RemoteFile, onClick: () -> Unit) {
+private fun RemoteFileRow(f: RemoteFile, onClick: () -> Unit, onLongClick: () -> Unit) {
     ListRow(
         title = f.name,
         titleMono = true,
@@ -349,6 +575,7 @@ private fun RemoteFileRow(f: RemoteFile, onClick: () -> Unit) {
             }
         },
         onClick = onClick,
+        onLongClick = onLongClick,
     )
 }
 

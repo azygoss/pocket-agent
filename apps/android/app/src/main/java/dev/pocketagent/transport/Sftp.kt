@@ -20,4 +20,11 @@ interface SftpSession {
     suspend fun writeBytes(path: String, data: ByteArray)
     // Dizini üstleriyle birlikte oluşturur (mkdir -p; varsa no-op).
     suspend fun mkdir(path: String)
+    // Dosya/symlink SFTP rm; dizin exec rm -rf (rmdir yalnız boş dizini siler).
+    suspend fun delete(path: String, isDir: Boolean)
+    suspend fun rename(from: String, to: String)
 }
+
+// POSIX tek-tırnak quoting: exec komutlarına ve PTY'ye yazılan uzak yollarda
+// boşluk/özel karakter güvenliği için tek nokta.
+fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
