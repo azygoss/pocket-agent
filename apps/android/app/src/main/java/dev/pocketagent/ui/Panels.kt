@@ -187,6 +187,19 @@ enum class FilesMode { SFTP, WORKSPACE }
 internal fun looksBinary(bytes: ByteArray): Boolean =
     bytes.take(8192).any { it == 0.toByte() }
 
+// grep -n çıktısı: "yol:satırNo:metin" (yol içinde ':' olabilir — sağdan
+// ilk geçerli sayısal alan satır numarasıdır).
+data class GrepHit(val path: String, val line: Int, val text: String)
+
+private val GREP_LINE = Regex("^(.+):(\\d+):(.*)$")
+
+internal fun parseGrep(out: String): List<GrepHit> =
+    out.lines().mapNotNull { l ->
+        GREP_LINE.matchEntire(l)?.let {
+            GrepHit(it.groupValues[1], it.groupValues[2].toInt(), it.groupValues[3])
+        }
+    }
+
 class FilesViewModel(
     private val manager: dev.pocketagent.transport.SessionManager,
     private val scope: kotlinx.coroutines.CoroutineScope,
@@ -205,8 +218,8 @@ class FilesViewModel(
         private set
     var downloading by mutableStateOf(false)
         private set
-    // İndirilen dosya (paylaşım intent'i ekranda tetiklenir)
-    var downloaded by mutableStateOf<java.io.File?>(null)
+    // İndirilen dosyalar (tek öğe → SEND, çok öğe → SEND_MULTIPLE intent'i)
+    var downloaded by mutableStateOf<List<java.io.File>?>(null)
 
     // P11 workspace (gateway tüneli): null = henüz sondalanmadı
     var gatewayAvailable by mutableStateOf<Boolean?>(null)
@@ -330,16 +343,28 @@ class FilesViewModel(
         }
     }
 
-    fun download(f: dev.pocketagent.transport.RemoteFile) {
+    fun download(f: dev.pocketagent.transport.RemoteFile) = downloadAll(listOf(f))
+
+    // Çoklu seçim indirmesi: dizinler atlanır; her dosya 10MB cap'li.
+    // Aynı isim çakışmasında sonek eklenir.
+    fun downloadAll(fs: List<dev.pocketagent.transport.RemoteFile>) {
         val s = sftp() ?: return
         scope.launch {
             downloading = true; error = null
             try {
-                val bytes = s.readBytes(f.path, 10 * 1024 * 1024) // P15: 10MB cap
                 val dir = java.io.File(cacheDir, "shared").apply { mkdirs() }
-                val out = java.io.File(dir, f.name.ifBlank { "download" })
-                out.writeBytes(bytes)
-                downloaded = out
+                val used = mutableSetOf<String>()
+                val out = fs.filter { !it.isDir }.map { f ->
+                    val bytes = s.readBytes(f.path, 10 * 1024 * 1024) // P15: 10MB cap
+                    var name = f.name.ifBlank { "download" }
+                    while (!used.add(name)) name = "$name.${used.size}"
+                    java.io.File(dir, name).apply { writeBytes(bytes) }
+                }
+                if (out.isEmpty()) {
+                    error = "seçimde indirilecek dosya yok"
+                } else {
+                    downloaded = out
+                }
             } catch (e: Exception) {
                 error = e.message ?: "İndirilemedi"
             } finally {
@@ -365,19 +390,62 @@ class FilesViewModel(
     }
 
     // Uzun-basma aksiyonları (SFTP modu; workspace gateway salt-okunur).
-    fun delete(f: dev.pocketagent.transport.RemoteFile) {
+    fun delete(f: dev.pocketagent.transport.RemoteFile) = deleteAll(listOf(f))
+
+    // Çoklu seçim silme: her öğe kendi onay akışından geçmiş varsayılır
+    // (ekrandaki tek toplu onay); hata ilk kırılan öğede durur.
+    fun deleteAll(fs: List<dev.pocketagent.transport.RemoteFile>) {
         val p = path ?: return
         val s = sftp() ?: return
         scope.launch {
             loading = true; error = null
             try {
-                s.delete(f.path, f.isDir)
+                fs.forEach { s.delete(it.path, it.isDir) }
                 load(p)
             } catch (e: Exception) {
                 error = e.message ?: "Silinemedi"
                 loading = false
             }
         }
+    }
+
+    // İçerik arama (grep): exec kanalından cwd'de recursive, .git hariç,
+    // binary atlanır, dosya başına 3 + toplam 300 satır tavan.
+    var grepResults by mutableStateOf<List<GrepHit>?>(null)
+        private set
+    var grepRunning by mutableStateOf(false)
+        private set
+    fun dismissGrep() { grepResults = null }
+
+    fun grep(pattern: String) {
+        val p = path ?: return
+        val pat = pattern.trim()
+        if (pat.isEmpty()) return
+        val e = manager.active()?.exec() ?: run { error = "exec kanalı yok"; return }
+        scope.launch {
+            grepRunning = true; error = null
+            try {
+                val (_, out) = e.exec(
+                    "grep -rInI --exclude-dir=.git -m 3 -- " +
+                        dev.pocketagent.transport.shellQuote(pat) + " " +
+                        dev.pocketagent.transport.shellQuote(p) + " | head -300",
+                    15_000,
+                )
+                grepResults = parseGrep(out)
+            } catch (e2: Exception) {
+                error = e2.message ?: "arama başarısız"
+            } finally {
+                grepRunning = false
+            }
+        }
+    }
+
+    // Grep sonucuna git: üst dizine in + dosyayı önizle (64KB cap'li).
+    fun revealPath(p: String) {
+        val name = p.substringAfterLast('/')
+        if (name.isEmpty()) return
+        load(p.substringBeforeLast('/').ifEmpty { "/" })
+        loadPreview(dev.pocketagent.transport.RemoteFile(name, p, false, 0, 0))
     }
 
     fun rename(f: dev.pocketagent.transport.RemoteFile, newName: String) {

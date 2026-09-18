@@ -483,11 +483,13 @@ class RemoteKillTest {
 // staging dizini oluşturma + yazma + dönen uzak yol.
 class SftpFakeTransport(
     val inner: FakeSshTransport = FakeSshTransport(),
-) : SshTransport by inner, SftpSession {
+) : SshTransport by inner, SftpSession, ExecCapable {
     val files = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
     val dirs = mutableListOf<String>()
     val deleted = mutableListOf<String>()
     val renamed = mutableListOf<Pair<String, String>>()
+    val execs = java.util.concurrent.CopyOnWriteArrayList<String>()
+    var execResult: Pair<Int, String> = 0 to ""
     override suspend fun home() = "/home/u"
     override suspend fun list(path: String) = emptyList<RemoteFile>()
     override suspend fun readBytes(path: String, maxBytes: Long) = files[path] ?: ByteArray(0)
@@ -497,6 +499,10 @@ class SftpFakeTransport(
     override suspend fun rename(from: String, to: String) {
         renamed.add(from to to)
         files[to] = files.remove(from) ?: ByteArray(0)
+    }
+    override suspend fun exec(cmd: String, timeoutMs: Int): Pair<Int, String> {
+        execs.add(cmd)
+        return execResult
     }
 }
 

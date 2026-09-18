@@ -42,17 +42,17 @@ class PanelsTest {
         assertNull(vm.path)
         assertTrue(vm.entries.isEmpty())
     }
-    @Test fun filesLongPressOps() = kotlinx.coroutines.runBlocking {
-        // Uzun-basma aksiyonları: rename/delete/mkdir-inside SFTP'ye,
-        // "terminale yaz" aktif PTY'ye shell-quote'lu gider.
-        val transport = SftpFakeTransport()
-        val scope = kotlinx.coroutines.CoroutineScope(
-            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
-        )
-        val store = dev.pocketagent.transport.TofuHostKeyStore(
+    // SFTP+exec'li oturum açan manager (bulk/grep testleri ortak kurulumu).
+    private fun sftpManager(
+        transport: SftpFakeTransport,
+        scope: kotlinx.coroutines.CoroutineScope,
+    ) = dev.pocketagent.transport.SessionManager(
+        scope,
+        dev.pocketagent.transport.TofuHostKeyStore(
             java.io.File.createTempFile("khst", null).apply { delete() },
-        )
-        val connector = object : dev.pocketagent.transport.SshConnector {
+        ),
+    ) {
+        object : dev.pocketagent.transport.SshConnector {
             override suspend fun open(
                 c: dev.pocketagent.transport.SavedConnection,
                 s: dev.pocketagent.transport.Secret?,
@@ -62,7 +62,13 @@ class PanelsTest {
                 return transport
             }
         }
-        val mgr = dev.pocketagent.transport.SessionManager(scope, store) { connector }
+    }
+
+    private suspend fun activeVm(
+        mgr: dev.pocketagent.transport.SessionManager,
+        scope: kotlinx.coroutines.CoroutineScope,
+        cacheDir: java.io.File,
+    ): FilesViewModel {
         val conn = dev.pocketagent.transport.SavedConnection(
             "t", "h", 22, "u", "ram:password", id = "c1",
         )
@@ -72,10 +78,22 @@ class PanelsTest {
                 kotlinx.coroutines.delay(10)
             }
         }
-        val vm = FilesViewModel(mgr, scope, java.io.File.createTempFile("cache", "d"))
+        val vm = FilesViewModel(mgr, scope, cacheDir)
         vm.open()
         kotlinx.coroutines.withTimeout(5_000) { while (vm.path == null) kotlinx.coroutines.delay(10) }
         assertEquals("/home/u", vm.path)
+        return vm
+    }
+
+    @Test fun filesLongPressOps() = kotlinx.coroutines.runBlocking {
+        // Uzun-basma aksiyonları: rename/delete/mkdir-inside SFTP'ye,
+        // "terminale yaz" aktif PTY'ye shell-quote'lu gider.
+        val transport = SftpFakeTransport()
+        val scope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
+        )
+        val mgr = sftpManager(transport, scope)
+        val vm = activeVm(mgr, scope, java.io.File.createTempFile("cache", "d"))
 
         val f = dev.pocketagent.transport.RemoteFile("a.txt", "/home/u/a.txt", false, 3, 0)
         transport.files[f.path] = byteArrayOf(1)
@@ -106,6 +124,58 @@ class PanelsTest {
             }) {
                 kotlinx.coroutines.delay(10)
             }
+        }
+        mgr.closeAll()
+    }
+
+    @Test fun filesBulkAndGrep() = kotlinx.coroutines.runBlocking {
+        // Çoklu seçim: toplu indir (cache'e yazar) + toplu sil.
+        // İçerik arama: exec grep → parse → reveal (üst dizin + önizleme).
+        val transport = SftpFakeTransport()
+        val scope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
+        )
+        val mgr = sftpManager(transport, scope)
+        val cacheDir = java.io.File.createTempFile("cache", "d")
+            .apply { delete(); mkdirs() }
+        val vm = activeVm(mgr, scope, cacheDir)
+
+        val a = dev.pocketagent.transport.RemoteFile("a.txt", "/home/u/a.txt", false, 3, 0)
+        val b = dev.pocketagent.transport.RemoteFile("b.txt", "/home/u/b.txt", false, 3, 0)
+        transport.files[a.path] = byteArrayOf(1)
+        transport.files[b.path] = byteArrayOf(2, 3)
+
+        vm.downloadAll(listOf(a, b))
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (vm.downloaded == null) kotlinx.coroutines.delay(10)
+        }
+        assertEquals(2, vm.downloaded!!.size)
+        assertTrue(java.io.File(cacheDir, "shared/a.txt").exists())
+        vm.clearDownloaded()
+
+        vm.deleteAll(listOf(a, b))
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (transport.deleted.size < 2) kotlinx.coroutines.delay(10)
+        }
+        assertFalse(transport.files.containsKey(a.path))
+        assertFalse(transport.files.containsKey(b.path))
+
+        transport.execResult = 0 to "/home/u/a.txt:7:needle\n/home/u/deep/c.txt:2:needle\n"
+        vm.grep("needle")
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (vm.grepResults == null) kotlinx.coroutines.delay(10)
+        }
+        assertEquals(2, vm.grepResults!!.size)
+        assertEquals("/home/u/deep/c.txt", vm.grepResults!![1].path)
+        assertEquals(2, vm.grepResults!![1].line)
+        assertTrue(transport.execs.any { it.contains("grep -rInI") && it.contains("'needle'") })
+
+        vm.revealPath("/home/u/deep/c.txt")
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (vm.path != "/home/u/deep") kotlinx.coroutines.delay(10)
+        }
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (vm.preview == null) kotlinx.coroutines.delay(10)
         }
         mgr.closeAll()
     }

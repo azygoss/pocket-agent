@@ -26,6 +26,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -81,20 +86,34 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
     var mkdirOpen by remember { mutableStateOf(false) }
     var gotoOpen by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    // Çoklu seçim (aksiyon diyaloğundaki "Seç" ile başlar) + ad filtresi +
+    // içerik arama (grep) durumları.
+    val selected = remember { androidx.compose.runtime.mutableStateListOf<RemoteFile>() }
+    var deletingMany by remember { mutableStateOf<List<RemoteFile>?>(null) }
+    var filterOpen by remember { mutableStateOf(false) }
+    var filter by remember { mutableStateOf("") }
+    var grepOpen by remember { mutableStateOf(false) }
 
     // Oturum açıldığında home dizinine gir
     LaunchedEffect(files.hasActiveSftp()) { files.open() }
 
-    // İndirme tamamlanınca paylaşım sayfası
+    // İndirme tamamlanınca paylaşım sayfası (tek dosya → SEND, çoklu → SEND_MULTIPLE)
     LaunchedEffect(files.downloaded) {
-        val f = files.downloaded ?: return@LaunchedEffect
-        val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", f)
-        val share = Intent(Intent.ACTION_SEND).apply {
-            type = "*/*"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val list = files.downloaded ?: return@LaunchedEffect
+        if (list.isEmpty()) { files.clearDownloaded(); return@LaunchedEffect }
+        val uris = list.map {
+            FileProvider.getUriForFile(context, context.packageName + ".fileprovider", it)
         }
-        context.startActivity(Intent.createChooser(share, f.name))
+        val share = if (uris.size == 1) {
+            Intent(Intent.ACTION_SEND).apply { putExtra(Intent.EXTRA_STREAM, uris[0]) }
+        } else {
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+            }
+        }
+        share.type = "*/*"
+        share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        context.startActivity(Intent.createChooser(share, list.first().name))
         files.clearDownloaded()
     }
 
@@ -210,42 +229,108 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
             }
         }
 
-        // Geri tuşu önce bir üst dizine iner; kökteyse normal davranır.
+        // Geri tuşu önce seçimi, sonra üst dizini kapatır; kökte normal davranır.
         val canGoUp = if (files.mode == FilesMode.WORKSPACE) files.gwPath.isNotEmpty()
         else files.path != null && files.path != "/"
         BackHandler(enabled = canGoUp) { files.up() }
+        BackHandler(enabled = selected.isNotEmpty()) { selected.clear() }
 
-        // Yol çubuğu: dokunulabilir breadcrumb — her segment o dizine atlar.
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(
-                onClick = { files.up() },
-                enabled = canGoUp,
+        when {
+            // Çoklu seçim çubuğu: sayı + toplu indir/kopyala/sil + kapat.
+            selected.isNotEmpty() -> Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Üst dizin")
-            }
-            PathBar(files, Modifier.weight(1f))
-            IconButton(onClick = { files.refresh() }, enabled = !files.loading) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Yenile")
-            }
-            if (files.mode == FilesMode.SFTP) {
-                IconButton(onClick = { uploadLauncher.launch("*/*") }, enabled = !files.loading) {
-                    Icon(Icons.Filled.Upload, contentDescription = "Dosya yükle")
+                Text(
+                    "${selected.size} seçildi",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f).padding(start = 12.dp),
+                )
+                IconButton(
+                    onClick = {
+                        files.downloadAll(selected.toList())
+                        selected.clear()
+                    },
+                    enabled = selected.any { !it.isDir },
+                ) {
+                    Icon(Icons.Filled.Download, contentDescription = "İndir")
                 }
-            }
-            Box {
-                IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "Diğer")
+                IconButton(onClick = {
+                    clipboard.setText(AnnotatedString(selected.joinToString("\n") { it.path }))
+                    notice = "${selected.size} yol kopyalandı"
+                    selected.clear()
+                }) {
+                    Icon(Icons.Filled.ContentCopy, contentDescription = "Yolları kopyala")
                 }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Yola git…") },
-                        onClick = { menuOpen = false; gotoOpen = true },
+                IconButton(onClick = { deletingMany = selected.toList() }) {
+                    Icon(
+                        Icons.Filled.Delete,
+                        contentDescription = "Sil",
+                        tint = TermRed,
                     )
-                    if (files.mode == FilesMode.SFTP) {
+                }
+                IconButton(onClick = { selected.clear() }) {
+                    Icon(Icons.Filled.Close, contentDescription = "Seçimi kapat")
+                }
+            }
+            // Ad filtresi: geçerli dizin listesini istemci tarafında süzer.
+            filterOpen -> Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = filter,
+                    onValueChange = { filter = it },
+                    placeholder = { Text("Bu dizinde ara…") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { filter = ""; filterOpen = false }) {
+                    Icon(Icons.Filled.Close, contentDescription = "Aramayı kapat")
+                }
+            }
+            // Yol çubuğu: dokunulabilir breadcrumb — her segment o dizine atlar.
+            else -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = { files.up() },
+                    enabled = canGoUp,
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Üst dizin")
+                }
+                PathBar(files, Modifier.weight(1f))
+                IconButton(onClick = { files.refresh() }, enabled = !files.loading) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Yenile")
+                }
+                if (files.mode == FilesMode.SFTP) {
+                    IconButton(onClick = { uploadLauncher.launch("*/*") }, enabled = !files.loading) {
+                        Icon(Icons.Filled.Upload, contentDescription = "Dosya yükle")
+                    }
+                }
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Diğer")
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
-                            text = { Text("Yeni klasör") },
-                            onClick = { menuOpen = false; mkdirOpen = true },
+                            text = { Text("Dosya ara…") },
+                            onClick = { menuOpen = false; filterOpen = true },
                         )
+                        if (files.mode == FilesMode.SFTP) {
+                            DropdownMenuItem(
+                                text = { Text("İçerikte ara…") },
+                                onClick = { menuOpen = false; grepOpen = true },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("Yola git…") },
+                            onClick = { menuOpen = false; gotoOpen = true },
+                        )
+                        if (files.mode == FilesMode.SFTP) {
+                            DropdownMenuItem(
+                                text = { Text("Yeni klasör") },
+                                onClick = { menuOpen = false; mkdirOpen = true },
+                            )
+                        }
                     }
                 }
             }
@@ -278,11 +363,20 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                     CircularProgressIndicator()
                 }
             } else {
+                val shown = if (filter.isBlank()) files.entries
+                else files.entries.filter { it.name.contains(filter, ignoreCase = true) }
                 LazyColumn(Modifier.fillMaxSize()) {
-                    items(files.entries, key = { it.path }) { f ->
+                    items(shown, key = { it.path }) { f ->
                         RemoteFileRow(
                             f,
-                            onClick = { files.onFile(f) },
+                            selected = f in selected,
+                            onClick = {
+                                if (selected.isNotEmpty()) {
+                                    if (f in selected) selected.remove(f) else selected.add(f)
+                                } else {
+                                    files.onFile(f)
+                                }
+                            },
                             onLongClick = { actionFile = f },
                         )
                         SoftDivider(Modifier.padding(start = 62.dp))
@@ -364,6 +458,10 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                             notice = "aktif oturum yok"
                             actionFile = null
                         }
+                    }
+                    ActionRow("Seç") {
+                        if (f !in selected) selected.add(f)
+                        actionFile = null
                     }
                     if (files.mode == FilesMode.SFTP) {
                         if (!f.isDir) {
@@ -501,6 +599,108 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Vazgeç") } },
         )
     }
+
+    // Toplu silme onayı
+    deletingMany?.let { fs ->
+        AlertDialog(
+            onDismissRequest = { deletingMany = null },
+            title = { Text("Sil") },
+            text = {
+                Text("${fs.size} öğe kalıcı olarak silinsin mi? (klasörler içerikleriyle birlikte)")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    files.deleteAll(fs)
+                    deletingMany = null
+                    selected.clear()
+                }) { Text("Sil", color = TermRed) }
+            },
+            dismissButton = { TextButton(onClick = { deletingMany = null }) { Text("Vazgeç") } },
+        )
+    }
+
+    // İçerikte ara (grep) — desen girişi
+    if (grepOpen) {
+        var pattern by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { grepOpen = false },
+            title = { Text("İçerikte ara") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Geçerli dizinde recursive grep (.git hariç, binary atlanır).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = pattern,
+                        onValueChange = { pattern = it },
+                        label = { Text("Desen") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { files.grep(pattern); grepOpen = false }) { Text("Ara") }
+            },
+            dismissButton = { TextButton(onClick = { grepOpen = false }) { Text("Vazgeç") } },
+        )
+    }
+
+    // Grep sonuçları: yol:satır → dokununca üst dizine iner + önizleme açar.
+    if (files.grepRunning || files.grepResults != null) {
+        AlertDialog(
+            onDismissRequest = { files.dismissGrep() },
+            title = { Text("İçerik arama sonuçları") },
+            text = {
+                if (files.grepRunning) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) { CircularProgressIndicator() }
+                } else {
+                    val hits = files.grepResults.orEmpty()
+                    if (hits.isEmpty()) {
+                        Text("eşleşme yok")
+                    } else {
+                        LazyColumn(Modifier.height(320.dp)) {
+                            items(hits, key = { "${it.path}:${it.line}:${it.text}" }) { h ->
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            files.revealPath(h.path)
+                                            files.dismissGrep()
+                                        }
+                                        .padding(vertical = 6.dp),
+                                ) {
+                                    Text(
+                                        "${h.path}:${h.line}",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                    )
+                                    Text(
+                                        h.text.trim(),
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { files.dismissGrep() }) { Text("Kapat") }
+            },
+        )
+    }
 }
 
 // Aksiyon diyaloğu satırı: sola yaslı tam-genişlik metin düğmesi.
@@ -544,7 +744,12 @@ private fun diffAnnotated(content: String): androidx.compose.ui.text.AnnotatedSt
     }
 
 @Composable
-private fun RemoteFileRow(f: RemoteFile, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun RemoteFileRow(
+    f: RemoteFile,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     ListRow(
         title = f.name,
         titleMono = true,
@@ -561,8 +766,11 @@ private fun RemoteFileRow(f: RemoteFile, onClick: () -> Unit, onLongClick: () ->
                     .size(34.dp)
                     .clip(MaterialTheme.shapes.small)
                     .background(
-                        if (f.isDir) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                        else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        when {
+                            selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                            f.isDir -> MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                            else -> MaterialTheme.colorScheme.surfaceContainerHigh
+                        },
                     ),
                 contentAlignment = Alignment.Center,
             ) {
@@ -574,6 +782,16 @@ private fun RemoteFileRow(f: RemoteFile, onClick: () -> Unit, onLongClick: () ->
                 )
             }
         },
+        trailing = if (selected) {
+            {
+                Icon(
+                    Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        } else null,
         onClick = onClick,
         onLongClick = onLongClick,
     )
