@@ -24,8 +24,9 @@ terminal output, file contents, diffs, and chat never reach it.
   tunneled over SSH loopback (jailed, token-authenticated)
 - **Agent hooks** — Claude/Codex event stream: notifications, approval
   requests, chat-style output, 24h-TTL summary inbox
-- **Android UX** — themes, fonts, pinch-zoom, OSC52 clipboard, OSC8
-  hyperlinks, key bar, multiple terminal tabs
+- **Android UX** — a pixel-signal design language ([docs/design.md](docs/design.md)):
+  ink-on-graphite/paper sheets, per-host sigils, 19 themes, terminal fonts,
+  pinch-zoom, OSC52 clipboard, OSC8 hyperlinks, key bar, multiple terminal tabs
 - **Mosh bootstrap** — `mosh-server` is packaged for the host; the roaming
   client side is experimental (see Status and limits)
 
@@ -132,7 +133,7 @@ Artifacts: `apps/android/app/build/outputs/apk/debug/app-debug.apk`,
 | `packages/npm/` | npm package (`pocket-agent-cli`) |
 | `native/mosh/` | Mosh source/build metadata + `libmoshclient.so` hashes |
 | `scripts/` `tests/` | Gates, packaging, e2e/fuzz/perf/protocol tests |
-| `docs/` | Install, security, backup, rollback docs |
+| `docs/` | Install, security, backup, rollback, [design language](docs/design.md) docs |
 
 ## Security model
 

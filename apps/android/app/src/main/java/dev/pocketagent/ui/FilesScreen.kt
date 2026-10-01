@@ -36,7 +36,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
@@ -64,8 +63,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import dev.pocketagent.transport.RemoteFile
 import dev.pocketagent.ui.theme.Space
-import dev.pocketagent.ui.theme.TermGreen
-import dev.pocketagent.ui.theme.TermRed
+import dev.pocketagent.ui.theme.Readout
+import androidx.compose.foundation.border
 
 // P15: gerçek dosya sekmesi — aktif SSH oturumunun SFTP kanalı üzerinden
 // uzak dosya sistemi gezgini. Backend içerik görmez; trafik SSH içinde kalır.
@@ -123,7 +122,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
         if (bytes.size <= 10 * 1024 * 1024) files.upload(name, bytes) // P15: 10MB cap
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+    Column(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 4.dp)) {
         if (!files.hasActiveSftp()) {
             NoSessionCard()
             return@Column
@@ -165,24 +164,19 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                         list.take(5).forEach { t ->
                             TextButton(onClick = { files.openTranscript(t) }, modifier = Modifier.fillMaxWidth()) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        t.src,
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontFamily = FontFamily.Monospace,
-                                    )
+                                    TagPill(t.src)
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         t.rel.substringAfterLast('/').removeSuffix(".jsonl"),
-                                        fontSize = 12.sp,
-                                        fontFamily = FontFamily.Monospace,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
+                                        color = Tok.text,
                                         maxLines = 1,
                                         modifier = Modifier.weight(1f),
                                     )
                                     Text(
                                         relativeTime(t.mtime * 1000),
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = androidx.compose.ui.text.font.FontWeight.Normal),
+                                        color = Tok.muted,
                                     )
                                 }
                             }
@@ -202,7 +196,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                             Text(
                                 "Yalnız host üzerindeki loopback adresler (127.0.0.1) — SSRF korumalı.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = Tok.muted,
                             )
                             OutlinedTextField(
                                 value = port,
@@ -266,7 +260,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                     Icon(
                         Icons.Filled.Delete,
                         contentDescription = "Sil",
-                        tint = TermRed,
+                        tint = Tok.danger,
                     )
                 }
                 IconButton(onClick = { selected.clear() }) {
@@ -337,19 +331,18 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
         }
 
         files.error?.let {
-            Text(
-                it,
-                color = TermRed,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(vertical = 4.dp),
-            )
+            Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                SignalPixel(Signal.Error, size = 7.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(it, color = Tok.text, style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout))
+            }
         }
         notice?.let {
             Text(
                 it,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(vertical = 4.dp),
+                color = Tok.muted,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
             )
         }
 
@@ -360,7 +353,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    CircularProgressIndicator()
+                    BusyPixel("yükleniyor…")
                 }
             } else {
                 val shown = if (filter.isBlank()) files.entries
@@ -384,7 +377,14 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                 }
             }
             if (files.downloading) {
-                CircularProgressIndicator(Modifier.align(Alignment.Center))
+                Box(
+                    Modifier
+                        .align(Alignment.Center)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(Tok.raised)
+                        .border(1.dp, Tok.border, MaterialTheme.shapes.medium)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                ) { BusyPixel("indiriliyor…") }
             }
         }
 
@@ -392,9 +392,10 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
             (if (files.mode == FilesMode.WORKSPACE) "Gateway • SSH tüneli içinde • workspace jail"
             else "SFTP • SSH oturumu içinde • indirme ≤10MB") +
                 " • ${files.entries.size} öğe",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = 4.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = androidx.compose.ui.text.font.FontWeight.Normal),
+            color = Tok.muted,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
         )
     }
 
@@ -408,20 +409,20 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
         AlertDialog(
             onDismissRequest = { files.dismissPreview() },
             confirmButton = { TextButton(onClick = { files.dismissPreview() }) { Text("Kapat") } },
-            title = { Text(name, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+            title = { Text(name, fontFamily = Readout, fontSize = 14.sp) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     if (name.startsWith("git diff")) {
                         Text(
-                            diffAnnotated(content),
-                            fontFamily = FontFamily.Monospace,
+                            diffAnnotated(content, Tok),
+                            fontFamily = Readout,
                             fontSize = 12.sp,
                             lineHeight = 15.sp,
                         )
                     } else {
                         Text(
                             content,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = Readout,
                             fontSize = 12.sp,
                             lineHeight = 15.sp,
                         )
@@ -435,13 +436,13 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
     actionFile?.let { f ->
         AlertDialog(
             onDismissRequest = { actionFile = null },
-            title = { Text(f.name, fontFamily = FontFamily.Monospace, fontSize = 15.sp) },
+            title = { Text(f.name, fontFamily = Readout, fontSize = 15.sp) },
             text = {
                 Column {
                     Text(
                         f.path,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
+                        color = Tok.muted,
                         maxLines = 2,
                     )
                     Spacer(Modifier.height(8.dp))
@@ -522,8 +523,8 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                     mkdirIn?.let {
                         Text(
                             "İçinde: ${it.path}",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
+                            color = Tok.muted,
                         )
                     }
                     OutlinedTextField(
@@ -593,7 +594,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
             },
             confirmButton = {
                 TextButton(onClick = { files.delete(f); deleting = null }) {
-                    Text("Sil", color = TermRed)
+                    Text("Sil", color = Tok.danger)
                 }
             },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Vazgeç") } },
@@ -613,7 +614,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                     files.deleteAll(fs)
                     deletingMany = null
                     selected.clear()
-                }) { Text("Sil", color = TermRed) }
+                }) { Text("Sil", color = Tok.danger) }
             },
             dismissButton = { TextButton(onClick = { deletingMany = null }) { Text("Vazgeç") } },
         )
@@ -630,7 +631,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                     Text(
                         "Geçerli dizinde recursive grep (.git hariç, binary atlanır).",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Tok.muted,
                     )
                     OutlinedTextField(
                         value = pattern,
@@ -657,7 +658,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                     Column(
                         Modifier.fillMaxWidth().padding(vertical = 16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                    ) { CircularProgressIndicator() }
+                    ) { BusyPixel("aranıyor…") }
                 } else {
                     val hits = files.grepResults.orEmpty()
                     if (hits.isEmpty()) {
@@ -677,7 +678,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                                     Text(
                                         "${h.path}:${h.line}",
                                         style = MaterialTheme.typography.bodySmall.copy(
-                                            fontFamily = FontFamily.Monospace,
+                                            fontFamily = Readout,
                                         ),
                                         color = MaterialTheme.colorScheme.primary,
                                         maxLines = 1,
@@ -685,7 +686,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                                     Text(
                                         h.text.trim(),
                                         style = MaterialTheme.typography.bodySmall.copy(
-                                            fontFamily = FontFamily.Monospace,
+                                            fontFamily = Readout,
                                         ),
                                         color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
@@ -709,28 +710,29 @@ private fun ActionRow(label: String, danger: Boolean = false, onClick: () -> Uni
     TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Text(
             label,
-            color = if (danger) TermRed else MaterialTheme.colorScheme.onSurface,
+            color = if (danger) Tok.danger else Tok.text,
             modifier = Modifier.fillMaxWidth(),
         )
     }
 }
 
-// Basit diff renklendirme: + yeşil, - kırmızı, @@ mor, başlıklar kalın.
-private fun diffAnnotated(content: String): androidx.compose.ui.text.AnnotatedString =
+// Diff renklendirme — renk sinyaldir: + success, - danger, @@ accent,
+// başlıklar kalın mürekkep, +++/--- loş.
+private fun diffAnnotated(content: String, t: dev.pocketagent.ui.theme.PocketTokens): androidx.compose.ui.text.AnnotatedString =
     androidx.compose.ui.text.buildAnnotatedString {
         content.lines().forEach { line ->
             val style = when {
                 line.startsWith("+++") || line.startsWith("---") ->
-                    androidx.compose.ui.text.SpanStyle(color = dev.pocketagent.ui.theme.ConsoleDim)
+                    androidx.compose.ui.text.SpanStyle(color = t.muted)
                 line.startsWith("+") ->
-                    androidx.compose.ui.text.SpanStyle(color = dev.pocketagent.ui.theme.TermGreen)
+                    androidx.compose.ui.text.SpanStyle(color = t.success)
                 line.startsWith("-") ->
-                    androidx.compose.ui.text.SpanStyle(color = TermRed)
+                    androidx.compose.ui.text.SpanStyle(color = t.danger)
                 line.startsWith("@@") ->
-                    androidx.compose.ui.text.SpanStyle(color = dev.pocketagent.ui.theme.TermPurple)
+                    androidx.compose.ui.text.SpanStyle(color = t.accent)
                 line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("commit ") ->
                     androidx.compose.ui.text.SpanStyle(
-                        color = dev.pocketagent.ui.theme.TermAmber,
+                        color = t.text,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     )
                 else -> null
@@ -760,24 +762,19 @@ private fun RemoteFileRow(
                 append(relativeTime(f.mtime * 1000))
             }
         }.ifBlank { null },
+        subtitleMono = true,
         leading = {
             Box(
                 Modifier
-                    .size(34.dp)
+                    .size(36.dp)
                     .clip(MaterialTheme.shapes.small)
-                    .background(
-                        when {
-                            selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-                            f.isDir -> MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                            else -> MaterialTheme.colorScheme.surfaceContainerHigh
-                        },
-                    ),
+                    .background(if (selected) Tok.active else Tok.raised),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     if (f.isDir) Icons.Filled.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
                     contentDescription = null,
-                    tint = if (f.isDir) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = if (f.isDir) Tok.text2 else Tok.muted,
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -787,7 +784,7 @@ private fun RemoteFileRow(
                 Icon(
                     Icons.Filled.CheckCircle,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = Tok.accent,
                     modifier = Modifier.size(20.dp),
                 )
             }
@@ -808,24 +805,24 @@ private fun PathBar(files: FilesViewModel, modifier: Modifier = Modifier) {
     LaunchedEffect(rel) { scroll.scrollTo(scroll.maxValue) }
     Row(
         modifier
-            .clip(androidx.compose.foundation.shape.CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .clip(MaterialTheme.shapes.small)
+            .background(Tok.hover)
             .horizontalScroll(scroll)
-            .padding(horizontal = 12.dp, vertical = 2.dp),
+            .padding(horizontal = 10.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             "/",
-            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-            color = if (segments.isEmpty()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout),
+            color = if (segments.isEmpty()) Tok.text else Tok.muted,
             modifier = Modifier.clickable { files.cd(if (isGw) "" else "/") }.padding(vertical = 6.dp, horizontal = 2.dp),
         )
         segments.forEachIndexed { i, seg ->
             val last = i == segments.lastIndex
             Text(
                 seg,
-                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                color = if (last) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout),
+                color = if (last) Tok.text else Tok.muted,
                 maxLines = 1,
                 modifier = Modifier
                     .clickable(enabled = !last) {
@@ -835,7 +832,7 @@ private fun PathBar(files: FilesViewModel, modifier: Modifier = Modifier) {
                     .padding(vertical = 6.dp),
             )
             if (!last) {
-                Text("/", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("/", style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout), color = Tok.faint)
             }
         }
     }
@@ -875,7 +872,7 @@ private fun WorkspaceMissingCard() {
                 "Token ~/.config/pocket-agent/gateway.token altında üretilir; " +
                 "uygulama onu SSH oturumu içinden okur. Gateway yalnız 127.0.0.1:24543 dinler.",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Tok.muted,
         )
     }
 }
@@ -900,7 +897,7 @@ private fun NoSessionCard() {
                     "• Dosyalar yalnız SSH tünelinde akar, backend içerik görmez\n" +
                         "• İndirilenler paylaşım önbelleğine düşer (10MB üst sınır)",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Tok.muted,
                 )
             }
         }

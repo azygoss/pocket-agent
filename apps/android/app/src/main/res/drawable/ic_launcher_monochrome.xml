@@ -1,21 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Pocket Agent monochrome (themed icon): cep konturu + ">" imleç -->
+<!-- Pocket Agent monochrome (themed icon): aynı piksel işareti tek renk -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- cep konturu -->
-    <path
-        android:pathData="M34,30 L54,44 L74,30 L74,58 L54,82 L34,58 Z"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="4"
-        android:strokeLineJoin="round" />
-    <!-- chevron ">" sağ kenardan dışarı -->
-    <path
-        android:pathData="M64,46 L84,58 L64,70"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
+    <path android:fillColor="#FFFFFF" android:pathData="M29,27.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M40,38.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M51,49.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M40,60.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M29,71.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M62,71.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M73,71.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
 </vector>

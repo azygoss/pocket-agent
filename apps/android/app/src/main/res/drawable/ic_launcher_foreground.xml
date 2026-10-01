@@ -1,22 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Pocket Agent launcher foreground: cep silüeti + dışarı bakan ">" imleç -->
+<!-- Pocket Agent işareti: kare piksellerden "›" istemi (mavi = canlı) + amber ve mercan sinyal pikselleri. docs/design.md -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- cep gövdesi: V yakalı, sivri tabanlı kese -->
-    <path
-        android:pathData="M34,30 L54,44 L74,30 L74,58 L54,82 L34,58 Z"
-        android:fillColor="#2B3648"
-        android:strokeColor="#46536B"
-        android:strokeWidth="2"
-        android:strokeLineJoin="round" />
-    <!-- chevron ">" cebin sağ kenarından dışarı bakar -->
-    <path
-        android:pathData="M64,46 L84,58 L64,70"
-        android:strokeColor="#22C55E"
-        android:strokeWidth="7"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
+    <path android:fillColor="#5B9CFF" android:pathData="M29,27.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#5B9CFF" android:pathData="M40,38.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#5B9CFF" android:pathData="M51,49.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#5B9CFF" android:pathData="M40,60.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#5B9CFF" android:pathData="M29,71.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#F2B33D" android:pathData="M62,71.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#FF6B5E" android:pathData="M73,71.5 h6 a1.5,1.5 0 0 1 1.5,1.5 v6 a1.5,1.5 0 0 1 -1.5,1.5 h-6 a1.5,1.5 0 0 1 -1.5,-1.5 v-6 a1.5,1.5 0 0 1 1.5,-1.5 z" />
 </vector>

@@ -58,23 +58,38 @@ private fun theme(
 
 // ── Katalog ────────────────────────────────────────────────────────────────
 
+// Pocket: grafit üstünde mürekkep. Renk yalnız sinyal taşır — mavi
+// (accent) canlı/aktif, amber (warning) "sana ihtiyaç var", mercan (error)
+// hata/dur. Geri kalan her şey nötr.
 val PocketConsoleTheme = theme(
     "pocket", "Pocket", true,
-    background = 0xFF0B0E13, surface = 0xFF141924, surfaceHigh = 0xFF1C2331, border = 0xFF2A3242,
-    text = 0xFFE7EBF2, dim = 0xFF8D97A8, accent = 0xFF3ED598, accentAlt = 0xFF6AA8F0, error = 0xFFE86A6E, warning = 0xFFE7B76C,
-    termBg = 0xFF090C10, termFg = 0xFFD9E1EA, cursor = 0xFF3ED598,
+    background = 0xFF16181C, surface = 0xFF1C1F24, surfaceHigh = 0xFF252930, border = 0xFF30353D,
+    text = 0xFFE8EAED, dim = 0xFF9BA1AA, accent = 0xFF5B9CFF, accentAlt = 0xFF8DB8FF, error = 0xFFFF6B5E, warning = 0xFFF2B33D,
+    termBg = 0xFF121418, termFg = 0xFFDCE0E5, cursor = 0xFF5B9CFF,
     ansi = a16(
-        0xFF3A4552, 0xFFE6676B, 0xFF3FD68F, 0xFFE5B567, 0xFF5FA8F5, 0xFFB48CE8, 0xFF4FD0C5, 0xFFC6D0DC,
-        0xFF5C6B7E, 0xFFF08589, 0xFF6FE3AC, 0xFFEECA8A, 0xFF83BCF7, 0xFFC9A6EF, 0xFF7ADED5, 0xFFFFFFFF,
+        0xFF3A3F47, 0xFFFF6B5E, 0xFF4FD08B, 0xFFF2B33D, 0xFF5B9CFF, 0xFFC08CF2, 0xFF4CC9D6, 0xFFC9CED6,
+        0xFF5E6570, 0xFFFF8F84, 0xFF7ADFA8, 0xFFF6C869, 0xFF8DB8FF, 0xFFD3ADF6, 0xFF7FD9E2, 0xFFFFFFFF,
     ),
 )
 
 val PocketAmoledTheme = theme(
     "pocket_amoled", "Pocket AMOLED", true,
-    background = 0xFF000000, surface = 0xFF090B0F, surfaceHigh = 0xFF12161D, border = 0xFF232A35,
-    text = 0xFFE4EAF2, dim = 0xFF8A95A7, accent = 0xFF41D892, accentAlt = 0xFF63A9F5, error = 0xFFE86A6E, warning = 0xFFE7B76C,
-    termBg = 0xFF000000, termFg = 0xFFD9E1EA, cursor = 0xFF41D892,
+    background = 0xFF000000, surface = 0xFF0C0D0F, surfaceHigh = 0xFF16181C, border = 0xFF24272D,
+    text = 0xFFE8EAED, dim = 0xFF969CA5, accent = 0xFF5B9CFF, accentAlt = 0xFF8DB8FF, error = 0xFFFF6B5E, warning = 0xFFF2B33D,
+    termBg = 0xFF000000, termFg = 0xFFDCE0E5, cursor = 0xFF5B9CFF,
     ansi = PocketConsoleTheme.term.ansi,
+)
+
+// Pocket Paper: kâğıt üstünde mürekkep — aynı sinyal üçlüsü, AA kontrastlı tonlar.
+val PocketPaperTheme = theme(
+    "pocket_paper", "Pocket Paper", false,
+    background = 0xFFFFFFFF, surface = 0xFFF6F6F4, surfaceHigh = 0xFFECECE9, border = 0xFFD9D9D5,
+    text = 0xFF1B1D21, dim = 0xFF5D626A, accent = 0xFF1F6FEB, accentAlt = 0xFF3F84F0, error = 0xFFCC3A2B, warning = 0xFF9A6300,
+    termBg = 0xFFFFFFFF, termFg = 0xFF1B1D21, cursor = 0xFF1F6FEB,
+    ansi = a16(
+        0xFF1B1D21, 0xFFCC3A2B, 0xFF1E7F4E, 0xFF9A6300, 0xFF1F6FEB, 0xFF8A3FC4, 0xFF0F7C8A, 0xFF8A9099,
+        0xFF5D626A, 0xFFE0513F, 0xFF2A9A61, 0xFFB57A0C, 0xFF3F84F0, 0xFFA45AD8, 0xFF1A95A5, 0xFFB9BEC6,
+    ),
 )
 
 val ClaudeDarkTheme = theme(
@@ -254,7 +269,7 @@ val MonokaiTheme = theme(
 )
 
 val ConsoleThemes: List<ConsoleTheme> = listOf(
-    PocketConsoleTheme, PocketAmoledTheme,
+    PocketConsoleTheme, PocketAmoledTheme, PocketPaperTheme,
     ClaudeDarkTheme, ClaudeLightTheme,
     CodexDarkTheme,
     GithubDarkTheme, GithubLightTheme,
@@ -282,41 +297,44 @@ internal fun blend(a: Long, b: Long, t: Float): Color {
 private fun onColor(c: Long): Color =
     if (Color(c).luminance() > 0.5f) Color(0xFF0B0D10) else Color(0xFFF8FAFC)
 
+// Material bileşenleri (Switch, Slider, TextField, Dialog) tokenlere bağlanır:
+// sheet = background/surface, kart = surfaceContainerLow, popover/diyalog =
+// surfaceContainerHigh. primary yalnız odak/aktif sinyali için (mavi).
 fun ConsoleTheme.colorScheme(): ColorScheme {
+    val t = tokens()
     val base = if (dark) darkColorScheme() else lightColorScheme()
     return base.copy(
-        primary = Color(accent),
+        primary = t.accent,
         onPrimary = onColor(accent),
-        primaryContainer = blend(background, accent, 0.26f),
-        onPrimaryContainer = Color(text),
-        secondary = Color(accentAlt),
-        onSecondary = onColor(accentAlt),
-        secondaryContainer = blend(background, accentAlt, 0.22f),
-        onSecondaryContainer = Color(text),
-        tertiary = Color(accentAlt),
+        primaryContainer = blend(background, accent, 0.18f),
+        onPrimaryContainer = t.text,
+        secondary = t.text2,
+        onSecondary = t.bg,
+        secondaryContainer = t.active,
+        onSecondaryContainer = t.text,
+        tertiary = t.accentHot,
         onTertiary = onColor(accentAlt),
-        background = Color(background),
-        onBackground = Color(text),
-        surface = Color(background),
-        onSurface = Color(text),
-        surfaceVariant = Color(surfaceHigh),
-        onSurfaceVariant = Color(dim),
-        surfaceContainerLowest = Color(background),
-        surfaceContainerLow = blend(background, surface, 0.45f),
-        surfaceContainer = Color(surface),
-        surfaceContainerHigh = blend(surface, surfaceHigh, 0.6f),
-        surfaceContainerHighest = Color(surfaceHigh),
-        surfaceTint = Color(accent),
-        error = Color(error),
+        background = t.bg,
+        onBackground = t.text,
+        surface = t.bg,
+        onSurface = t.text,
+        surfaceVariant = t.raised,
+        onSurfaceVariant = t.muted,
+        surfaceContainerLowest = t.chrome,
+        surfaceContainerLow = t.surface,
+        surfaceContainer = t.surface,
+        surfaceContainerHigh = t.raised,
+        surfaceContainerHighest = t.active,
+        surfaceTint = Color.Transparent,
+        error = t.danger,
         onError = onColor(error),
-        errorContainer = blend(background, error, 0.22f),
-        onErrorContainer = Color(text),
-        inverseSurface = Color(text),
-        inverseOnSurface = Color(background),
+        errorContainer = blend(background, error, 0.16f),
+        onErrorContainer = t.text,
+        inverseSurface = t.text,
+        inverseOnSurface = t.bg,
         inversePrimary = blend(background, accent, 0.5f),
-        // Modern dilde border istisna: outline yalnız kontrol çerçeveleri için,
-        // kart hiyerarşisi tonal katmanlarla kurulur.
-        outline = Color(border),
-        outlineVariant = blend(background, border, 0.45f),
+        outline = t.borderStrong,
+        outlineVariant = t.border,
+        scrim = Color.Black.copy(alpha = if (dark) 0.6f else 0.4f),
     )
 }

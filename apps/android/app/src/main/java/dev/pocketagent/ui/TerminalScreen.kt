@@ -154,7 +154,11 @@ import dev.pocketagent.transport.TermLine
 import dev.pocketagent.transport.TerminalInput
 import dev.pocketagent.transport.TerminalSize
 import dev.pocketagent.transport.TransportFailure
-import dev.pocketagent.ui.theme.TermAmber
+import dev.pocketagent.ui.theme.Readout
+import dev.pocketagent.ui.theme.SheetInset
+import dev.pocketagent.ui.theme.SheetShape
+import dev.pocketagent.ui.theme.blinkPhase
+import androidx.compose.foundation.border
 import dev.pocketagent.ui.theme.LocalMonoFont
 import dev.pocketagent.ui.theme.LocalConsoleTheme
 import kotlin.math.roundToInt
@@ -335,12 +339,12 @@ private fun SessionPillsRow(
                 onLongClick = { renaming = h },
             )
         }
-        IconButton(onClick = onNewConnection, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onNewConnection) {
             Icon(
                 Icons.Filled.Add,
                 contentDescription = "Yeni bağlantı",
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+                tint = Tok.muted,
             )
         }
     }
@@ -367,33 +371,34 @@ private fun SessionPill(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
-    val fg = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+    val t = Tok
+    val fg = if (active) t.text else t.muted
     Row(
         Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(
-                if (active) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent,
-            )
+            .clip(MaterialTheme.shapes.small)
+            .background(if (active) t.active else Color.Transparent)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .defaultMinSize(minHeight = 36.dp)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StateDot(state, size = 6.dp)
-        Spacer(Modifier.width(7.dp))
+        StatusPixel(state, size = 7.dp)
+        Spacer(Modifier.width(8.dp))
         Text(
             name,
-            fontFamily = LocalMonoFont.current,
-            fontSize = 12.sp,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontFamily = Readout,
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+            ),
             color = fg,
             maxLines = 1,
         )
         if (retry > 0) {
+            // Yeniden deneme sürüyor — amber: sana ihtiyaç olabilir.
             Text(
                 " ↻$retry/${TerminalController.MAX_RETRY}",
-                fontFamily = LocalMonoFont.current,
-                fontSize = 10.5.sp,
-                color = fg.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
+                color = t.warning,
                 maxLines = 1,
             )
         }
@@ -681,16 +686,19 @@ private fun ActiveTerminal(
                 .then(
                     if (fullscreen) Modifier
                     else Modifier.padding(
-                        start = 10.dp, end = 10.dp, top = 6.dp,
-                        bottom = if (imeOpen) 6.dp else 10.dp,
+                        start = SheetInset, end = SheetInset, top = 4.dp,
+                        bottom = if (imeOpen) 6.dp else SheetInset,
                     ),
                 ),
         ) {
             // Yüzen terminal paneli: tutamaç + başlık + çıktı tek yuvarlak
             // yüzeyde; tuş şeridi ayrı kapsül olarak altta yüzer.
+            // Terminal paneli sheet'tir: chrome üstünde 8dp içeride, 10dp
+            // köşe, hairline kenar. Tam ekranda kenarsız.
             Surface(
                 color = termBg,
-                shape = if (fullscreen) RectangleShape else RoundedCornerShape(22.dp),
+                shape = if (fullscreen) RectangleShape else SheetShape,
+                border = if (fullscreen) null else androidx.compose.foundation.BorderStroke(1.dp, Tok.border),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 Column(Modifier.fillMaxSize()) {
@@ -719,15 +727,15 @@ private fun ActiveTerminal(
                     ) {
                         if (!fullscreen) {
                             Box(
-                                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                Modifier.fillMaxWidth().padding(vertical = 7.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Box(
                                     Modifier
-                                        .width(34.dp)
+                                        .width(32.dp)
                                         .height(4.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.30f)),
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(Tok.faint),
                                 )
                             }
                         }
@@ -743,24 +751,24 @@ private fun ActiveTerminal(
                         ) {
                             Spacer(Modifier.weight(1f))
                             OverlayAction("Scrollback'te ara", { chrome.searchOpen = !chrome.searchOpen }) {
-                                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = Tok.text2)
                             }
                             OverlayAction("Scrollback'i paylaş", { shareScrollback(context, lines) }) {
-                                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp), tint = Tok.text2)
                             }
                             OverlayAction("Tam ekrandan çık", { chrome.fullscreen = false }) {
-                                Icon(Icons.Filled.FullscreenExit, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.Filled.FullscreenExit, contentDescription = null, modifier = Modifier.size(18.dp), tint = Tok.text2)
                             }
                             if (state == ConnectionState.CLOSED || state == ConnectionState.FAILED) {
                                 if (controller.canReconnect()) {
                                     OverlayAction("Yeniden bağlan", { controller.reconnect() }) {
-                                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
+                                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp), tint = Tok.accent)
                                     }
                                 }
                             }
                             // X: oturumu kapatır ve terminalden çıkar.
                             OverlayAction("Oturumu kapat", { onClose(); onCollapse() }) {
-                                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
+                                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(18.dp), tint = Tok.danger)
                             }
                         }
                     }
@@ -869,17 +877,9 @@ private fun ActiveTerminal(
                         )
 
                         if (lines.size <= 1 && lines.firstOrNull()?.text?.isBlank() != false) {
-                            // Boş çıktı: mono durum satırı + yanıp sönen imleç bloğu.
-                            val cursorAlpha by androidx.compose.animation.core.rememberInfiniteTransition(label = "cursor")
-                                .animateFloat(
-                                    initialValue = 1f,
-                                    targetValue = 0.15f,
-                                    animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                                        androidx.compose.animation.core.tween(530),
-                                        androidx.compose.animation.core.RepeatMode.Reverse,
-                                    ),
-                                    label = "cursor-alpha",
-                                )
+                            // Boş çıktı: mono durum satırı + ortak 1 Hz saatle
+                            // yanıp sönen imleç bloğu (sonsuz animasyon yok).
+                            val cursorAlpha = if (state == ConnectionState.CONNECTING && !blinkPhase()) 0.15f else 1f
                             Column(
                                 Modifier.fillMaxSize().padding(20.dp),
                                 verticalArrangement = Arrangement.Center,
@@ -893,9 +893,9 @@ private fun ActiveTerminal(
                                             else -> "❯ bekleniyor"
                                         },
                                         color = when (state) {
-                                            ConnectionState.CONNECTING -> TermAmber
-                                            ConnectionState.FAILED -> MaterialTheme.colorScheme.error
-                                            else -> MaterialTheme.colorScheme.primary
+                                            ConnectionState.CONNECTING -> Tok.accent
+                                            ConnectionState.FAILED -> Tok.danger
+                                            else -> Tok.text2
                                         },
                                         fontFamily = LocalMonoFont.current,
                                         fontSize = (14 * settings.theme.fontScale).sp,
@@ -905,7 +905,7 @@ private fun ActiveTerminal(
                                         Modifier
                                             .width(8.dp)
                                             .height(16.dp)
-                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = cursorAlpha)),
+                                            .background(Color(console.term.cursor).copy(alpha = cursorAlpha)),
                                     )
                                 }
                             }
@@ -932,8 +932,8 @@ private fun ActiveTerminal(
                                             lineHeight = (16 * settings.theme.fontScale).sp,
                                             modifier = Modifier.fillMaxWidth().background(
                                                 when {
-                                                    isMatch -> TermAmber.copy(alpha = 0.35f)
-                                                    hasMatch -> TermAmber.copy(alpha = 0.12f)
+                                                    isMatch -> Tok.accent.copy(alpha = 0.34f)
+                                                    hasMatch -> Tok.accent.copy(alpha = 0.12f)
                                                     else -> Color.Transparent
                                                 },
                                             ),
@@ -946,9 +946,9 @@ private fun ActiveTerminal(
                         // Alta-in FAB (çıktı alanı içinde; tuş şeridiyle çakışmaz)
                         if (!atBottom && lines.size > 1) {
                             Surface(
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                shape = CircleShape,
-                                shadowElevation = 6.dp,
+                                color = Tok.raised,
+                                shape = MaterialTheme.shapes.medium,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Tok.borderStrong),
                                 modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
                             ) {
                                 IconButton(onClick = {
@@ -959,7 +959,7 @@ private fun ActiveTerminal(
                                     Icon(
                                         Icons.Filled.KeyboardArrowDown,
                                         contentDescription = "En alta in",
-                                        tint = MaterialTheme.colorScheme.primary,
+                                        tint = Tok.text,
                                     )
                                 }
                             }
@@ -969,21 +969,31 @@ private fun ActiveTerminal(
                         // yüklendi → yol / yüklenemedi" (4sn sonra silinir).
                         attachStatus?.let { (msg, isError) ->
                             Surface(
-                                color = if (isError) MaterialTheme.colorScheme.errorContainer
-                                else MaterialTheme.colorScheme.surfaceContainerHigh,
-                                shape = CircleShape,
-                                shadowElevation = 6.dp,
+                                color = Tok.raised,
+                                shape = MaterialTheme.shapes.small,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isError) Tok.danger else Tok.border),
                                 modifier = Modifier.align(Alignment.BottomStart).padding(10.dp),
                             ) {
-                                Text(
-                                    msg,
-                                    color = if (isError) MaterialTheme.colorScheme.onErrorContainer
-                                    else MaterialTheme.colorScheme.onSurface,
-                                    fontFamily = LocalMonoFont.current,
-                                    fontSize = 10.5.sp,
-                                    maxLines = 1,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                )
+                                Row(
+                                    Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    SignalPixel(
+                                        when {
+                                            isError -> Signal.Error
+                                            uploading -> Signal.Running
+                                            else -> Signal.Live
+                                        },
+                                        size = 7.dp,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        msg,
+                                        color = Tok.text,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
+                                        maxLines = 1,
+                                    )
+                                }
                             }
                         }
                     }
@@ -994,27 +1004,26 @@ private fun ActiveTerminal(
             // Hata banner'ı (overlay): mesaj + yapılabilir aksiyon.
             if (state == ConnectionState.FAILED && failure != null) {
                 Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
+                    color = Tok.raised,
                     shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp).fillMaxWidth(0.94f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Tok.danger.copy(alpha = 0.6f)),
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp).fillMaxWidth(0.94f),
                 ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(
-                            failureText(failure!!),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            fontFamily = LocalMonoFont.current,
-                            fontSize = 11.sp,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.padding(start = 14.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            SignalPixel(Signal.Error, Modifier.padding(top = 4.dp), size = 8.dp)
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                failureText(failure!!),
+                                color = Tok.text,
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(start = 12.dp)) {
                             if (controller.canReconnect()) {
-                                TextButton(onClick = { controller.reconnect() }) {
-                                    Text("Yeniden dene", fontSize = 11.sp)
-                                }
+                                ConsoleTextButton(onClick = { controller.reconnect() }) { Text("Yeniden dene") }
                             }
-                            TextButton(onClick = onNewConnection) {
-                                Text("Bağlantıya git", fontSize = 11.sp)
-                            }
+                            ConsoleTextButton(onClick = onNewConnection) { Text("Bağlantıya git", color = Tok.text2) }
                         }
                     }
                 }
@@ -1023,21 +1032,21 @@ private fun ActiveTerminal(
             // Arama çubuğu (overlay)
             if (searchOpen) {
                 Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = Tok.raised,
                     shape = MaterialTheme.shapes.medium,
-                    shadowElevation = 8.dp,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp).fillMaxWidth(0.94f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Tok.borderStrong),
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp).fillMaxWidth(0.94f),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 4.dp)) {
                         TextField(
                             value = query,
                             onValueChange = { query = it; matchCursor = 0 },
                             placeholder = {
-                                Text("Scrollback'te ara…", fontFamily = LocalMonoFont.current, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Scrollback'te ara…", style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout), color = Tok.muted)
                             },
                             singleLine = true,
                             textStyle = TextStyle(
-                                fontFamily = LocalMonoFont.current, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface,
+                                fontFamily = Readout, fontSize = 13.sp, color = Tok.text,
                             ),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -1049,7 +1058,7 @@ private fun ActiveTerminal(
                         )
                         Text(
                             if (matches.isEmpty()) "0" else "${matchCursor + 1}/${matches.size}",
-                            fontFamily = LocalMonoFont.current,
+                            fontFamily = Readout,
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1063,7 +1072,7 @@ private fun ActiveTerminal(
                             Icon(
                                 Icons.Filled.KeyboardArrowUp,
                                 contentDescription = "Önceki eşleşme",
-                                tint = if (matches.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (matches.isNotEmpty()) Tok.text else Tok.faint,
                             )
                         }
                         IconButton(
@@ -1076,7 +1085,7 @@ private fun ActiveTerminal(
                             Icon(
                                 Icons.Filled.KeyboardArrowDown,
                                 contentDescription = "Sonraki eşleşme",
-                                tint = if (matches.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (matches.isNotEmpty()) Tok.text else Tok.faint,
                             )
                         }
                     }
@@ -1087,12 +1096,14 @@ private fun ActiveTerminal(
 
         // ── Yüzen kapsül tuş şeridi: panelden ayrı durur, tam ekranda da ──
         // Scaffold nav bar'ının yerini alır.
+        // Tuş şeridi chrome üstünde ince bir surface: 10dp köşe + hairline.
         Surface(
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            shape = RoundedCornerShape(26.dp),
+            color = Tok.surface,
+            shape = SheetShape,
+            border = androidx.compose.foundation.BorderStroke(1.dp, Tok.border),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 10.dp, end = 10.dp, bottom = if (imeOpen) 4.dp else 8.dp),
+                .padding(start = SheetInset, end = SheetInset, bottom = if (imeOpen) 4.dp else SheetInset),
         ) {
             TerminalKeyBar(
                 ctrl = ctrl,
@@ -1278,8 +1289,9 @@ private fun PreviewPortDialog(
                     ) {
                         targets.forEach { t ->
                             Surface(
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                color = Tok.bg,
                                 shape = MaterialTheme.shapes.small,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Tok.border),
                                 modifier = Modifier.fillMaxWidth().clickable {
                                     onOpen(t, scrollToken ?: probeToken)
                                 },
@@ -1290,19 +1302,13 @@ private fun PreviewPortDialog(
                                 ) {
                                     Text(
                                         "${t.host}:${t.port}",
-                                        fontFamily = LocalMonoFont.current,
-                                        fontSize = 12.5.sp,
-                                        color = MaterialTheme.colorScheme.onSurface,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout),
+                                        color = Tok.text,
                                         modifier = Modifier.weight(1f),
                                         maxLines = 1,
                                     )
                                     if (t.port in detectedPorts) {
-                                        Text(
-                                            "çıktıda",
-                                            fontFamily = LocalMonoFont.current,
-                                            fontSize = 9.sp,
-                                            color = MaterialTheme.colorScheme.primary,
-                                        )
+                                        TagPill("çıktıda", active = true, tone = Tok.accent)
                                     }
                                 }
                             }
@@ -1394,7 +1400,7 @@ private fun PreviewSheet(
                     }
                     Text(
                         "${target.host}:${target.port}",
-                        fontFamily = LocalMonoFont.current,
+                        fontFamily = Readout,
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
@@ -1441,13 +1447,13 @@ private fun PreviewSheet(
                     when {
                         error != null -> Text(
                             "Tünel açılamadı: $error",
-                            color = MaterialTheme.colorScheme.error,
+                            color = Tok.danger,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.align(Alignment.Center).padding(24.dp),
                         )
                         localPort == 0 -> Text(
                             "Tünel açılıyor…",
-                            fontFamily = LocalMonoFont.current,
+                            fontFamily = Readout,
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.align(Alignment.Center),
@@ -1499,13 +1505,13 @@ private fun PreviewSheet(
                         ) {
                             Text(
                                 "Sayfa yüklenemedi: $pe",
-                                color = MaterialTheme.colorScheme.error,
+                                color = Tok.danger,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             forwarder.lastChannelError?.let {
                                 Text(
                                     "tünel: $it",
-                                    fontFamily = LocalMonoFont.current,
+                                    fontFamily = Readout,
                                     fontSize = 10.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -1535,17 +1541,18 @@ private fun TermKey(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val view = LocalView.current
+    val t = Tok
     Box(
         Modifier
             .fillMaxHeight()
             .padding(vertical = 6.dp)
-            .defaultMinSize(minWidth = 34.dp)
+            .defaultMinSize(minWidth = 36.dp)
             .clip(MaterialTheme.shapes.small)
             .background(
                 when {
-                    active -> MaterialTheme.colorScheme.primary
-                    pressed && enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f)
-                    else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                    active -> t.accent
+                    pressed && enabled -> t.active
+                    else -> t.hover
                 },
             )
             .clickable(
@@ -1562,13 +1569,12 @@ private fun TermKey(
     ) {
         Text(
             label,
-            fontFamily = LocalMonoFont.current,
-            fontSize = 12.sp,
+            style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
             maxLines = 1,
             color = when {
-                !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                !enabled -> t.faint
                 active -> MaterialTheme.colorScheme.onPrimary
-                else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                else -> t.text
             },
         )
     }
@@ -1583,12 +1589,9 @@ private fun TermIconKey(icon: ImageVector, desc: String, enabled: Boolean, onTap
         Modifier
             .fillMaxHeight()
             .padding(vertical = 6.dp)
-            .width(38.dp)
+            .width(40.dp)
             .clip(MaterialTheme.shapes.small)
-            .background(
-                if (pressed && enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f)
-                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-            )
+            .background(if (pressed && enabled) Tok.active else Tok.hover)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -1604,7 +1607,7 @@ private fun TermIconKey(icon: ImageVector, desc: String, enabled: Boolean, onTap
             icon,
             contentDescription = desc,
             modifier = Modifier.size(17.dp),
-            tint = if (enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+            tint = if (enabled) Tok.text2 else Tok.faint,
         )
     }
 }
@@ -1615,9 +1618,9 @@ private fun OverlayAction(desc: String, onClick: () -> Unit, icon: @Composable (
     Box(
         Modifier
             .padding(start = 4.dp)
-            .size(30.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            .size(40.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(Tok.hover)
             .semantics { contentDescription = desc }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,

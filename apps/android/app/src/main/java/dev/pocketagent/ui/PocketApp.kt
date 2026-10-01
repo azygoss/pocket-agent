@@ -25,6 +25,11 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Fullscreen
@@ -73,17 +78,27 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import dev.pocketagent.android.App
 import dev.pocketagent.service.TerminalService
+import dev.pocketagent.ui.theme.BlinkClock
+import dev.pocketagent.ui.theme.BlinkClockDriver
 import dev.pocketagent.ui.theme.PocketAgentTheme
+import dev.pocketagent.ui.theme.Readout
+import dev.pocketagent.ui.theme.SheetInset
+import dev.pocketagent.ui.theme.SheetShape
 import dev.pocketagent.ui.theme.Space
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
-enum class AppTab(val label: String, val icon: ImageVector) {
-    Home("Ana Sayfa", Icons.Filled.Home),
-    Connections("Bağlantılar", Icons.Filled.Dns),
-    Terminal("Terminal", Icons.Filled.Terminal),
-    Files("Dosyalar", Icons.Filled.Folder),
-    Settings("Ayarlar", Icons.Filled.Settings),
+// Seçili sekme dolu ikon, diğerleri çizgi ikon — aynı aile, tek hiyerarşi.
+enum class AppTab(val label: String, val icon: ImageVector, val iconIdle: ImageVector) {
+    Home("Ana Sayfa", Icons.Filled.Home, Icons.Outlined.Home),
+    Connections("Bağlantılar", Icons.Filled.Dns, Icons.Outlined.Dns),
+    Terminal("Terminal", Icons.Filled.Terminal, Icons.Outlined.Terminal),
+    Files("Dosyalar", Icons.Filled.Folder, Icons.Outlined.Folder),
+    Settings("Ayarlar", Icons.Filled.Settings, Icons.Outlined.Settings),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -232,14 +247,21 @@ fun PocketAgentApp(
             isAppearanceLightNavigationBars = !console.dark
         }
     }
+    // Ortak 1 Hz saat: "çalışıyor" pikselleri tek kaynaktan yanıp söner.
+    val blink = remember { BlinkClock() }
+    BlinkClockDriver(blink)
     PocketAgentTheme(
         theme = console,
         mono = consoleFont(settings.theme.fontId).family,
+        blink = blink,
     ) {
+        val t = Tok
+        val immersive = tab == AppTab.Terminal && termFullscreen
         Scaffold(
+            containerColor = if (immersive) Color(console.term.background) else t.chrome,
             topBar = {
                 // Terminal tam ekrandayken üst bar da gizlenir — gerçek immersive.
-                if (!(tab == AppTab.Terminal && termFullscreen)) {
+                if (!immersive) {
                     ConsoleTopBar(activeCount) {
                         // Terminal sekmesindeyken aksiyonlar üst barda yaşar.
                         if (tab == AppTab.Terminal) {
@@ -265,7 +287,24 @@ fun PocketAgentApp(
                 }
             },
         ) { pad ->
-            Box(Modifier.fillMaxSize().padding(pad)) {
+            // Sheets on chrome: ana içerik chrome üstünde 8dp içeride duran
+            // bir sheet'tir. Terminal kendi sheet'ini (panel) taşır — şerit ve
+            // tuş kapsülü doğrudan chrome üstünde durur.
+            val sheet = tab != AppTab.Terminal || sessionList.isEmpty()
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(pad)
+                    .then(
+                        if (sheet) {
+                            Modifier
+                                .padding(horizontal = SheetInset)
+                                .clip(SheetShape)
+                                .background(t.bg)
+                                .border(1.dp, t.border, SheetShape)
+                        } else Modifier,
+                    ),
+            ) {
                 when (tab) {
                     AppTab.Home -> HomeScreen(
                         sessions = sessions,
@@ -298,74 +337,109 @@ fun PocketAgentApp(
                 }
             }
         }
-    }
 
-    // TOFU: ilk bağlantıda parmak izi onayı; değişim zaten hard-stop.
-    hostKeyPrompt?.let { prompt ->
-        val key = prompt.key
-        AlertDialog(
-            onDismissRequest = { prompt.controller.rejectHostKey() },
-            title = { Text("Host anahtarını onayla") },
-            text = {
-                Text(
-                    "${key.host}:${key.port} için sunulan anahtar ilk kez görülüyor.\n\n" +
-                        "Algoritma: ${key.algorithm}\nParmak izi:\n${key.fingerprint}\n\n" +
-                        "Doğruladıysan pinle; anahtar daha sonra değişirse bağlantı durur.",
-                )
-            },
-            confirmButton = {
-                Button(onClick = { prompt.controller.acceptHostKeyAndReconnect() }) { Text("Pinle ve bağlan") }
-            },
-            dismissButton = {
-                TextButton(onClick = { prompt.controller.rejectHostKey() }) { Text("Vazgeç") }
-            },
-        )
+        // TOFU: ilk bağlantıda parmak izi onayı; değişim zaten hard-stop.
+        // Amber = sana ihtiyaç var.
+        hostKeyPrompt?.let { prompt ->
+            val key = prompt.key
+            AlertDialog(
+                onDismissRequest = { prompt.controller.rejectHostKey() },
+                icon = { SignalPixel(Signal.NeedsYou, size = 12.dp) },
+                title = { Text("Host anahtarını onayla") },
+                text = {
+                    Column {
+                        Text(
+                            "${key.host}:${key.port} için sunulan anahtar ilk kez görülüyor. " +
+                                "Doğruladıysan pinle; anahtar daha sonra değişirse bağlantı durur.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.height(Space.md))
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(MaterialTheme.shapes.small)
+                                .background(t.bg)
+                                .border(1.dp, t.border, MaterialTheme.shapes.small)
+                                .padding(Space.md),
+                        ) {
+                            Text(key.algorithm, style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout), color = t.muted)
+                            Spacer(Modifier.height(4.dp))
+                            Text(key.fingerprint, style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout), color = t.text)
+                        }
+                    }
+                },
+                confirmButton = {
+                    ConsoleButton(onClick = { prompt.controller.acceptHostKeyAndReconnect() }) { Text("Pinle ve bağlan") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { prompt.controller.rejectHostKey() }) { Text("Vazgeç", color = t.text2) }
+                },
+            )
+        }
     }
 }
 
-// ── Uygulama chrome'u — tonal dil ────────────────────────────────────────────
-// Üst bar ince bir şerit: wordmark + canlı oturum pill'i. Alt bar M3 usulü:
-// aktif sekme ikonunun arkasında yatay accent pill'i, etiket altta.
+// ── Uygulama chrome'u ───────────────────────────────────────────────────────
+// Pencere chrome'dur: üst şerit ve alt gezinme doğrudan chrome üstünde
+// durur; içerik onların arasında bir sheet'tir. Seçili sekme yalnız
+// zeminiyle (active) işaretlenir — mavi sinyale saklıdır.
 
-// Üst bar: wordmark + sağda tonal oturum pill'i + isteğe bağlı aksiyonlar
-// (Terminal sekmesindeyken ara/paylaş/tam-ekran/kapat burada yaşar).
-// Edge-to-edge'de status bar altına kaymaması için kendi inset'ini uygular.
+// Piksel işareti: "›" istemi kare piksellerden + iki sinyal pikseli.
+@Composable
+fun PocketMark(modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 18.dp) {
+    val t = Tok
+    androidx.compose.foundation.Canvas(modifier.size(size)) {
+        val cell = this.size.width / 5f
+        val gap = cell * 0.18f
+        fun px(c: Int, r: Int, color: Color) = drawRoundRect(
+            color,
+            topLeft = androidx.compose.ui.geometry.Offset(c * cell + gap / 2, r * cell + gap / 2),
+            size = androidx.compose.ui.geometry.Size(cell - gap, cell - gap),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(cell * 0.12f),
+        )
+        listOf(0 to 0, 1 to 1, 2 to 2, 1 to 3, 0 to 4).forEach { (c, r) -> px(c, r, t.accent) }
+        px(3, 4, t.warning)
+        px(4, 4, t.danger)
+    }
+}
+
+// Üst şerit: piksel işareti + wordmark, sağda canlı oturum okuması ve
+// isteğe bağlı aksiyonlar (Terminal sekmesinde ara/paylaş/tam-ekran/kapat).
 @Composable
 private fun ConsoleTopBar(activeSessions: Int, actions: (@Composable () -> Unit)? = null) {
-    Column(Modifier.windowInsetsPadding(WindowInsets.statusBars).background(MaterialTheme.colorScheme.surface)) {
-        Row(
-            Modifier.fillMaxWidth().height(44.dp).padding(start = Space.lg, end = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "pocket-agent",
-                fontFamily = LocalMonoFont.current,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 12.5.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-            Spacer(Modifier.weight(1f))
-            if (activeSessions > 0) {
-                Row(
-                    Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    StateDot(ConnectionState.ACTIVE, size = 6.dp)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "$activeSessions oturum",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
+    val t = Tok
+    Row(
+        Modifier
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .fillMaxWidth()
+            .height(48.dp)
+            .padding(start = Space.lg, end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PocketMark(size = 16.dp)
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "pocket-agent",
+            style = MaterialTheme.typography.labelLarge.copy(fontFamily = Readout),
+            color = t.text,
+            maxLines = 1,
+        )
+        Spacer(Modifier.weight(1f))
+        if (activeSessions > 0) {
+            Row(
+                Modifier.padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SignalPixel(Signal.Live, size = 7.dp)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "$activeSessions oturum",
+                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
+                    color = t.text2,
+                )
             }
-            actions?.invoke()
         }
-        ConsoleDivider()
+        actions?.invoke()
     }
 }
 
@@ -376,91 +450,88 @@ private fun TerminalBarActions(h: SessionHandle, sessions: SessionManager, chrom
     val state by h.controller.state.collectAsState()
     val context = LocalContext.current
     Row(verticalAlignment = Alignment.CenterVertically) {
-        TerminalBarIcon("Scrollback'te ara", Icons.Filled.Search) { chrome.searchOpen = !chrome.searchOpen }
+        TerminalBarIcon("Scrollback'te ara", Icons.Filled.Search, active = chrome.searchOpen) { chrome.searchOpen = !chrome.searchOpen }
         TerminalBarIcon("Scrollback'i paylaş", Icons.Filled.Share) {
             shareScrollback(context, h.controller.vm.lines.value)
         }
         TerminalBarIcon("Tam ekran", Icons.Filled.Fullscreen) { chrome.fullscreen = true }
         if ((state == ConnectionState.CLOSED || state == ConnectionState.FAILED) && h.controller.canReconnect()) {
-            TerminalBarIcon("Yeniden bağlan", Icons.Filled.Refresh, tint = MaterialTheme.colorScheme.primary) {
+            TerminalBarIcon("Yeniden bağlan", Icons.Filled.Refresh, tint = Tok.accent) {
                 h.controller.reconnect()
             }
         }
-        TerminalBarIcon("Oturumu kapat", Icons.Filled.Close, tint = MaterialTheme.colorScheme.error) {
+        TerminalBarIcon("Oturumu kapat", Icons.Filled.Close, tint = Tok.danger) {
             sessions.close(h.id)
             onExit()
         }
     }
 }
 
+// 40dp görsel, 48dp dokunma hedefi; açık durumdaki araç zeminle işaretlenir.
 @Composable
-private fun TerminalBarIcon(desc: String, icon: ImageVector, tint: Color = MaterialTheme.colorScheme.onSurfaceVariant, onClick: () -> Unit) {
+private fun TerminalBarIcon(
+    desc: String,
+    icon: ImageVector,
+    tint: Color = Tok.text2,
+    active: Boolean = false,
+    onClick: () -> Unit,
+) {
     Box(
         Modifier
-            .padding(start = 2.dp)
-            .size(34.dp)
-            .clip(RoundedCornerShape(50))
+            .size(44.dp)
+            .padding(2.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(if (active) Tok.active else Color.Transparent)
             .semantics { contentDescription = desc }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
     }
 }
 
-// Alt bar: aktif sekmenin ikonu yatay accent pill'i içinde (M3 indicator),
-// etiket altta accent renkte.
+// Alt gezinme: chrome üstünde; seçili sekme ikon+etiketin arkasındaki
+// active zeminiyle — renk değişmez, mürekkep kalır.
 @Composable
 private fun ConsoleNavBar(current: AppTab, onSelect: (AppTab) -> Unit) {
-    Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
-        ConsoleDivider()
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .height(64.dp),
-        ) {
-            AppTab.entries.forEach { t ->
-                val selected = current == t
-                val tint = if (selected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .semantics { contentDescription = t.label }
-                        .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(t) }),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Spacer(Modifier.weight(1f))
-                    Box(
-                        Modifier
-                            .width(56.dp)
-                            .height(30.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                                else Color.Transparent,
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            t.icon,
-                            contentDescription = null,
-                            tint = tint,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        t.label,
-                        fontSize = 9.5.sp,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                        color = tint,
-                        maxLines = 1,
-                    )
-                    Spacer(Modifier.weight(1f))
-                }
+    val t = Tok
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .height(64.dp)
+            .padding(horizontal = SheetInset, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        AppTab.entries.forEach { tab ->
+            val selected = current == tab
+            val bg by animateColorAsState(if (selected) t.active else Color.Transparent, tween(130), label = "nav-bg")
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(bg)
+                    .semantics { contentDescription = tab.label }
+                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(tab) }),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    if (selected) tab.icon else tab.iconIdle,
+                    contentDescription = null,
+                    tint = if (selected) t.text else t.muted,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    tab.label,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    ),
+                    color = if (selected) t.text else t.muted,
+                    maxLines = 1,
+                )
             }
         }
     }

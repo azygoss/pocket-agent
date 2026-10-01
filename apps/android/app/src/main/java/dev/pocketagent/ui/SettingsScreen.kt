@@ -31,9 +31,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -66,10 +64,9 @@ import dev.pocketagent.ui.theme.ConsoleFont
 import dev.pocketagent.ui.theme.ConsoleFonts
 import dev.pocketagent.ui.theme.ConsoleTheme
 import dev.pocketagent.ui.theme.ConsoleThemes
-import dev.pocketagent.ui.theme.LocalMonoFont
 import dev.pocketagent.ui.theme.Space
-import dev.pocketagent.ui.theme.TermGreen
-import dev.pocketagent.ui.theme.TermRed
+import dev.pocketagent.ui.theme.Readout
+import androidx.compose.foundation.layout.defaultMinSize
 import dev.pocketagent.ui.theme.consoleFont
 import dev.pocketagent.ui.theme.consoleTheme
 import kotlinx.coroutines.Dispatchers
@@ -151,7 +148,7 @@ private fun SettingsIndex(
                 title = "Backend",
                 subtitle = backendSubtitle(settings.backendUrl),
                 trailing = if (settings.backendConfigured) {
-                    { TagPill(syncStatus, active = syncStatus == "bağlı", tone = if (syncStatus == "bağlı") TermGreen else null) }
+                    { TagPill(syncStatus, active = syncStatus == "bağlı", tone = if (syncStatus == "bağlı") Tok.accent else null) }
                 } else {
                     null
                 },
@@ -197,15 +194,15 @@ private fun backendSubtitle(url: String): String {
 // Bölüm: küçük etiket + tek kartta toplanan satırlar (iOS grouped list dili).
 @Composable
 private fun SettingsGroup(label: String, content: @Composable ColumnScope.() -> Unit) {
-    SectionLabel(label)
-    Spacer(Modifier.height(Space.md))
+    SectionLabel(label, Modifier.padding(start = 2.dp))
+    Spacer(Modifier.height(Space.sm))
     ConsoleCard(padding = 0.dp, content = content)
 }
 
 // Ayırıcıyı metin hizasına içeri al (ikon karosu genişliği kadar girinti).
 @Composable
 private fun InsetDivider() {
-    SoftDivider(Modifier.padding(start = Space.lg + 38.dp + Space.md))
+    SoftDivider(Modifier.padding(start = Space.lg + 36.dp + Space.md))
 }
 
 @Composable
@@ -220,13 +217,13 @@ private fun SettingsNavRow(
         title = title,
         subtitle = subtitle,
         onClick = onClick,
-        leading = { IconTile(icon, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        leading = { IconTile(icon) },
         trailing = {
             trailing?.invoke()
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = Tok.muted,
                 modifier = Modifier.size(18.dp),
             )
         },
@@ -254,7 +251,7 @@ private fun SettingsDetailPage(title: String, onBack: () -> Unit, content: @Comp
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = Tok.muted,
                     modifier = Modifier.size(20.dp),
                 )
             }
@@ -280,11 +277,7 @@ private fun SettingsDetailPage(title: String, onBack: () -> Unit, content: @Comp
 @Composable
 private fun AppearanceContent(settings: SettingsViewModel) {
     ConsoleCard {
-        Text(
-            "Tema",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        SectionLabel("Tema")
         Spacer(Modifier.height(Space.sm))
         ConsoleThemes.chunked(3).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
@@ -302,10 +295,12 @@ private fun AppearanceContent(settings: SettingsViewModel) {
     }
     Spacer(Modifier.height(Space.lg))
     ConsoleCard {
+        SectionLabel("Terminal yazı tipi")
+        Spacer(Modifier.height(2.dp))
         Text(
-            "Yazı tipi",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            "Arayüz okumaları her zaman IBM Plex Mono ile basılır; bu seçim terminali etkiler.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Tok.muted,
         )
         Spacer(Modifier.height(Space.sm))
         Row(
@@ -322,8 +317,8 @@ private fun AppearanceContent(settings: SettingsViewModel) {
             Spacer(Modifier.weight(1f))
             Text(
                 "%.1fx".format(settings.theme.fontScale),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout),
+                color = Tok.text2,
             )
         }
         Slider(
@@ -355,16 +350,12 @@ private fun SessionContent(settings: SettingsViewModel) {
     }
     Spacer(Modifier.height(Space.lg))
     ConsoleCard {
-        Text(
-            "Tuş şeridi snippet'ları",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        SectionLabel("Tuş şeridi snippet'ları")
         Spacer(Modifier.height(Space.xs))
         Text(
             "Sık komutlar terminalin alt şeridine tuş olarak eklenir. Her satır: etiket=komut.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Tok.muted,
         )
         Spacer(Modifier.height(Space.sm))
         var snip by remember { mutableStateOf(settings.snippets) }
@@ -373,7 +364,7 @@ private fun SessionContent(settings: SettingsViewModel) {
             onValueChange = { snip = it },
             placeholder = { Text("gs=git status\nht=htop\nta=tmux attach") },
             minLines = 3, maxLines = 6,
-            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = LocalMonoFont.current),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout),
             modifier = Modifier.fillMaxWidth(),
         )
         if (snip != settings.snippets) {
@@ -417,7 +408,7 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
             TagPill(
                 if (settings.backendConfigured) syncStatus else "ayarlanmadı",
                 active = syncStatus == "bağlı",
-                tone = if (syncStatus == "bağlı") TermGreen else null,
+                tone = if (syncStatus == "bağlı") Tok.accent else null,
             )
         }
         SoftDivider(Modifier.padding(vertical = Space.sm))
@@ -425,7 +416,7 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
             Text(
                 "Backend yalnız kısa olay özetleri tutar (≤256 karakter, 24s TTL); terminal ve dosya içerikleri hiç gitmez.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Tok.muted,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -464,13 +455,13 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
                 enabled = settings.backendConfigured,
             ) { Text("Test et") }
             if (saved) {
-                Text("Kaydedildi", style = MaterialTheme.typography.bodySmall, color = TermGreen)
+                Text("Kaydedildi", style = MaterialTheme.typography.bodySmall, color = Tok.success)
             } else {
                 testResult?.let {
                     Text(
                         it,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (it == "Backend erişilebilir") TermGreen else MaterialTheme.colorScheme.error,
+                        color = if (it == "Backend erişilebilir") Tok.success else Tok.danger,
                     )
                 }
             }
@@ -488,7 +479,7 @@ private fun SecurityContent(hostKeys: TofuHostKeyStore) {
             Text(
                 "Henüz pinlenen anahtar yok. İlk bağlantıda parmak izi sorulur.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Tok.muted,
             )
         }
     } else {
@@ -500,15 +491,15 @@ private fun SecurityContent(hostKeys: TofuHostKeyStore) {
                     modifier = Modifier.padding(horizontal = Space.lg, vertical = Space.sm),
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("${k.host}:${k.port}", style = MaterialTheme.typography.bodyMedium)
+                        Text("${k.host}:${k.port}", style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout), color = Tok.text)
                         Text(
                             k.fingerprint,
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
+                            color = Tok.muted,
                         )
                     }
                     ConsoleTextButton(onClick = { hostKeys.forget(k.host, k.port); pinnedKeys = hostKeys.all() }) {
-                        Text("Unut", color = MaterialTheme.colorScheme.error)
+                        Text("Unut", color = Tok.danger)
                     }
                 }
             }
@@ -518,7 +509,7 @@ private fun SecurityContent(hostKeys: TofuHostKeyStore) {
     Text(
         "Pinlenen anahtar değişirse bağlantı durur (MITM koruması).",
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = Tok.muted,
     )
 }
 
@@ -576,7 +567,7 @@ private fun DataContent(settings: SettingsViewModel, usage: UsageViewModel, app:
         Text(
             "Bağlantılar ve ayarlar JSON olarak dışa aktarılır. Parolalar ve anahtarlar hiçbir zaman yedeğe girmez.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Tok.muted,
         )
         Spacer(Modifier.height(Space.md))
         Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalAlignment = Alignment.CenterVertically) {
@@ -585,7 +576,7 @@ private fun DataContent(settings: SettingsViewModel, usage: UsageViewModel, app:
         }
         msg?.let {
             Spacer(Modifier.height(Space.sm))
-            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(it, style = MaterialTheme.typography.labelSmall, color = Tok.muted)
         }
     }
     Spacer(Modifier.height(Space.lg))
@@ -597,21 +588,21 @@ private fun DataContent(settings: SettingsViewModel, usage: UsageViewModel, app:
             Text(
                 "Henüz kullanım verisi yok — host raporlama bağlanınca burada görünür. Backend ayarlıysa her senkron turunda güncellenir.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Tok.muted,
             )
         } else {
             usage.rows.forEachIndexed { i, u ->
                 if (i > 0) SoftDivider(Modifier.padding(vertical = Space.sm)) else Spacer(Modifier.height(Space.xs))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(u.agent, Modifier.weight(1f), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium)
+                    Text(u.agent, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout), color = Tok.text)
                     Text(
                         "%${u.percent} · ${u.resetIn}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
+                        color = Tok.muted,
                     )
                 }
                 Spacer(Modifier.height(Space.sm))
-                MeterBar(u.percent / 100f)
+                CellMeter(u.percent / 100f)
             }
         }
     }
@@ -619,7 +610,7 @@ private fun DataContent(settings: SettingsViewModel, usage: UsageViewModel, app:
     Text(
         "Snapshot'lar 24 saat saklanır; backend tam transcript görmez.",
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = Tok.muted,
     )
 }
 
@@ -634,22 +625,33 @@ private fun AboutContent(app: App) {
         runCatching { pkg.getPackageInfo(app.packageName, 0).versionName }.getOrNull() ?: "dev"
     }
     ConsoleCard {
-        Text("Pocket Agent $version • GPL-3.0-or-later", style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(Space.xs))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PocketMark(size = 22.dp)
+            Spacer(Modifier.width(Space.md))
+            Column {
+                Text("Pocket Agent", style = MaterialTheme.typography.titleMedium, color = Tok.text)
+                Text(
+                    "$version · GPL-3.0-or-later",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
+                    color = Tok.muted,
+                )
+            }
+        }
+        Spacer(Modifier.height(Space.md))
         Text(
             "Fontlar: JetBrains Mono, IBM Plex Mono, Space Mono (OFL-1.1) • Lisans metinleri assets/licenses altında.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Tok.muted,
         )
         Text(
             "Terminal baytları, diff ve dosya içerikleri backend'den geçmez; yalnız kısa özetler (≤256 karakter, 24s TTL) tutulur.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Tok.muted,
         )
         Text(
             "Dikte: cihaz-içi varsayılan (BYOK opt-in) • Deep link: pocketagent://tmux|herdr",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Tok.muted,
         )
     }
 }
@@ -710,7 +712,7 @@ private fun UpdateCard() {
         Spacer(Modifier.height(Space.sm))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Sürüm $version", style = MaterialTheme.typography.bodyLarge)
+                Text("Sürüm $version", style = MaterialTheme.typography.bodyLarge, color = Tok.text)
                 Text(
                     when (phase) {
                         UpdPhase.Idle -> "GitHub Releases"
@@ -721,21 +723,18 @@ private fun UpdateCard() {
                         UpdPhase.Ready -> rel?.let { "v${it.version} indirildi" } ?: ""
                         UpdPhase.Failed -> err ?: "Hata"
                     },
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
                     color = when (phase) {
-                        UpdPhase.Current -> TermGreen
-                        UpdPhase.Failed -> MaterialTheme.colorScheme.error
-                        UpdPhase.Available, UpdPhase.Ready -> MaterialTheme.colorScheme.primary
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        UpdPhase.Current -> Tok.success
+                        UpdPhase.Failed -> Tok.danger
+                        UpdPhase.Available, UpdPhase.Ready -> Tok.accent
+                        else -> Tok.muted
                     },
                 )
             }
             when (phase) {
                 UpdPhase.Checking, UpdPhase.Downloading ->
-                    CircularProgressIndicator(
-                        Modifier.width(20.dp).height(20.dp),
-                        strokeWidth = 2.dp,
-                    )
+                    BusyPixel(modifier = Modifier.padding(end = 8.dp))
                 UpdPhase.Available, UpdPhase.Ready ->
                     ConsoleButton(onClick = { rel?.let(::downloadAndInstall) }) { Text("İndir ve kur") }
                 else ->
@@ -744,17 +743,14 @@ private fun UpdateCard() {
         }
         if (phase == UpdPhase.Downloading) {
             Spacer(Modifier.height(Space.sm))
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            CellMeter(progress, warnAt = 2f)
         }
         rel?.notes?.takeIf { it.isNotBlank() && phase == UpdPhase.Available }?.let {
             Spacer(Modifier.height(Space.sm))
             Text(
                 it.lines().take(3).joinToString("\n"),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Tok.muted,
                 maxLines = 3,
             )
         }
@@ -765,31 +761,34 @@ private fun UpdateCard() {
 // accent çizgisi + isim. Seçili hücre accent halkası alır.
 @Composable
 private fun ThemeCell(t: ConsoleTheme, selected: Boolean, modifier: Modifier = Modifier, onTap: () -> Unit) {
-    val mono = LocalMonoFont.current
+    val mono = Readout
     Column(
         modifier
             .clip(MaterialTheme.shapes.small)
             .background(Color(t.term.background))
             .then(
+                // Seçim tek işaret: mürekkep çerçeve (mavi sinyale saklı).
                 if (selected) {
-                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.small)
+                    Modifier.border(2.dp, Tok.text, MaterialTheme.shapes.small)
                 } else {
-                    Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+                    Modifier.border(1.dp, Tok.border, MaterialTheme.shapes.small)
                 },
             )
             .clickable(onClick = onTap)
             .padding(7.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("❯", color = Color(t.accent), fontFamily = mono, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            Text("›", color = Color(t.accent), fontFamily = mono, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
-            Box(
-                Modifier
-                    .width(14.dp)
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(t.accent)),
-            )
+            listOf(t.accent, t.warning, t.error).forEach { c ->
+                Box(
+                    Modifier
+                        .padding(start = 2.dp)
+                        .size(5.dp)
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(Color(c)),
+                )
+            }
         }
         Spacer(Modifier.height(5.dp))
         Text("src/  notes.md", color = Color(t.term.foreground), fontFamily = mono, fontSize = 7.5.sp, maxLines = 1)
@@ -798,49 +797,26 @@ private fun ThemeCell(t: ConsoleTheme, selected: Boolean, modifier: Modifier = M
         Text(
             t.name,
             style = MaterialTheme.typography.labelSmall,
-            color = if (selected) MaterialTheme.colorScheme.onSurface else Color(t.term.foreground).copy(alpha = 0.75f),
+            color = Color(t.term.foreground).copy(alpha = if (selected) 1f else 0.75f),
             maxLines = 1,
         )
     }
 }
 
-// Font çipi: adı kendi fontuyla render eder (canlı önizleme). Tonal kapsül;
-// seçiliyken accent tint.
+// Font çipi: adı kendi fontuyla render eder (canlı önizleme). Seçim
+// yalnız zeminle — renk değişmez.
 @Composable
 private fun FontChip(f: ConsoleFont, selected: Boolean, onTap: () -> Unit) {
-    val fg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         Modifier
-            .clip(CircleShape)
-            .background(
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                else MaterialTheme.colorScheme.surfaceContainerHigh,
-            )
+            .clip(MaterialTheme.shapes.small)
+            .background(if (selected) Tok.active else Color.Transparent)
+            .border(1.dp, if (selected) Tok.borderStrong else Tok.border, MaterialTheme.shapes.small)
             .clickable(onClick = onTap)
-            .padding(horizontal = Space.md, vertical = Space.sm),
+            .defaultMinSize(minHeight = 40.dp)
+            .padding(horizontal = Space.md, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(f.name, fontFamily = f.family, style = MaterialTheme.typography.labelLarge, color = fg, maxLines = 1)
-    }
-}
-
-// İnce ölçüm çubuğu: dolgu oranı + eşikte renk değişimi.
-@Composable
-private fun MeterBar(fraction: Float) {
-    val f = fraction.coerceIn(0f, 1f)
-    val color = if (f >= 0.85f) TermRed else MaterialTheme.colorScheme.primary
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(3.dp)
-            .clip(RoundedCornerShape(2.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth(f)
-                .height(3.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(color),
-        )
+        Text(f.name, fontFamily = f.family, style = MaterialTheme.typography.labelLarge, color = if (selected) Tok.text else Tok.text2, maxLines = 1)
     }
 }

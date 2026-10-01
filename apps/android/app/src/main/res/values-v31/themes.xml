@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- API 31+: platform splash attr'ları (core-splashscreen bağımlılığı
-         gerektirmez). ">" glifi term_bg üstünde gösterilir; splash kapanınca
+         gerektirmez). piksel işareti term_bg (chrome) üstünde gösterilir; splash kapanınca
          aktivite aynı tema ile devam eder (postSplashScreenTheme platformda
          yok — compat kütüphanesi attr'ıdır). -->
     <style name="Theme.PocketAgent.Splash" parent="android:Theme.Material.NoActionBar">

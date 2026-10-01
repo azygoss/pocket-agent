@@ -1,34 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package dev.pocketagent.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,10 +40,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,9 +50,11 @@ import dev.pocketagent.data.ConnectionRepository
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.SessionHandle
 import dev.pocketagent.transport.SessionManager
-import dev.pocketagent.ui.theme.Space
 import dev.pocketagent.ui.theme.LocalConsoleTheme
 import dev.pocketagent.ui.theme.LocalMonoFont
+import dev.pocketagent.ui.theme.Readout
+import dev.pocketagent.ui.theme.SheetShape
+import dev.pocketagent.ui.theme.Space
 
 @Composable
 fun HomeScreen(
@@ -74,7 +71,7 @@ fun HomeScreen(
     var renaming by remember { mutableStateOf<SessionHandle?>(null) }
     val active = sessionList.firstOrNull { it.id == activeId }
     val state = active?.controller?.state?.collectAsState()?.value ?: ConnectionState.CLOSED
-    val primary = MaterialTheme.colorScheme.primary
+    val t = Tok
 
     // Host'taki pa-* oturumlarını keşfet: aktif oturumu olan her conn'in
     // exec kanalından, 15s'de bir. Başka cihazların açtığı terminaller
@@ -86,32 +83,27 @@ fun HomeScreen(
         }
     }
 
-    // Referans düzen: neredeyse siyah zemin, üstten loş yeşil glow.
-    Box(
-        Modifier
-            .fillMaxSize()
-            .drawBehind {
-                drawRect(
-                    Brush.radialGradient(
-                        colors = listOf(primary.copy(alpha = 0.10f), Color.Transparent),
-                        center = Offset(size.width / 2f, 0f),
-                        radius = size.width * 0.95f,
-                    ),
-                )
-            },
-    ) {
+    Box(Modifier.fillMaxSize()) {
         Column(
             Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Space.lg),
         ) {
-            Spacer(Modifier.height(Space.lg))
+            Spacer(Modifier.height(Space.xl))
+            ScreenHeader(
+                "Ana sayfa",
+                meta = buildString {
+                    append(if (sessionList.isEmpty()) "açık oturum yok" else "${sessionList.size} açık oturum")
+                    append(" · ${saved.size} host")
+                },
+            )
+            Spacer(Modifier.height(Space.xl))
 
-            // ── SESSIONS: canlı terminal önizleme kartları ─────────────────
+            // ── Oturumlar: canlı terminal önizleme sheet'leri ──────────────
             // Yerel açık oturumlar + host'ta yaşayan diğer pa-* oturumları
             // (bu cihazda açık olmayanlar; diğer cihazlar dahil) aynı satırda —
-            // uzak kart "host" rozetli, dokun → aynı tmux'a attach.
+            // uzak kart "host" çipli, dokun → aynı tmux'a attach.
             val openTmux = tmuxNames.values.toSet()
             val remoteItems = remote.flatMap { (connId, terms) ->
                 saved.firstOrNull { it.id == connId }
@@ -123,16 +115,15 @@ fun HomeScreen(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     SectionLabel("Oturumlar")
                     Spacer(Modifier.weight(1f))
-                    IconButton(onClick = { onGoTo(AppTab.Terminal) }, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = { onGoTo(AppTab.Terminal) }) {
                         Icon(
                             Icons.Filled.GridView,
                             contentDescription = "Terminale git",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(17.dp),
+                            tint = t.muted,
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                 }
-                Spacer(Modifier.height(Space.md))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
                     items(sessionList, key = { it.id }) { h ->
                         SessionCard(
@@ -168,10 +159,29 @@ fun HomeScreen(
                 Spacer(Modifier.height(Space.xl))
             }
 
-            // ── CONNECTIONS: host kartları ─────────────────────────────────
+            // Kopan oturum için hızlı yol — amber: sana ihtiyaç var.
+            if (active != null && state != ConnectionState.ACTIVE && active.controller.canReconnect()) {
+                TonalTile(onClick = { active.controller.reconnect(); onGoTo(AppTab.Terminal) }) {
+                    SignalPixel(Signal.NeedsYou, size = 8.dp)
+                    Spacer(Modifier.width(Space.md))
+                    Column(Modifier.weight(1f)) {
+                        Text("Yeniden bağlan", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = t.text)
+                        Text(
+                            "etkin oturum bağlı değil",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = t.muted,
+                            maxLines = 1,
+                        )
+                    }
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = t.muted, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.height(Space.xl))
+            }
+
+            // ── Bağlantılar ────────────────────────────────────────────────
             if (saved.isEmpty()) {
                 SectionLabel("Başlangıç")
-                Spacer(Modifier.height(Space.md))
+                Spacer(Modifier.height(Space.sm))
                 ConsoleCard {
                     StepRow(1, "Host'ta çalıştır: pocket-agent pair")
                     StepRow(2, "QR'ı tara ya da XXXX-XXXX kodunu gir")
@@ -184,14 +194,17 @@ fun HomeScreen(
                 }
             } else {
                 SectionLabel("Son bağlantılar")
-                Spacer(Modifier.height(Space.md))
-                Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    saved.sortedByDescending { it.lastConnectedAt }.take(3).forEach { c ->
+                Spacer(Modifier.height(Space.sm))
+                ConsoleCard(padding = 0.dp) {
+                    saved.sortedByDescending { it.lastConnectedAt }.take(4).forEachIndexed { i, c ->
+                        if (i > 0) SoftDivider(Modifier.padding(start = Space.lg + 36.dp + Space.md))
                         val open = sessionList.firstOrNull { it.conn.id == c.id }
                         ConnectionTile(
+                            seed = c.host + c.user,
                             name = c.name,
                             address = "${c.user}@${c.host}:${c.port}",
-                            state = open?.controller?.state?.collectAsState()?.value ?: ConnectionState.CLOSED,
+                            when_ = relativeTime(c.lastConnectedAt),
+                            state = open?.controller?.state?.collectAsState()?.value,
                             onClick = {
                                 if (open != null || connections.hasSavedSecret(c.id)) {
                                     sessions.open(c, connections.secret(c.id))
@@ -203,43 +216,25 @@ fun HomeScreen(
                         )
                     }
                 }
-                if (sessionList.isNotEmpty()) {
-                    Spacer(Modifier.height(Space.md))
-                    TagPill("● ${sessionList.size} oturum", active = true, tone = MaterialTheme.colorScheme.primary)
-                }
             }
-
-            // Kopan oturum için hızlı yol.
-            if (active != null && state != ConnectionState.ACTIVE && active.controller.canReconnect()) {
-                Spacer(Modifier.height(Space.md))
-                ConsoleOutlinedButton(
-                    onClick = { active.controller.reconnect(); onGoTo(AppTab.Terminal) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Yeniden bağlan") }
-            }
-            Spacer(Modifier.height(Space.xl))
 
             // FAB payı.
-            Spacer(Modifier.height(96.dp))
+            Spacer(Modifier.height(104.dp))
         }
 
-        // Büyük dairesel FAB: yeni host → Bağlantılar.
+        // Yeni host: mürekkep dolgulu kare-yumuşak FAB (mavi sinyale saklı).
         Box(
             Modifier
                 .align(Alignment.BottomEnd)
-                .padding(20.dp)
-                .size(58.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary)
+                .padding(Space.lg)
+                .size(56.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(t.text)
+                .semantics { contentDescription = "Yeni host" }
                 .clickable { onGoTo(AppTab.Connections) },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                Icons.Filled.Add,
-                contentDescription = "Yeni host",
-                tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(28.dp),
-            )
+            Icon(Icons.Filled.Add, contentDescription = null, tint = t.bg, modifier = Modifier.size(24.dp))
         }
 
         renaming?.let { h ->
@@ -253,8 +248,7 @@ fun HomeScreen(
     }
 }
 
-// Oturum kartı: gerçek buffer'ın son satırlarıyla mini terminal önizlemesi.
-// Placeholder yok — kart, oturumun canlı çıktısını gösterir.
+// Oturum kartı: gerçek buffer'ın son satırlarıyla mini terminal sheet'i.
 // Uzun basma → yeniden adlandırma diyaloğu (ad SessionManager.customNames'te).
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -265,45 +259,31 @@ private fun SessionCard(
     onClick: () -> Unit,
 ) {
     val console = LocalConsoleTheme.current
+    val t = Tok
     val lines by h.controller.vm.lines.collectAsState()
     val st by h.controller.state.collectAsState()
-    Column(Modifier.width(216.dp)) {
+    Column(Modifier.width(220.dp)) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .height(148.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .height(150.dp)
+                .clip(SheetShape)
                 .background(Color(console.term.background))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+                .border(1.dp, t.border, SheetShape)
                 .combinedClickable(onClick = onClick, onLongClick = onRename)
-                .padding(start = 10.dp, end = 10.dp, top = 9.dp),
+                .padding(start = 12.dp, end = 10.dp, top = 10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StateDot(st, size = 6.dp)
-                Spacer(Modifier.width(6.dp))
+                StatusPixel(st, size = 7.dp)
+                Spacer(Modifier.width(7.dp))
                 Text(
                     name ?: h.conn.name,
-                    fontFamily = LocalMonoFont.current,
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout),
+                    color = t.text,
                     maxLines = 1,
                     modifier = Modifier.weight(1f),
                 )
-                Box(
-                    Modifier
-                        .clip(CircleShape)
-                        .background(Color(console.accentAlt).copy(alpha = 0.16f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                ) {
-                    Text(
-                        h.controller.vm.badge,
-                        fontFamily = LocalMonoFont.current,
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(console.accentAlt),
-                    )
-                }
+                TagPill(h.controller.vm.badge)
             }
             Spacer(Modifier.height(8.dp))
             Column {
@@ -323,64 +303,52 @@ private fun SessionCard(
         Spacer(Modifier.height(6.dp))
         Text(
             "${h.conn.user}@${h.conn.host}",
-            fontFamily = LocalMonoFont.current,
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
+            color = t.muted,
             maxLines = 1,
             modifier = Modifier.padding(start = 2.dp),
         )
     }
 }
 
-// Bağlantı kartı: köşesinde durum noktalı ikon karosu + iki satır + chevron.
+// Bağlantı satırı: host sigil'i + ad + mono adres; sağda zaman okuması ya
+// da canlı oturumun durum pikseli.
 @Composable
 private fun ConnectionTile(
+    seed: String,
     name: String,
     address: String,
-    state: ConnectionState,
+    when_: String,
+    state: ConnectionState?,
     onClick: () -> Unit,
 ) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable(onClick = onClick)
-            .padding(horizontal = Space.md, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box {
-            IconTile(
-                Icons.Filled.Dns,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                size = 42.dp,
-            )
-            Box(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp)) {
-                StateDot(state, size = 9.dp)
+    val t = Tok
+    ListRow(
+        title = name,
+        subtitle = address,
+        subtitleMono = true,
+        onClick = onClick,
+        leading = { HostSigil(seed) },
+        trailing = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (state != null) {
+                    StatusPixel(state, size = 7.dp)
+                } else {
+                    Text(
+                        when_,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
+                        color = t.muted,
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = t.muted, modifier = Modifier.size(18.dp))
             }
-        }
-        Spacer(Modifier.width(Space.md))
-        Column(Modifier.weight(1f)) {
-            Text(name, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), maxLines = 1)
-            Spacer(Modifier.height(2.dp))
-            Text(
-                address,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
-        Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
-    }
+        },
+    )
 }
 
 // Host'ta yaşayan ama bu cihazda açık olmayan oturum kartı — SessionCard
-// ile aynı geometri, "host" rozeti + attach ipucu (scrollback yerine).
+// geometrisi, "host" çipi + attach ipucu (scrollback yerine).
 // Dokun → aynı tmux'a attach; başka cihazın oturumu paylaşımlı açılır.
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -392,51 +360,31 @@ private fun RemoteSessionCard(
     onClick: () -> Unit,
 ) {
     val console = LocalConsoleTheme.current
-    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    val t = Tok
     val alpha = if (enabled) 1f else 0.5f
-    Column(Modifier.width(216.dp)) {
+    Column(Modifier.width(220.dp)) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .height(148.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .height(150.dp)
+                .clip(SheetShape)
                 .background(Color(console.term.background))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+                .border(1.dp, t.border, SheetShape)
                 .combinedClickable(enabled = enabled, onClick = onClick)
-                .padding(start = 10.dp, end = 10.dp, top = 9.dp),
+                .padding(start = 12.dp, end = 10.dp, top = 10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Uzakta canlı, burada bağlı değil — nötr nokta.
-                Box(
-                    Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(dim.copy(alpha = alpha)),
-                )
-                Spacer(Modifier.width(6.dp))
+                // Uzakta canlı, burada bağlı değil — boşta pikseli.
+                SignalPixel(Signal.Idle, size = 7.dp)
+                Spacer(Modifier.width(7.dp))
                 Text(
                     name,
-                    fontFamily = LocalMonoFont.current,
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f * alpha),
+                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout),
+                    color = t.text.copy(alpha = alpha),
                     maxLines = 1,
                     modifier = Modifier.weight(1f),
                 )
-                Box(
-                    Modifier
-                        .clip(CircleShape)
-                        .background(Color(console.accentAlt).copy(alpha = 0.16f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                ) {
-                    Text(
-                        "host",
-                        fontFamily = LocalMonoFont.current,
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(console.accentAlt).copy(alpha = alpha),
-                    )
-                }
+                TagPill("host")
             }
             Spacer(Modifier.height(8.dp))
             listOf(
@@ -446,7 +394,7 @@ private fun RemoteSessionCard(
             ).forEach { l ->
                 Text(
                     l,
-                    color = Color(console.term.foreground).copy(alpha = 0.55f * alpha),
+                    color = Color(console.term.foreground).copy(alpha = 0.6f * alpha),
                     fontFamily = LocalMonoFont.current,
                     fontSize = 7.5.sp,
                     lineHeight = 10.5.sp,
@@ -458,27 +406,24 @@ private fun RemoteSessionCard(
         Spacer(Modifier.height(6.dp))
         Text(
             address,
-            fontFamily = LocalMonoFont.current,
-            fontSize = 11.sp,
-            color = dim.copy(alpha = alpha),
+            style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
+            color = t.muted.copy(alpha = alpha),
             maxLines = 1,
             modifier = Modifier.padding(start = 2.dp),
         )
     }
 }
 
-// Numaralı adım: mono sıra numarası + metin.
+// Numaralı adım: mono sıra numarası (loş) + metin.
 @Composable
 private fun StepRow(n: Int, text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 5.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
         Text(
             "%02d".format(n),
-            fontFamily = LocalMonoFont.current,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.width(26.dp),
+            style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout),
+            color = Tok.muted,
+            modifier = Modifier.width(28.dp),
         )
-        Text(text, style = MaterialTheme.typography.bodyMedium)
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = Tok.text)
     }
 }

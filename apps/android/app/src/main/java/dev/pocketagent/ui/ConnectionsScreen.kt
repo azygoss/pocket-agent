@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -63,7 +62,11 @@ import dev.pocketagent.transport.Secret
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.TerminalTransport
 import dev.pocketagent.ui.theme.Space
-import dev.pocketagent.ui.theme.LocalMonoFont
+import dev.pocketagent.ui.theme.Readout
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import kotlinx.coroutines.launch
 
 @Composable
@@ -180,27 +183,14 @@ fun ConnectionsScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.End,
             ) {
-                SmallFloatingActionButton(
-                    onClick = { sshConfigPicker.launch(arrayOf("*/*")) },
-                    shape = MaterialTheme.shapes.medium,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                ) {
-                    Icon(Icons.Filled.AttachFile, contentDescription = "~/.ssh/config içe aktar")
-                }
-                SmallFloatingActionButton(
-                    onClick = { pairError = null; showPair = true },
-                    shape = MaterialTheme.shapes.medium,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                ) {
-                    Icon(Icons.Filled.QrCodeScanner, contentDescription = "QR ile bağlan")
-                }
+                DialButton(Icons.Filled.AttachFile, "~/.ssh/config içe aktar") { sshConfigPicker.launch(arrayOf("*/*")) }
+                DialButton(Icons.Filled.QrCodeScanner, "QR ile bağlan") { pairError = null; showPair = true }
                 ExtendedFloatingActionButton(
                     onClick = { showAdd = true },
-                    shape = MaterialTheme.shapes.large,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                    containerColor = Tok.text,
+                    contentColor = Tok.bg,
+                    elevation = androidx.compose.material3.FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
                     icon = { Icon(Icons.Filled.Add, contentDescription = null) },
                     text = { Text("Host ekle", fontWeight = FontWeight.SemiBold) },
                 )
@@ -221,7 +211,7 @@ fun ConnectionsScreen(
                         Text(
                             "3 adımda bağlan. Secret'lar ya RAM'de tutulur ya da Keystore ile şifrelenir — asla plaintext diske yazılmaz.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Tok.muted,
                         )
                         Spacer(Modifier.height(Space.md))
                         WizardStep(1, "Backend URL", "self-hosted API adresin (QR bunu taşır)") {
@@ -238,25 +228,32 @@ fun ConnectionsScreen(
                                 enabled = url.isNotBlank() && url != settings?.backendUrl,
                                 onClick = { settings?.setBackend(url, settings.tenantToken.ifBlank { "default" }) },
                                 modifier = Modifier.padding(top = 6.dp),
-                            ) { Text("Kaydet", fontSize = 12.sp) }
+                            ) { Text("Kaydet") }
                         }
                         WizardStep(2, "Host'ta çalıştır", "tek komut: daemon + gateway + QR") {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()
                                     .clip(MaterialTheme.shapes.small)
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                    .padding(8.dp),
+                                    .background(Tok.bg)
+                                    .border(1.dp, Tok.border, MaterialTheme.shapes.small)
+                                    .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
                             ) {
                                 Text(
+                                    "›",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout),
+                                    color = Tok.muted,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
                                     "pocket-agent onboard",
-                                    fontFamily = LocalMonoFont.current,
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout),
+                                    color = Tok.text,
                                     modifier = Modifier.weight(1f),
                                 )
                                 TextButton(onClick = {
                                     clipboard2.setText(androidx.compose.ui.text.AnnotatedString("pocket-agent onboard"))
-                                }) { Text("Kopyala", fontSize = 11.sp) }
+                                }) { Text("Kopyala", style = MaterialTheme.typography.labelMedium, color = Tok.text2) }
                             }
                         }
                         WizardStep(3, "Eşle", "QR'ı tara ya da XXXX-XXXX kodu gir") {
@@ -279,23 +276,23 @@ fun ConnectionsScreen(
                                     Icons.Filled.Search,
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = Tok.muted,
                                 )
                             },
                             singleLine = true,
                             shape = MaterialTheme.shapes.medium,
                             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                focusedBorderColor = Tok.accent,
+                                unfocusedBorderColor = Tok.border,
+                                focusedContainerColor = Tok.surface,
+                                unfocusedContainerColor = Tok.surface,
                             ),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
                         )
                     }
                 LazyColumn(
                     Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 88.dp),
+                    contentPadding = PaddingValues(top = Space.lg, bottom = 200.dp),
                 ) {
                     item(key = "header") {
                         ScreenHeader(
@@ -314,13 +311,14 @@ fun ConnectionsScreen(
                             onEdit = { editingProfile = it },
                             onDelete = { p -> scope.launch { profiles.delete(p.id) } },
                         )
-                        Spacer(Modifier.height(Space.lg))
+                        Spacer(Modifier.height(Space.xl))
                         SectionLabel("Hostlar")
+                        Spacer(Modifier.height(Space.xs))
                     }
                     items(filtered, key = { it.id }) { c ->
                         val openSession = sessionList.firstOrNull { it.conn.id == c.id }
                         val sessionState = openSession?.controller?.state?.collectAsState()?.value
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(Space.sm))
                         ConnectionRow(
                             conn = c,
                             isActive = sessionState == ConnectionState.ACTIVE,
@@ -365,9 +363,9 @@ fun ConnectionsScreen(
                     Text(
                         "Host'ta `pocket-agent pair` çalıştır. QR'ı tara ya da 8 haneli kodu gir — anahtar tek kullanımlık, 5 dakika geçerli.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Tok.muted,
                     )
-                    Button(
+                    ConsoleButton(
                         onClick = { camPermission.launch(android.Manifest.permission.CAMERA) },
                         enabled = !pairBusy,
                         modifier = Modifier.fillMaxWidth(),
@@ -388,10 +386,10 @@ fun ConnectionsScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (pairBusy) {
-                        Text("Bağlanıyor…", style = MaterialTheme.typography.bodySmall)
+                        BusyPixel("bağlanıyor…")
                     }
                     pairError?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        Text(it, color = Tok.danger, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
@@ -460,7 +458,7 @@ fun ConnectionsScreen(
                     Text(
                         "Bu profil hangi host'ta açılsın?",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Tok.muted,
                     )
                     items.forEach { c ->
                         ListRow(
@@ -491,14 +489,13 @@ fun ConnectionsScreen(
                     Text(
                         "Secret'lar taşınmaz — her host ilk bağlanışında parola/anahtar sorar.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Tok.muted,
                     )
                     entries.forEach { e ->
                         Text(
                             "${e.name}  ${e.user.ifBlank { "?" }}@${e.host}:${e.port}" +
                                 (e.identityFile?.let { "  [$it]" } ?: ""),
-                            fontFamily = LocalMonoFont.current,
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
                         )
                     }
                 }
@@ -548,7 +545,7 @@ private fun ProfilesSection(
         Text(
             "Kayıtlı komutla oturum aç — örn. ad \"Codex\", komut \"codex\".",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Tok.muted,
             modifier = Modifier.padding(bottom = Space.sm),
         )
     } else {
@@ -580,26 +577,26 @@ private fun ProfileRow(
     ListRow(
         title = p.name,
         subtitle = p.command + (hostName?.let { " · $it" } ?: " · host seçilecek"),
+        subtitleMono = true,
         leading = {
             Box(
                 Modifier
-                    .size(34.dp)
+                    .size(36.dp)
                     .clip(MaterialTheme.shapes.small)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    .background(Tok.raised),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    "❯",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontFamily = LocalMonoFont.current,
-                    fontSize = 14.sp,
+                    "›",
+                    color = Tok.text2,
+                    style = MaterialTheme.typography.titleMedium.copy(fontFamily = Readout),
                 )
             }
         },
         trailing = {
             Box {
                 IconButton(onClick = { menu = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "Profil menüsü")
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Profil menüsü", tint = Tok.muted)
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(
@@ -608,7 +605,7 @@ private fun ProfileRow(
                         onClick = { menu = false; onEdit() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Sil", color = MaterialTheme.colorScheme.error) },
+                        text = { Text("Sil", color = Tok.danger) },
                         onClick = { menu = false; onDelete() },
                     )
                 }
@@ -667,7 +664,7 @@ private fun ProfileDialog(
                 Text(
                     "Oturum açılınca komut otomatik çalışır.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Tok.muted,
                 )
             }
         },
@@ -697,14 +694,13 @@ private fun WizardStep(n: Int, title: String, subtitle: String, content: @Compos
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "%02d".format(n),
-                style = MaterialTheme.typography.labelMedium.copy(fontFamily = LocalMonoFont.current),
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout),
+                color = Tok.muted,
+                modifier = Modifier.width(28.dp),
             )
-            Spacer(Modifier.width(Space.sm))
             Column {
-                Text(title, style = MaterialTheme.typography.titleSmall)
-                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(title, style = MaterialTheme.typography.titleSmall, color = Tok.text)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Tok.muted)
             }
         }
         Spacer(Modifier.height(Space.sm))
@@ -726,52 +722,43 @@ private fun ConnectionRow(
 ) {
     var menu by remember { mutableStateOf(false) }
     TonalTile(onClick = onConnect) {
-        Box(
-            Modifier
-                .size(38.dp)
-                .clip(MaterialTheme.shapes.small)
-                .background(
-                    if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                    else MaterialTheme.colorScheme.surfaceContainerHigh,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                conn.name.trim().take(1).uppercase().ifBlank { "?" },
-                style = MaterialTheme.typography.titleMedium.copy(fontFamily = LocalMonoFont.current),
-                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        HostSigil(conn.host + conn.user)
         Spacer(Modifier.width(Space.md))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(conn.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                Text(
+                    conn.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Tok.text,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
                 if (isActive) {
-                    Spacer(Modifier.width(Space.sm))
-                    StateDot(ConnectionState.ACTIVE, size = 7.dp)
+                    StatusPixel(ConnectionState.ACTIVE, Modifier.padding(start = Space.sm), size = 7.dp)
                 }
+                Text(
+                    relativeTime(conn.lastConnectedAt) + if (hasSecret) " · kayıtlı" else "",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
+                    color = Tok.muted,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = Space.sm),
+                )
             }
             Spacer(Modifier.height(2.dp))
             Text(
                 "${conn.user}@${conn.host}:${conn.port}",
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
+                color = Tok.muted,
                 maxLines = 1,
             )
         }
-        Text(
-            relativeTime(conn.lastConnectedAt) + if (hasSecret) " · kayıtlı" else "",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            modifier = Modifier.padding(end = 2.dp),
-        )
         Box {
             IconButton(onClick = { menu = true }) {
                 Icon(
                     Icons.Filled.MoreVert,
                     contentDescription = "Menü",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = Tok.muted,
                 )
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -788,7 +775,7 @@ private fun ConnectionRow(
                     onClick = { menu = false; onEdit() },
                 )
                 DropdownMenuItem(
-                    text = { Text("Sil", color = MaterialTheme.colorScheme.error) },
+                    text = { Text("Sil", color = Tok.danger) },
                     onClick = { menu = false; onDelete() },
                 )
             }
@@ -871,14 +858,14 @@ private fun ConnectionDialog(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         // id_ed25519 vb. dosyadan içe aktar
                         ConsoleOutlinedButton(onClick = { pemPicker.launch(arrayOf("*/*")) }) {
-                            Text("Dosyadan al", fontSize = 12.sp)
+                            Text("Dosyadan al")
                         }
                         ConsoleOutlinedButton(onClick = {
                             val g = dev.pocketagent.security.KeyGen.ed25519()
                             secretText = g.privatePem
                             generatedPub = g.publicOpenSsh
                         }) {
-                            Text("Anahtar üret", fontSize = 12.sp)
+                            Text("Anahtar üret")
                         }
                     }
                 }
@@ -905,12 +892,12 @@ private fun ConnectionDialog(
                                 probing = false
                             }
                         },
-                    ) { Text(if (probing) "Sınanıyor…" else "Bağlantıyı sına", fontSize = 12.sp) }
+                    ) { Text(if (probing) "Sınanıyor…" else "Bağlantıyı sına") }
                     probeResult?.let {
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            it, fontSize = 11.sp, fontFamily = LocalMonoFont.current,
-                            color = if (it.startsWith("✓")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            it, style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
+                            color = if (it.startsWith("✓")) Tok.success else Tok.danger,
                         )
                     }
                 }
@@ -921,14 +908,14 @@ private fun ConnectionDialog(
                 if (errors.isNotEmpty()) {
                     Text(
                         "Eksik/hatalı: ${errors.joinToString()}",
-                        color = MaterialTheme.colorScheme.error,
+                        color = Tok.danger,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 Text(
                     "İlk bağlantıda host parmak izi gösterilir ve pinlenir (TOFU).",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Tok.muted,
                 )
             }
         },
@@ -972,16 +959,16 @@ private fun ConnectionDialog(
                     Text(
                         "Bunu host'ta ~/.ssh/authorized_keys'e ekle. Private anahtar PEM alanına yazıldı — Kaydet de, sonra Bağlan.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Tok.muted,
                     )
                     Text(
                         pub,
-                        fontFamily = LocalMonoFont.current,
-                        fontSize = 10.sp,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
                         modifier = Modifier.fillMaxWidth()
                             .clip(MaterialTheme.shapes.small)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(8.dp),
+                            .background(Tok.bg)
+                            .border(1.dp, Tok.border, MaterialTheme.shapes.small)
+                            .padding(10.dp),
                     )
                 }
             },
@@ -1031,5 +1018,22 @@ private fun pairClaim(
         } finally {
             onBusy(false)
         }
+    }
+}
+
+// Speed-dial yardımcı düğmesi: raised zemin + hairline, gölgesiz; 48dp hedef.
+@Composable
+private fun DialButton(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(Tok.raised)
+            .border(1.dp, Tok.border, MaterialTheme.shapes.medium)
+            .semantics { contentDescription = desc }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = Tok.text, modifier = Modifier.size(20.dp))
     }
 }
