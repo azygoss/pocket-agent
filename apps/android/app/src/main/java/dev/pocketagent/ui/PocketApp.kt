@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -85,7 +84,14 @@ import dev.pocketagent.ui.theme.Readout
 import dev.pocketagent.ui.theme.SheetInset
 import dev.pocketagent.ui.theme.SheetShape
 import dev.pocketagent.ui.theme.Space
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateColorAsState
+import dev.pocketagent.ui.theme.rememberReducedMotion
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -259,6 +265,7 @@ fun PocketAgentApp(
         val immersive = tab == AppTab.Terminal && termFullscreen
         Scaffold(
             containerColor = if (immersive) Color(console.term.background) else t.chrome,
+            contentColor = t.text,
             topBar = {
                 // Terminal tam ekrandayken üst bar da gizlenir — gerçek immersive.
                 if (!immersive) {
@@ -273,7 +280,7 @@ fun PocketAgentApp(
                     }
                 }
             },
-            snackbarHost = { SnackbarHost(snackbar) },
+            snackbarHost = { SnackbarHost(snackbar) { PocketSnackbar(it) } },
             // Bar'lar kendi inset'lerini uygular; fullscreen'de (bar yokken)
             // status/nav boşluğu içerikte kalmasın diye sıfırlanır.
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -283,57 +290,72 @@ fun PocketAgentApp(
                 // Oturum yokken (boş terminal) bar görünür kalır ki ekran
                 // çıkışsız bir tuzağa dönüşmesin.
                 if (tab != AppTab.Terminal || sessionList.isEmpty()) {
-                    ConsoleNavBar(tab) { tab = it }
+                    ConsoleNavBar(tab, liveSessions = activeCount) { tab = it }
                 }
             },
         ) { pad ->
             // Sheets on chrome: ana içerik chrome üstünde 8dp içeride duran
             // bir sheet'tir. Terminal kendi sheet'ini (panel) taşır — şerit ve
             // tuş kapsülü doğrudan chrome üstünde durur.
-            val sheet = tab != AppTab.Terminal || sessionList.isEmpty()
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .padding(pad)
-                    .then(
-                        if (sheet) {
-                            Modifier
-                                .padding(horizontal = SheetInset)
-                                .clip(SheetShape)
-                                .background(t.bg)
-                                .border(1.dp, t.border, SheetShape)
-                        } else Modifier,
-                    ),
-            ) {
-                when (tab) {
-                    AppTab.Home -> HomeScreen(
-                        sessions = sessions,
-                        connections = app.connections,
-                        onGoTo = { tab = it },
-                    )
-                    AppTab.Connections -> ConnectionsScreen(
-                        repo = app.connections,
-                        profiles = app.profiles,
-                        sessions = sessions,
-                        app = app,
-                        settings = settings,
-                        pendingAdd = addHostLink,
-                        onConnected = { tab = AppTab.Terminal },
-                    )
-                    AppTab.Terminal -> TerminalScreen(
-                        manager = sessions,
-                        settings = settings,
-                        onNewConnection = { tab = AppTab.Connections },
-                        onCollapse = { tab = AppTab.Home },
-                        chrome = termChrome,
-                    )
-                    AppTab.Files -> FilesScreen(files = files, onOpenTerminal = { tab = AppTab.Terminal })
-                    AppTab.Settings -> SettingsScreen(
-                        settings = settings,
-                        usage = usage,
-                        hostKeys = app.hostKeys,
-                        app = app,
-                    )
+            // Sekme geçişi tek seferlik bir çapraz geçiştir (150ms); azaltılmış
+            // harekette anında. Sheet dekorasyonu hedef sekmeye göre çizilir.
+            val reduced = rememberReducedMotion()
+            val syncStatus by app.eventSync.status.collectAsState()
+            AnimatedContent(
+                targetState = tab,
+                transitionSpec = {
+                    if (reduced) EnterTransition.None togetherWith ExitTransition.None
+                    else fadeIn(tween(150, delayMillis = 40)) togetherWith fadeOut(tween(90))
+                },
+                label = "tab",
+                modifier = Modifier.fillMaxSize().padding(pad),
+            ) { current ->
+                val sheet = current != AppTab.Terminal || sessionList.isEmpty()
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (sheet) {
+                                Modifier
+                                    .padding(horizontal = SheetInset)
+                                    .clip(SheetShape)
+                                    .background(t.bg)
+                                    .border(1.dp, t.border, SheetShape)
+                            } else Modifier,
+                        ),
+                ) {
+                    when (current) {
+                        AppTab.Home -> HomeScreen(
+                            sessions = sessions,
+                            connections = app.connections,
+                            inbox = app.inbox,
+                            syncStatus = if (settings.backendConfigured) syncStatus else null,
+                            onGoTo = { tab = it },
+                        )
+                        AppTab.Connections -> ConnectionsScreen(
+                            repo = app.connections,
+                            profiles = app.profiles,
+                            sessions = sessions,
+                            app = app,
+                            settings = settings,
+                            pendingAdd = addHostLink,
+                            onConnected = { tab = AppTab.Terminal },
+                        )
+                        AppTab.Terminal -> TerminalScreen(
+                            manager = sessions,
+                            settings = settings,
+                            onNewConnection = { tab = AppTab.Connections },
+                            onCollapse = { tab = AppTab.Home },
+                            chrome = termChrome,
+                        )
+                        AppTab.Files -> FilesScreen(files = files, onOpenTerminal = { tab = AppTab.Terminal })
+                        AppTab.Settings -> SettingsScreen(
+                            settings = settings,
+                            usage = usage,
+                            hostKeys = app.hostKeys,
+                            app = app,
+                        )
+                    }
                 }
             }
         }
@@ -342,7 +364,7 @@ fun PocketAgentApp(
         // Amber = sana ihtiyaç var.
         hostKeyPrompt?.let { prompt ->
             val key = prompt.key
-            AlertDialog(
+            PocketAlertDialog(
                 onDismissRequest = { prompt.controller.rejectHostKey() },
                 icon = { SignalPixel(Signal.NeedsYou, size = 12.dp) },
                 title = { Text("Host anahtarını onayla") },
@@ -493,7 +515,7 @@ private fun TerminalBarIcon(
 // Alt gezinme: chrome üstünde; seçili sekme ikon+etiketin arkasındaki
 // active zeminiyle — renk değişmez, mürekkep kalır.
 @Composable
-private fun ConsoleNavBar(current: AppTab, onSelect: (AppTab) -> Unit) {
+private fun ConsoleNavBar(current: AppTab, liveSessions: Int = 0, onSelect: (AppTab) -> Unit) {
     val t = Tok
     Row(
         Modifier
@@ -517,12 +539,22 @@ private fun ConsoleNavBar(current: AppTab, onSelect: (AppTab) -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Icon(
-                    if (selected) tab.icon else tab.iconIdle,
-                    contentDescription = null,
-                    tint = if (selected) t.text else t.muted,
-                    modifier = Modifier.size(20.dp),
-                )
+                Box {
+                    Icon(
+                        if (selected) tab.icon else tab.iconIdle,
+                        contentDescription = null,
+                        tint = if (selected) t.text else t.muted,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    // Canlı oturum varken Terminal ikonunun köşesinde mavi piksel.
+                    if (tab == AppTab.Terminal && liveSessions > 0) {
+                        SignalPixel(
+                            Signal.Live,
+                            Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-2).dp),
+                            size = 6.dp,
+                        )
+                    }
+                }
                 Spacer(Modifier.height(3.dp))
                 Text(
                     tab.label,

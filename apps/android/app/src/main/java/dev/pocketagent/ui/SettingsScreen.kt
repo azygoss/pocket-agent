@@ -33,11 +33,10 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -88,14 +87,32 @@ fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys:
     var page by remember { mutableStateOf<SettingsPage?>(null) }
     BackHandler(enabled = page != null) { page = null }
     val back = { page = null }
-    when (page) {
-        null -> SettingsIndex(settings, usage, hostKeys, app) { page = it }
-        SettingsPage.Appearance -> SettingsDetailPage(SettingsPage.Appearance.title, back) { AppearanceContent(settings) }
-        SettingsPage.Session -> SettingsDetailPage(SettingsPage.Session.title, back) { SessionContent(settings) }
-        SettingsPage.Backend -> SettingsDetailPage(SettingsPage.Backend.title, back) { BackendContent(settings, app) }
-        SettingsPage.Security -> SettingsDetailPage(SettingsPage.Security.title, back) { SecurityContent(hostKeys) }
-        SettingsPage.Data -> SettingsDetailPage(SettingsPage.Data.title, back) { DataContent(settings, usage, app) }
-        SettingsPage.About -> SettingsDetailPage(SettingsPage.About.title, back) { AboutContent(app) }
+    // Detaya giriş: içerik 24dp sağdan kayarak + solarak gelir; dönüş tersi.
+    val reduced = dev.pocketagent.ui.theme.rememberReducedMotion()
+    androidx.compose.animation.AnimatedContent(
+        targetState = page,
+        transitionSpec = {
+            val forward = targetState != null
+            if (reduced) {
+                androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
+            } else {
+                (
+                    androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)) +
+                        androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(220)) { w -> if (forward) w / 16 else -w / 16 }
+                    ) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(90))
+            }
+        },
+        label = "settings-page",
+    ) { current ->
+        when (current) {
+            null -> SettingsIndex(settings, usage, hostKeys, app) { page = it }
+            SettingsPage.Appearance -> SettingsDetailPage(SettingsPage.Appearance.title, back) { AppearanceContent(settings) }
+            SettingsPage.Session -> SettingsDetailPage(SettingsPage.Session.title, back) { SessionContent(settings) }
+            SettingsPage.Backend -> SettingsDetailPage(SettingsPage.Backend.title, back) { BackendContent(settings, app) }
+            SettingsPage.Security -> SettingsDetailPage(SettingsPage.Security.title, back) { SecurityContent(hostKeys) }
+            SettingsPage.Data -> SettingsDetailPage(SettingsPage.Data.title, back) { DataContent(settings, usage, app) }
+            SettingsPage.About -> SettingsDetailPage(SettingsPage.About.title, back) { AboutContent(app) }
+        }
     }
 }
 
@@ -362,7 +379,7 @@ private fun SessionContent(settings: SettingsViewModel) {
         OutlinedTextField(
             value = snip,
             onValueChange = { snip = it },
-            placeholder = { Text("gs=git status\nht=htop\nta=tmux attach") },
+            placeholder = { Text("gs=git status\nht=htop\nta=tmux attach", fontFamily = Readout) },
             minLines = 3, maxLines = 6,
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout),
             modifier = Modifier.fillMaxWidth(),
@@ -403,7 +420,7 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
 
     ConsoleCard {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Durum", style = MaterialTheme.typography.bodyLarge)
+            Text("Durum", style = MaterialTheme.typography.bodyLarge, color = Tok.text)
             Spacer(Modifier.weight(1f))
             TagPill(
                 if (settings.backendConfigured) syncStatus else "ayarlanmadı",
@@ -427,7 +444,8 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
             value = url,
             onValueChange = { url = it; urlError = null; saved = false },
             label = { Text("Backend URL") },
-            placeholder = { Text("https://agent.example.com") },
+            placeholder = { Text("https://agent.example.com", fontFamily = Readout) },
+            mono = true,
             supportingText = { urlError?.let { Text(it, color = MaterialTheme.colorScheme.error) } },
             isError = urlError != null,
             singleLine = true,
@@ -439,6 +457,7 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
             value = tenant,
             onValueChange = { tenant = it; saved = false },
             label = { Text("Tenant token") },
+            mono = true,
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -618,42 +637,58 @@ private fun DataContent(settings: SettingsViewModel, usage: UsageViewModel, app:
 
 @Composable
 private fun AboutContent(app: App) {
-    UpdateCard()
-    Spacer(Modifier.height(Space.lg))
     val pkg = LocalContext.current.packageManager
     val version = remember {
         runCatching { pkg.getPackageInfo(app.packageName, 0).versionName }.getOrNull() ?: "dev"
     }
-    ConsoleCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            PocketMark(size = 22.dp)
-            Spacer(Modifier.width(Space.md))
-            Column {
-                Text("Pocket Agent", style = MaterialTheme.typography.titleMedium, color = Tok.text)
-                Text(
-                    "$version · GPL-3.0-or-later",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
-                    color = Tok.muted,
-                )
-            }
-        }
-        Spacer(Modifier.height(Space.md))
+    AboutHero(version)
+    UpdateCard()
+    Spacer(Modifier.height(Space.xl))
+    // Künye: anahtar/değer satırları — paragraf duvarı yerine taranabilir.
+    SectionLabel("Künye", Modifier.padding(start = 2.dp))
+    Spacer(Modifier.height(Space.sm))
+    ConsoleCard(padding = 0.dp) {
+        AboutRow("Lisans", "GPL-3.0-or-later")
+        AboutRow("Fontlar", "JetBrains Mono · IBM Plex Mono · Space Mono (OFL-1.1)")
+        AboutRow("Gizlilik", "Terminal, diff ve dosyalar backend'e gitmez; yalnız ≤256 karakter özet, 24s TTL")
+        AboutRow("Dikte", "cihaz-içi varsayılan · BYOK opt-in")
+        AboutRow("Deep link", "pocketagent://tmux|herdr", last = true)
+    }
+}
+
+// Hakkında hero'su: büyük piksel işareti + ad + sürüm okuması.
+@Composable
+private fun AboutHero(version: String) {
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = Space.xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier
+                .size(88.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(Tok.chrome)
+                .border(1.dp, Tok.border, RoundedCornerShape(22.dp)),
+            contentAlignment = Alignment.Center,
+        ) { PocketMark(size = 44.dp) }
+        Spacer(Modifier.height(Space.lg))
+        Text("Pocket Agent", style = MaterialTheme.typography.headlineSmall, color = Tok.text)
+        Spacer(Modifier.height(2.dp))
         Text(
-            "Fontlar: JetBrains Mono, IBM Plex Mono, Space Mono (OFL-1.1) • Lisans metinleri assets/licenses altında.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Tok.muted,
-        )
-        Text(
-            "Terminal baytları, diff ve dosya içerikleri backend'den geçmez; yalnız kısa özetler (≤256 karakter, 24s TTL) tutulur.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Tok.muted,
-        )
-        Text(
-            "Dikte: cihaz-içi varsayılan (BYOK opt-in) • Deep link: pocketagent://tmux|herdr",
-            style = MaterialTheme.typography.bodySmall,
+            "v$version · cepten self-hosted terminal",
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
             color = Tok.muted,
         )
     }
+}
+
+@Composable
+private fun AboutRow(key: String, value: String, last: Boolean = false) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = Space.lg, vertical = 12.dp), verticalAlignment = Alignment.Top) {
+        Text(key, style = MaterialTheme.typography.bodyMedium, color = Tok.muted, modifier = Modifier.width(92.dp))
+        Text(value, style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout), color = Tok.text, modifier = Modifier.weight(1f))
+    }
+    if (!last) SoftDivider(Modifier.padding(start = Space.lg))
 }
 
 // Güncelleme kartı: mevcut sürüm + kontrol butonu; güncelleme varsa

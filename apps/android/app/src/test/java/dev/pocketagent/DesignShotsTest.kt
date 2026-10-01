@@ -17,6 +17,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.room.Room
 import dev.pocketagent.data.AppDatabase
@@ -80,10 +81,36 @@ class DesignShotsTest {
             FakeSshTransport().also { it.openPty("xterm-256color", size) }
     }
 
-    private fun manager() = SessionManager(
+    // Dosya listesi görüntüsü için örnek dizin döndüren SFTP fake'i.
+    private class ListingTransport(val inner: FakeSshTransport = FakeSshTransport()) :
+        SshTransport by inner, dev.pocketagent.transport.SftpSession {
+        override suspend fun home() = "/home/berk/src/pocket-agent"
+        override suspend fun list(path: String): List<dev.pocketagent.transport.RemoteFile> {
+            val now = System.currentTimeMillis() / 1000
+            fun d(n: String, age: Long) = dev.pocketagent.transport.RemoteFile(n, "$path/$n", true, 0, now - age)
+            fun f(n: String, size: Long, age: Long) = dev.pocketagent.transport.RemoteFile(n, "$path/$n", false, size, now - age)
+            return listOf(
+                d("apps", 3600), d("backend", 86400), d("docs", 600), d("host", 7200),
+                f("README.md", 9_412, 300), f("Makefile", 2_210, 90_000), f("go.mod", 1_024, 400_000),
+                f("icon.png", 182_400, 5_000), f("release.tar.gz", 48_000_000, 20_000), f("main.go", 4_800, 120),
+            )
+        }
+        override suspend fun readBytes(path: String, maxBytes: Long) = ByteArray(0)
+        override suspend fun writeBytes(path: String, data: ByteArray) {}
+        override suspend fun mkdir(path: String) {}
+        override suspend fun delete(path: String, isDir: Boolean) {}
+        override suspend fun rename(from: String, to: String) {}
+    }
+
+    private fun manager(listing: Boolean = false) = SessionManager(
         CoroutineScope(Dispatchers.IO),
         TofuHostKeyStore(File.createTempFile("hostkeys", ".db")),
-    ) { C() }
+    ) {
+        if (!listing) C() else object : SshConnector {
+            override suspend fun open(conn: SavedConnection, secret: Secret?, size: TerminalSize): SshTransport =
+                ListingTransport().also { it.openPty("xterm-256color", size) }
+        }
+    }
 
     private fun db() = Room.inMemoryDatabaseBuilder(
         RuntimeEnvironment.getApplication(), AppDatabase::class.java,
@@ -147,6 +174,31 @@ class DesignShotsTest {
         m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
         Thread.sleep(600)
         shot("home-dark")
+        m.closeAll()
+    }
+
+    private fun inbox(): dev.pocketagent.ui.InboxViewModel = dev.pocketagent.ui.InboxViewModel().apply {
+        val now = java.time.Instant.now()
+        fun ev(id: String, cat: String, src: String, msg: String, ago: Long) = dev.pocketagent.net.BackendEvent(
+            id, "h:1", "s-$id", src, cat, msg, "d$id", "r$id", now.minusSeconds(ago).toString(), now.plusSeconds(86400).toString(),
+        )
+        mergeRemote(listOf(
+            ev("1", "APPROVAL_REQUIRED", "claude", "Bash: rm -rf build/ çalıştırmak için onay bekliyor", 40),
+            ev("2", "TASK_COMPLETE", "codex", "Testler geçti, PR açıklaması hazır", 600),
+            ev("3", "TOOL_RUNNING", "claude", "go test ./... çalışıyor", 90),
+            ev("4", "ERROR", "codex", "lint başarısız: 3 uyarı hata olarak işaretlendi", 3600),
+        ))
+        markRead("4")
+    }
+
+    @Test fun homeInbox() {
+        val m = manager()
+        val r = seeded(db())
+        val ib = inbox()
+        rule.setContent { Shell(PocketConsoleTheme) { HomeScreen(m, r, inbox = ib, syncStatus = "bağlı") {} } }
+        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
+        Thread.sleep(600)
+        shot("home-inbox-dark")
         m.closeAll()
     }
 
@@ -225,5 +277,43 @@ class DesignShotsTest {
         )
         rule.setContent { PocketAgentTheme(PocketConsoleTheme) { ChatDialog("session.jsonl", blocks) {} } }
         shot("chat-dark", dialog = true)
+    }
+
+    @Test fun filesListing() {
+        val m = manager(listing = true)
+        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
+        Thread.sleep(500)
+        val files = FilesViewModel(m, CoroutineScope(Dispatchers.IO), File.createTempFile("cache", "").parentFile!!)
+        rule.setContent { Shell(PocketConsoleTheme) { FilesScreen(files) } }
+        rule.waitForIdle(); Thread.sleep(500)
+        shot("files-list-dark")
+        m.closeAll()
+    }
+
+    @Test fun terminalEmpty() {
+        rule.setContent { Shell(PocketConsoleTheme) { TerminalScreen(manager(), SettingsViewModel(), {}) } }
+        shot("terminal-empty-dark")
+    }
+
+    @Test fun hostDialog() {
+        val d = db()
+        rule.setContent { Shell(PocketConsoleTheme) { ConnectionsScreen(seeded(d), ProfileRepository(d.profiles()), manager()) {} } }
+        rule.onNodeWithText("Host ekle", useUnmergedTree = true).performClick()
+        shot("dialog-host-dark", dialog = true)
+    }
+
+    @Test fun settingsPages() {
+        val app = RuntimeEnvironment.getApplication() as dev.pocketagent.android.App
+        val hk = TofuHostKeyStore(File.createTempFile("hostkeys", ".db"))
+        val usage = UsageViewModel().apply {
+            updateFrom(org.json.JSONArray("""[{"agent":"claude","percent":62,"reset_in":"2h"},{"agent":"codex","percent":91,"reset_in":"40m"}]"""))
+        }
+        rule.setContent { Shell(PocketConsoleTheme) { SettingsScreen(SettingsViewModel(), usage, hk, app) } }
+        for ((label, file) in listOf("Terminal ve oturum" to "session", "Backend" to "backend", "Yedekleme ve kullanım" to "data", "Hakkında" to "about")) {
+            rule.onNodeWithText(label).performScrollTo().performClick()
+            shot("settings-$file-dark")
+            rule.onNode(androidx.compose.ui.test.hasContentDescription("Geri")).performClick()
+            rule.waitForIdle()
+        }
     }
 }

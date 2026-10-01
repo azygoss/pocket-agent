@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -34,7 +33,6 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -64,6 +62,8 @@ import dev.pocketagent.transport.TerminalTransport
 import dev.pocketagent.ui.theme.Space
 import dev.pocketagent.ui.theme.Readout
 import androidx.compose.foundation.border
+import dev.pocketagent.ui.theme.SheetShape
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -178,24 +178,19 @@ fun ConnectionsScreen(
 
     Scaffold(
         floatingActionButton = {
-            // Dikey speed-dial: ana aksiyon ("Host ekle") en altta, yardımcılar üstte.
-            Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalAlignment = Alignment.End,
-            ) {
-                DialButton(Icons.Filled.AttachFile, "~/.ssh/config içe aktar") { sshConfigPicker.launch(arrayOf("*/*")) }
-                DialButton(Icons.Filled.QrCodeScanner, "QR ile bağlan") { pairError = null; showPair = true }
-                ExtendedFloatingActionButton(
-                    onClick = { showAdd = true },
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
-                    containerColor = Tok.text,
-                    contentColor = Tok.bg,
-                    elevation = androidx.compose.material3.FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
-                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                    text = { Text("Host ekle", fontWeight = FontWeight.SemiBold) },
-                )
-            }
+            // Tek birincil eylem; QR ve içe aktarma başlıkta yaşar.
+            ExtendedFloatingActionButton(
+                onClick = { showAdd = true },
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                containerColor = Tok.text,
+                contentColor = Tok.bg,
+                elevation = androidx.compose.material3.FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
+                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                text = { Text("Host ekle", fontWeight = FontWeight.SemiBold) },
+            )
         },
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        contentColor = Tok.text,
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
             if (items.isEmpty()) {
@@ -203,7 +198,13 @@ fun ConnectionsScreen(
                 Column(
                     Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Space.lg),
                 ) {
-                    ScreenHeader("Bağlantılar", meta = "ilk host'u ekle")
+                    Row(verticalAlignment = Alignment.Top) {
+                        ScreenHeader("Bağlantılar", meta = "ilk host'u ekle", modifier = Modifier.weight(1f))
+                        HeaderActions(
+                            onImport = { sshConfigPicker.launch(arrayOf("*/*")) },
+                            onPair = { pairError = null; showPair = true },
+                        )
+                    }
                     Spacer(Modifier.height(Space.lg))
                     ConsoleCard {
                         CardHeader("Hızlı kurulum")
@@ -219,7 +220,7 @@ fun ConnectionsScreen(
                             OutlinedTextField(
                                 value = url,
                                 onValueChange = { url = it },
-                                label = { Text("Backend URL") },
+                                label = { Text("Backend URL") }, mono = true,
                                 placeholder = { Text("https://api.ornek.com") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
@@ -266,8 +267,26 @@ fun ConnectionsScreen(
                 }
             } else {
                 Column(Modifier.fillMaxSize()) {
+                LazyColumn(
+                    Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    contentPadding = PaddingValues(top = Space.lg, bottom = 200.dp),
+                ) {
+                    item(key = "header") {
+                        Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(bottom = Space.lg)) {
+                            ScreenHeader(
+                                "Bağlantılar",
+                                meta = "${items.size} host · ${profileList.size} profil",
+                                modifier = Modifier.weight(1f),
+                            )
+                        HeaderActions(
+                            onImport = { sshConfigPicker.launch(arrayOf("*/*")) },
+                            onPair = { pairError = null; showPair = true },
+                        )
+                        }
+                    }
                     if (items.size > 3) {
-                        OutlinedTextField(
+                        item(key = "search") {
+                            OutlinedTextField(
                             value = query,
                             onValueChange = { query = it },
                             placeholder = { Text("Host ara…") },
@@ -287,19 +306,9 @@ fun ConnectionsScreen(
                                 focusedContainerColor = Tok.surface,
                                 unfocusedContainerColor = Tok.surface,
                             ),
-                            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = Space.lg),
                         )
-                    }
-                LazyColumn(
-                    Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    contentPadding = PaddingValues(top = Space.lg, bottom = 200.dp),
-                ) {
-                    item(key = "header") {
-                        ScreenHeader(
-                            "Bağlantılar",
-                            meta = "${items.size} host · ${profileList.size} profil",
-                            modifier = Modifier.padding(bottom = Space.lg),
-                        )
+                        }
                     }
                     // Hazır profiller: kayıtlı komutla tek dokunuşta oturum.
                     item(key = "profiles") {
@@ -355,7 +364,7 @@ fun ConnectionsScreen(
     // P04: Easy Pair diyaloğu — QR tara veya XXXX-XXXX kodu gir
     if (showPair) {
         var codeInput by remember { mutableStateOf("") }
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { if (!pairBusy) showPair = false },
             title = { Text("QR / kod ile bağlan") },
             text = {
@@ -380,7 +389,7 @@ fun ConnectionsScreen(
                             val clean = v.uppercase().filter { it.isLetterOrDigit() }.take(8)
                             codeInput = if (clean.length > 4) clean.take(4) + "-" + clean.drop(4) else clean
                         },
-                        label = { Text("Kod (XXXX-XXXX)") },
+                        label = { Text("Kod (XXXX-XXXX)") }, mono = true,
                         singleLine = true,
                         enabled = !pairBusy,
                         modifier = Modifier.fillMaxWidth(),
@@ -450,7 +459,7 @@ fun ConnectionsScreen(
 
     // Host'suz profil açılınca host seçtir.
     profileHostPick?.let { p ->
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { profileHostPick = null },
             title = { Text(p.name) },
             text = {
@@ -481,7 +490,7 @@ fun ConnectionsScreen(
 
     // ~/.ssh/config içe aktarım önizlemesi: hangi host'lar eklenecek göster.
     importPreview?.let { entries ->
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { importPreview = null },
             title = { Text("${entries.size} host bulundu") },
             text = {
@@ -517,7 +526,7 @@ fun ConnectionsScreen(
 
     // Bilgi mesajı (import sonucu, dosya hatası)
     notice?.let {
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { notice = null },
             confirmButton = { TextButton(onClick = { notice = null }) { Text("Tamam") } },
             text = { Text(it) },
@@ -542,12 +551,35 @@ private fun ProfilesSection(
         ConsoleTextButton(onClick = onAdd) { Text("Yeni profil") }
     }
     if (profiles.isEmpty()) {
-        Text(
-            "Kayıtlı komutla oturum aç — örn. ad \"Codex\", komut \"codex\".",
-            style = MaterialTheme.typography.bodySmall,
-            color = Tok.muted,
-            modifier = Modifier.padding(bottom = Space.sm),
-        )
+        // Kesikli kutu: "burada bir şey olabilir" — dokununca profil eklenir.
+        val dash = Tok.borderStrong
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = Space.xs)
+                .clip(SheetShape)
+                .drawBehind {
+                    drawRoundRect(
+                        dash,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = 1.dp.toPx(),
+                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 8f)),
+                        ),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx()),
+                    )
+                }
+                .clickable(onClick = onAdd)
+                .padding(horizontal = Space.lg, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("›", style = MaterialTheme.typography.titleMedium.copy(fontFamily = Readout), color = Tok.muted)
+            Spacer(Modifier.width(Space.md))
+            Text(
+                "Kayıtlı komutla oturum aç — örn. ad \"Codex\", komut \"codex\".",
+                style = MaterialTheme.typography.bodySmall,
+                color = Tok.muted,
+            )
+        }
     } else {
         Spacer(Modifier.height(Space.xs))
         ConsoleCard(padding = 0.dp) {
@@ -628,7 +660,7 @@ private fun ProfileDialog(
     var connId by remember { mutableStateOf(initial?.connectionId) }
     var hostMenu by remember { mutableStateOf(false) }
     val bound = conns.firstOrNull { it.id == connId }
-    AlertDialog(
+    PocketAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "Yeni profil" else "Profili düzenle") },
         text = {
@@ -639,7 +671,7 @@ private fun ProfileDialog(
                 )
                 OutlinedTextField(
                     command, { command = it },
-                    label = { Text("Komut") }, placeholder = { Text("codex") }, singleLine = true,
+                    label = { Text("Komut") }, mono = true, placeholder = { Text("codex") }, singleLine = true,
                 )
                 Box {
                     ConsoleOutlinedButton(onClick = { hostMenu = true }, modifier = Modifier.fillMaxWidth()) {
@@ -817,7 +849,7 @@ private fun ConnectionDialog(
         }.onFailure { probeResult = "dosya okunamadı: ${it.message}" }
     }
 
-    AlertDialog(
+    PocketAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial?.id.isNullOrBlank()) "Yeni host" else "Hostu düzenle") },
         text = {
@@ -826,15 +858,15 @@ private fun ConnectionDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 OutlinedTextField(name, { name = it }, label = { Text("Ad") }, singleLine = true)
-                OutlinedTextField(host, { host = it }, label = { Text("Host (örn. 192.168.1.10)") }, singleLine = true)
+                OutlinedTextField(host, { host = it }, label = { Text("Host (örn. 192.168.1.10)") }, mono = true, singleLine = true)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         port, { port = it.filter(Char::isDigit) },
-                        label = { Text("Port") }, singleLine = true, modifier = Modifier.width(96.dp),
+                        label = { Text("Port") }, mono = true, singleLine = true, modifier = Modifier.width(96.dp),
                     )
                     OutlinedTextField(
                         user, { user = it },
-                        label = { Text("Kullanıcı") }, singleLine = true, modifier = Modifier.weight(1f),
+                        label = { Text("Kullanıcı") }, mono = true, singleLine = true, modifier = Modifier.weight(1f),
                     )
                 }
                 SegmentedControl(
@@ -852,7 +884,7 @@ private fun ConnectionDialog(
                 } else {
                     OutlinedTextField(
                         secretText, { secretText = it },
-                        label = { Text(if (initial?.id.isNullOrBlank()) "PEM içeriği" else "PEM (boş = değişme)") },
+                        label = { Text(if (initial?.id.isNullOrBlank()) "PEM içeriği" else "PEM (boş = değişme)") }, mono = true,
                         minLines = 3, maxLines = 5,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -951,7 +983,7 @@ private fun ConnectionDialog(
 
     // Üretilen anahtarın public parçası: host'ta authorized_keys'e eklenecek.
     generatedPub?.let { pub ->
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { generatedPub = null },
             title = { Text("Public anahtar") },
             text = {
@@ -1021,19 +1053,28 @@ private fun pairClaim(
     }
 }
 
-// Speed-dial yardımcı düğmesi: raised zemin + hairline, gölgesiz; 48dp hedef.
+// Başlık aksiyonları: QR ile eşle + ~/.ssh/config içe aktar. 44dp hedef,
+// raised zemin + hairline; ikincil eylemler FAB yığını yerine burada.
 @Composable
-private fun DialButton(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, onClick: () -> Unit) {
+private fun HeaderActions(onImport: () -> Unit, onPair: () -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), modifier = Modifier.padding(top = 2.dp)) {
+        HeaderIcon(Icons.Filled.QrCodeScanner, "QR ile bağlan", onPair)
+        HeaderIcon(Icons.Filled.AttachFile, "~/.ssh/config içe aktar", onImport)
+    }
+}
+
+@Composable
+private fun HeaderIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, onClick: () -> Unit) {
     Box(
         Modifier
-            .size(48.dp)
+            .size(44.dp)
             .clip(MaterialTheme.shapes.medium)
-            .background(Tok.raised)
+            .background(Tok.surface)
             .border(1.dp, Tok.border, MaterialTheme.shapes.medium)
             .semantics { contentDescription = desc }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = Tok.text, modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = null, tint = Tok.text2, modifier = Modifier.size(20.dp))
     }
 }

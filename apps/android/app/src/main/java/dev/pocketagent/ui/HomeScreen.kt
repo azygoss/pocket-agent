@@ -60,6 +60,8 @@ import dev.pocketagent.ui.theme.Space
 fun HomeScreen(
     sessions: SessionManager,
     connections: ConnectionRepository,
+    inbox: InboxViewModel? = null,
+    syncStatus: String? = null,
     onGoTo: (AppTab) -> Unit,
 ) {
     val sessionList by sessions.sessions.collectAsState()
@@ -91,13 +93,37 @@ fun HomeScreen(
                 .padding(horizontal = Space.lg),
         ) {
             Spacer(Modifier.height(Space.xl))
-            ScreenHeader(
-                "Ana sayfa",
-                meta = buildString {
-                    append(if (sessionList.isEmpty()) "açık oturum yok" else "${sessionList.size} açık oturum")
-                    append(" · ${saved.size} host")
-                },
-            )
+            ScreenHeader(greeting(), meta = todayLabel())
+            Spacer(Modifier.height(Space.lg))
+            // Özet: üç okuma kutusu — canlı oturum, kayıtlı host, backend.
+            // İlk kurulumda (host yok) sıfırlar bilgi taşımaz ve onboarding'i
+            // ekranın altına iter → gösterilmez.
+            val liveCount = sessionList.count { it.controller.state.collectAsState().value == ConnectionState.ACTIVE }
+            if (saved.isNotEmpty() || sessionList.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                StatTile(
+                    value = "${sessionList.size}",
+                    label = "oturum",
+                    signal = if (liveCount > 0) Signal.Live else null,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onGoTo(AppTab.Terminal) },
+                )
+                StatTile("${saved.size}", "host", modifier = Modifier.weight(1f), onClick = { onGoTo(AppTab.Connections) })
+                StatTile(
+                    value = when (syncStatus) {
+                        null -> "—"
+                        "bağlı" -> "bağlı"
+                        else -> syncStatus
+                    },
+                    label = "backend",
+                    signal = when (syncStatus) {
+                        null -> null
+                        "bağlı" -> Signal.Live
+                        else -> Signal.NeedsYou
+                    },
+                    modifier = Modifier.weight(1f),
+                    onClick = { onGoTo(AppTab.Settings) },
+                )
+            }
             Spacer(Modifier.height(Space.xl))
 
             // ── Oturumlar: canlı terminal önizleme sheet'leri ──────────────
@@ -174,6 +200,25 @@ fun HomeScreen(
                         )
                     }
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = t.muted, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.height(Space.xl))
+            }
+
+            // ── Agent etkinliği: backend inbox'ı (24s TTL özetler) ─────────
+            val events = inbox?.rows.orEmpty().take(5)
+            if (events.isNotEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SectionLabel("Agent etkinliği")
+                    Spacer(Modifier.weight(1f))
+                    val unread = inbox?.rows.orEmpty().count { it.unread }
+                    if (unread > 0) TagPill("$unread yeni", active = true, tone = t.accent)
+                }
+                Spacer(Modifier.height(Space.sm))
+                ConsoleCard(padding = 0.dp) {
+                    events.forEachIndexed { i, e ->
+                        if (i > 0) SoftDivider(Modifier.padding(start = Space.lg + 18.dp))
+                        AgentEventRow(e) { inbox?.markRead(e.eventId) }
+                    }
                 }
                 Spacer(Modifier.height(Space.xl))
             }
@@ -425,5 +470,88 @@ private fun StepRow(n: Int, text: String) {
             modifier = Modifier.width(28.dp),
         )
         Text(text, style = MaterialTheme.typography.bodyMedium, color = Tok.text)
+    }
+}
+
+// Günün saatine göre selam — başlık bir etiket değil, bir karşılama.
+private fun greeting(hour: Int = java.time.LocalTime.now().hour): String = when (hour) {
+    in 5..11 -> "Günaydın"
+    in 12..17 -> "İyi günler"
+    in 18..22 -> "İyi akşamlar"
+    else -> "İyi geceler"
+}
+
+private fun todayLabel(): String =
+    java.time.LocalDate.now().format(
+        java.time.format.DateTimeFormatter.ofPattern("d MMMM EEEE", java.util.Locale.forLanguageTag("tr")),
+    ).lowercase(java.util.Locale.forLanguageTag("tr"))
+
+// Okuma kutusu: büyük mono sayı + loş etiket; isteğe bağlı sinyal pikseli.
+@Composable
+private fun StatTile(
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier,
+    signal: Signal? = null,
+    onClick: () -> Unit,
+) {
+    val t = Tok
+    Column(
+        modifier
+            .clip(SheetShape)
+            .background(t.surface)
+            .border(1.dp, t.border, SheetShape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = t.muted, modifier = Modifier.weight(1f))
+            if (signal != null) SignalPixel(signal, size = 7.dp)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            value,
+            style = MaterialTheme.typography.titleLarge.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
+            color = t.text,
+            maxLines = 1,
+        )
+    }
+}
+
+// Agent olayı: kategori sinyal pikseline dönüşür — onay bekliyor amber,
+// hata mercan, çalışıyor içi boş mavi, okunmamış tamamlanma dolu mavi.
+@Composable
+private fun AgentEventRow(e: InboxRow, onClick: () -> Unit) {
+    val t = Tok
+    val signal = when (e.category) {
+        "APPROVAL_REQUIRED", "APPROVAL" -> Signal.NeedsYou
+        "ERROR" -> Signal.Error
+        "SESSION_STARTED", "TOOL_RUNNING" -> Signal.Running
+        else -> if (e.unread) Signal.Live else Signal.Idle
+    }
+    val ts = runCatching { java.time.Instant.parse(e.createdAt).toEpochMilli() }.getOrDefault(0L)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = Space.lg, vertical = 12.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        SignalPixel(signal, Modifier.padding(top = 6.dp), size = 8.dp)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                e.title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (e.unread) FontWeight.Medium else FontWeight.Normal),
+                color = if (e.unread) t.text else t.text2,
+                maxLines = 2,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                listOf(e.source.ifBlank { "agent" }, relativeTime(ts)).joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
+                color = t.muted,
+            )
+        }
     }
 }

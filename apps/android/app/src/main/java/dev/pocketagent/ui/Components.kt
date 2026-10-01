@@ -25,13 +25,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -87,15 +87,18 @@ fun ConsoleCard(
     borderColor: Color = Tok.border,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(
-        modifier
-            .fillMaxWidth()
-            .clip(SheetShape)
-            .background(containerColor)
-            .border(1.dp, borderColor, SheetShape)
-            .padding(padding),
-        content = content,
-    )
+    // Kart kendi içerik rengini verir — renksiz Text asla siyah düşmez.
+    CompositionLocalProvider(LocalContentColor provides Tok.text) {
+        Column(
+            modifier
+                .fillMaxWidth()
+                .clip(SheetShape)
+                .background(containerColor)
+                .border(1.dp, borderColor, SheetShape)
+                .padding(padding),
+            content = content,
+        )
+    }
 }
 
 // İkon karosu: adımın/satırın türünü söyler; rengiyle durumunu. Varsayılan
@@ -382,14 +385,20 @@ fun EmptyState(
     body: String,
     modifier: Modifier = Modifier,
     tint: Color = Tok.text2,
+    art: List<String>? = null,
     action: (@Composable () -> Unit)? = null,
 ) {
     Column(
         modifier.fillMaxWidth().padding(horizontal = Space.xl, vertical = Space.xxl),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        IconTile(icon, tint, size = 52.dp)
-        Spacer(Modifier.height(Space.lg))
+        if (art != null) {
+            PixelIllustration(art, cell = 8.dp)
+            Spacer(Modifier.height(Space.xl))
+        } else {
+            IconTile(icon, tint, size = 52.dp)
+            Spacer(Modifier.height(Space.lg))
+        }
         Text(title, style = MaterialTheme.typography.titleMedium, color = Tok.text, textAlign = TextAlign.Center)
         Spacer(Modifier.height(Space.xs))
         Text(
@@ -412,18 +421,20 @@ fun TonalTile(
     onClick: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .clip(SheetShape)
-            .background(Tok.surface)
-            .border(1.dp, Tok.border, SheetShape)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .defaultMinSize(minHeight = 56.dp)
-            .padding(horizontal = Space.md, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content,
-    )
+    CompositionLocalProvider(LocalContentColor provides Tok.text) {
+        Row(
+            modifier
+                .fillMaxWidth()
+                .clip(SheetShape)
+                .background(Tok.surface)
+                .border(1.dp, Tok.border, SheetShape)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .defaultMinSize(minHeight = 56.dp)
+                .padding(horizontal = Space.md, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
+        )
+    }
 }
 
 data class Segment<T>(val value: T, val label: String)
@@ -575,7 +586,7 @@ fun RenameSessionDialog(
     onSave: (String?) -> Unit,
 ) {
     var name by remember { mutableStateOf(initial ?: "") }
-    AlertDialog(
+    PocketAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Oturum adı") },
         text = {

@@ -230,6 +230,9 @@ class FilesViewModel(
 
     fun hasActiveSftp(): Boolean = sftp() != null
 
+    // Başlıktaki okuma: aktif oturumun user@host'u.
+    fun hostLabel(): String? = manager.active()?.connectedTo?.value?.let { "${it.user}@${it.host}" }
+
     private fun sftp(): dev.pocketagent.transport.SftpSession? =
         manager.active()?.takeIf { it.state.value == dev.pocketagent.transport.ConnectionState.ACTIVE }?.sftp()
 

@@ -68,8 +68,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -155,6 +153,7 @@ import dev.pocketagent.transport.TerminalInput
 import dev.pocketagent.transport.TerminalSize
 import dev.pocketagent.transport.TransportFailure
 import dev.pocketagent.ui.theme.Readout
+import dev.pocketagent.ui.theme.Space
 import dev.pocketagent.ui.theme.SheetInset
 import dev.pocketagent.ui.theme.SheetShape
 import dev.pocketagent.ui.theme.blinkPhase
@@ -281,14 +280,14 @@ fun TerminalScreen(
     Column(Modifier.fillMaxSize().imePadding()) {
         val active = sessionList.firstOrNull { it.id == activeId }
         if (active == null) {
-            // Oturum yokken şerit burada kalır (yeni bağlantı + geçiş).
-            SessionPillsRow(
-                manager = manager,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                onNewConnection = onNewConnection,
-            )
+            // Oturum yokken: başlık + yeni bağlantı düğmesi + piksel boş durum.
+            Row(
+                Modifier.fillMaxWidth().padding(start = Space.lg, end = 4.dp, top = Space.xl),
+                verticalAlignment = Alignment.Top,
+            ) {
+                ScreenHeader("Terminal", meta = "ssh · tmux re-attach", modifier = Modifier.weight(1f))
+                SessionPillsRow(manager = manager, onNewConnection = onNewConnection)
+            }
             EmptyTerminal(onNewConnection)
         } else {
             ActiveTerminal(
@@ -410,7 +409,8 @@ private fun EmptyTerminal(onNewConnection: () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         EmptyState(
             icon = Icons.Filled.Terminal,
-            title = "açık oturum yok",
+            art = PixelArt.Terminal,
+            title = "Henüz açık oturum yok",
             body = "Bağlantılar sekmesinden bir host seç ya da QR ile eşle. Her host kendi oturumuyla açılır; yukarıdaki şeritle aralarında gezinebilirsin.",
         ) {
             ConsoleButton(onClick = onNewConnection) { Text("Host ekle") }
@@ -502,6 +502,8 @@ private fun ActiveTerminal(
     // prompt üstte durur; dolunca imleç satırı viewport'un altında tutulur.
     // visRows = görünen satır sayısı (klavye açıkken kısalır).
     var visRows by remember { mutableIntStateOf(24) }
+    // Tutamaç satırındaki boyut okuması için gözlenebilir PTY boyutu.
+    var ptySize by remember { mutableStateOf(vm.size) }
     val atBottom by remember {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -726,10 +728,32 @@ private fun ActiveTerminal(
                             },
                     ) {
                         if (!fullscreen) {
+                            // Tutamaç satırı: solda host, sağda PTY boyutu okuması —
+                            // ek yer kaplamadan bağlam verir.
                             Box(
-                                Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
+                                val conn by controller.connectedTo.collectAsState()
+                                val readout = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = Readout,
+                                    fontWeight = FontWeight.Normal,
+                                )
+                                conn?.let {
+                                    Text(
+                                        "${it.user}@${it.host}",
+                                        style = readout,
+                                        color = Tok.muted,
+                                        maxLines = 1,
+                                        modifier = Modifier.align(Alignment.CenterStart).fillMaxWidth(0.4f),
+                                    )
+                                }
+                                Text(
+                                    "${ptySize.cols}×${ptySize.rows}",
+                                    style = readout,
+                                    color = Tok.muted,
+                                    modifier = Modifier.align(Alignment.CenterEnd),
+                                )
                                 Box(
                                     Modifier
                                         .width(32.dp)
@@ -802,6 +826,7 @@ private fun ActiveTerminal(
                                     kotlinx.coroutines.delay(160)
                                     if (newSize != vm.size) {
                                         vm.setSize(newSize)
+                                        ptySize = newSize
                                         if (controller.state.value == ConnectionState.ACTIVE) {
                                             controller.send(TerminalInput.Resize(newSize))
                                         }
@@ -1256,7 +1281,7 @@ private fun PreviewPortDialog(
         listening = p.ports
         probeToken = p.token
     }
-    AlertDialog(
+    PocketAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Önizleme") },
         text = {
@@ -1319,6 +1344,7 @@ private fun PreviewPortDialog(
                     manual,
                     { manual = it.filter(Char::isDigit).take(5) },
                     label = { Text("Port") },
+                    mono = true,
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )

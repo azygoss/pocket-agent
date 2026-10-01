@@ -58,6 +58,21 @@ that, so new UI should too.
   (`CellMeter`), turning amber past the warning threshold. No spinners: busy
   state is a blinking hollow pixel with a mono label (`BusyPixel`).
 
+- **Empty states are drawn in pixels.** `PixelIllustration` renders small
+  pixel drawings (`PixelArt.Terminal`, `PixelArt.Folder`) from the same palette
+  as the mark, so an empty screen still speaks the product's language.
+- **Controls wear the language.** `ui/Controls.kt` re-dresses Material:
+  dialogs are raised sheets with a hairline and ink text buttons
+  (`PocketAlertDialog`); text fields keep their label visible *above* the box,
+  turn blue only on focus, and render readout values (host, port, URL, token,
+  path) in Plex Mono (`mono = true`); switches use a blue track only when on;
+  the snackbar is a raised strip with a live pixel.
+- **Home is a status board.** A time-of-day greeting with the date as a
+  readout, three stat tiles (sessions, hosts, backend), live session sheets,
+  then *Agent activity*: the backend inbox as rows whose pixel maps the event
+  category (approval → amber, error → coral, running → hollow blue, unread
+  completion → solid blue).
+
 ## Tokens (`ui/theme/Tokens.kt`)
 
 Surfaces step up `chrome` → `bg` (sheet) → `surface` (cards, key strip,
@@ -78,8 +93,10 @@ Touch targets are at least 44dp (48dp for icon buttons).
 
 ## Motion
 
-One-shot only: selection grounds cross-fade in 130ms, the group chevron
-turns, the terminal panel springs back when a pull-down is released. No
+One-shot only: tabs cross-fade (150ms in, 90ms out), a settings detail page
+slides 1/16 of the width while fading in, selection grounds cross-fade in
+130ms, the group chevron turns, the terminal panel springs back when a
+pull-down is released. No
 loops, no shimmer, no spinners. The only repeating thing is the 1 Hz blink,
 and its clock only ticks while something is actually running. With the
 system "remove animations" setting (animator scale 0) the blink holds steady

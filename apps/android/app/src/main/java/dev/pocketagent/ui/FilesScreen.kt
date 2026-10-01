@@ -32,13 +32,20 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.Folder as OutlinedFolder
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.DataObject
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Upload
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -128,6 +135,50 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
             return@Column
         }
 
+        // Başlık: ekran adı + aktif host okuması; dizin aksiyonları sağda.
+        Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = Space.md)) {
+            ScreenHeader(
+                "Dosyalar",
+                meta = listOfNotNull(files.hostLabel(), if (files.mode == FilesMode.WORKSPACE) "workspace" else "sftp").joinToString(" · "),
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = { files.refresh() }, enabled = !files.loading) {
+                Icon(Icons.Filled.Refresh, contentDescription = "Yenile", tint = Tok.text2)
+            }
+            if (files.mode == FilesMode.SFTP) {
+                IconButton(onClick = { uploadLauncher.launch("*/*") }, enabled = !files.loading) {
+                    Icon(Icons.Filled.Upload, contentDescription = "Dosya yükle", tint = Tok.text2)
+                }
+            }
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Diğer", tint = Tok.text2)
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Dosya ara…") },
+                        onClick = { menuOpen = false; filterOpen = true },
+                    )
+                    if (files.mode == FilesMode.SFTP) {
+                        DropdownMenuItem(
+                            text = { Text("İçerikte ara…") },
+                            onClick = { menuOpen = false; grepOpen = true },
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("Yola git…") },
+                        onClick = { menuOpen = false; gotoOpen = true },
+                    )
+                    if (files.mode == FilesMode.SFTP) {
+                        DropdownMenuItem(
+                            text = { Text("Yeni klasör") },
+                            onClick = { menuOpen = false; mkdirOpen = true },
+                        )
+                    }
+                }
+            }
+        }
+
         // Kaynak seçimi: SFTP (tüm FS) veya Workspace (gateway jail'i)
         SegmentedControl(
             options = listOf(
@@ -188,7 +239,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
             previewPort?.let { current ->
                 var port by remember { mutableStateOf(current) }
                 var path by remember { mutableStateOf("/") }
-                AlertDialog(
+                PocketAlertDialog(
                     onDismissRequest = { previewPort = null },
                     title = { Text("Dev server önizleme") },
                     text = {
@@ -202,12 +253,14 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                                 value = port,
                                 onValueChange = { port = it.filter(Char::isDigit).take(5) },
                                 label = { Text("Port (örn. 3000)") },
+                        mono = true,
                                 singleLine = true,
                             )
                             OutlinedTextField(
                                 value = path,
                                 onValueChange = { path = it },
                                 label = { Text("Yol") },
+                        mono = true,
                                 singleLine = true,
                             )
                         }
@@ -247,14 +300,14 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                     },
                     enabled = selected.any { !it.isDir },
                 ) {
-                    Icon(Icons.Filled.Download, contentDescription = "İndir")
+                    Icon(Icons.Filled.Download, contentDescription = "İndir", tint = Tok.text2)
                 }
                 IconButton(onClick = {
                     clipboard.setText(AnnotatedString(selected.joinToString("\n") { it.path }))
                     notice = "${selected.size} yol kopyalandı"
                     selected.clear()
                 }) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = "Yolları kopyala")
+                    Icon(Icons.Filled.ContentCopy, contentDescription = "Yolları kopyala", tint = Tok.text2)
                 }
                 IconButton(onClick = { deletingMany = selected.toList() }) {
                     Icon(
@@ -264,7 +317,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                     )
                 }
                 IconButton(onClick = { selected.clear() }) {
-                    Icon(Icons.Filled.Close, contentDescription = "Seçimi kapat")
+                    Icon(Icons.Filled.Close, contentDescription = "Seçimi kapat", tint = Tok.text2)
                 }
             }
             // Ad filtresi: geçerli dizin listesini istemci tarafında süzer.
@@ -280,53 +333,18 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = { filter = ""; filterOpen = false }) {
-                    Icon(Icons.Filled.Close, contentDescription = "Aramayı kapat")
+                    Icon(Icons.Filled.Close, contentDescription = "Aramayı kapat", tint = Tok.text2)
                 }
             }
             // Yol çubuğu: dokunulabilir breadcrumb — her segment o dizine atlar.
-            else -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            else -> Row(Modifier.fillMaxWidth().padding(top = Space.sm), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     onClick = { files.up() },
                     enabled = canGoUp,
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Üst dizin")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Üst dizin", tint = if (canGoUp) Tok.text2 else Tok.faint)
                 }
                 PathBar(files, Modifier.weight(1f))
-                IconButton(onClick = { files.refresh() }, enabled = !files.loading) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "Yenile")
-                }
-                if (files.mode == FilesMode.SFTP) {
-                    IconButton(onClick = { uploadLauncher.launch("*/*") }, enabled = !files.loading) {
-                        Icon(Icons.Filled.Upload, contentDescription = "Dosya yükle")
-                    }
-                }
-                Box {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "Diğer")
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Dosya ara…") },
-                            onClick = { menuOpen = false; filterOpen = true },
-                        )
-                        if (files.mode == FilesMode.SFTP) {
-                            DropdownMenuItem(
-                                text = { Text("İçerikte ara…") },
-                                onClick = { menuOpen = false; grepOpen = true },
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text("Yola git…") },
-                            onClick = { menuOpen = false; gotoOpen = true },
-                        )
-                        if (files.mode == FilesMode.SFTP) {
-                            DropdownMenuItem(
-                                text = { Text("Yeni klasör") },
-                                onClick = { menuOpen = false; mkdirOpen = true },
-                            )
-                        }
-                    }
-                }
             }
         }
 
@@ -389,9 +407,9 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
         }
 
         Text(
-            (if (files.mode == FilesMode.WORKSPACE) "Gateway • SSH tüneli içinde • workspace jail"
-            else "SFTP • SSH oturumu içinde • indirme ≤10MB") +
-                " • ${files.entries.size} öğe",
+            (if (files.mode == FilesMode.WORKSPACE) "gateway · SSH tüneli · workspace jail"
+            else "sftp · SSH oturumu içinde · indirme ≤10MB") +
+                " · ${files.entries.size} öğe",
             style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = androidx.compose.ui.text.font.FontWeight.Normal),
             color = Tok.muted,
             maxLines = 1,
@@ -406,7 +424,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
 
     // Önizleme diyaloğu (diff içeriği renklendirilir)
     files.preview?.let { (name, content) ->
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { files.dismissPreview() },
             confirmButton = { TextButton(onClick = { files.dismissPreview() }) { Text("Kapat") } },
             title = { Text(name, fontFamily = Readout, fontSize = 14.sp) },
@@ -434,7 +452,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
 
     // ── Uzun-basma aksiyon diyaloğu ─────────────────────────────────────────
     actionFile?.let { f ->
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { actionFile = null },
             title = { Text(f.name, fontFamily = Readout, fontSize = 15.sp) },
             text = {
@@ -494,7 +512,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
     // Yeniden adlandır
     renaming?.let { f ->
         var name by remember { mutableStateOf(f.name) }
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { renaming = null },
             title = { Text("Yeniden adlandır") },
             text = {
@@ -515,7 +533,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
     // Yeni klasör (cwd veya uzun-basma ile seçilen dizin içi)
     if (mkdirOpen || mkdirIn != null) {
         var name by remember { mutableStateOf("") }
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { mkdirOpen = false; mkdirIn = null },
             title = { Text("Yeni klasör") },
             text = {
@@ -552,7 +570,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
         var target by remember {
             mutableStateOf(if (files.mode == FilesMode.WORKSPACE) files.gwPath else files.path ?: "/")
         }
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { gotoOpen = false },
             title = { Text("Yola git") },
             text = {
@@ -560,6 +578,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                     value = target,
                     onValueChange = { target = it },
                     label = { Text("Dizin yolu") },
+                        mono = true,
                     singleLine = true,
                 )
             },
@@ -583,7 +602,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
 
     // Silme onayı
     deleting?.let { f ->
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { deleting = null },
             title = { Text("Sil") },
             text = {
@@ -603,7 +622,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
 
     // Toplu silme onayı
     deletingMany?.let { fs ->
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { deletingMany = null },
             title = { Text("Sil") },
             text = {
@@ -623,7 +642,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
     // İçerikte ara (grep) — desen girişi
     if (grepOpen) {
         var pattern by remember { mutableStateOf("") }
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { grepOpen = false },
             title = { Text("İçerikte ara") },
             text = {
@@ -637,6 +656,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
                         value = pattern,
                         onValueChange = { pattern = it },
                         label = { Text("Desen") },
+                        mono = true,
                         singleLine = true,
                     )
                 }
@@ -650,7 +670,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
 
     // Grep sonuçları: yol:satır → dokununca üst dizine iner + önizleme açar.
     if (files.grepRunning || files.grepResults != null) {
-        AlertDialog(
+        PocketAlertDialog(
             onDismissRequest = { files.dismissGrep() },
             title = { Text("İçerik arama sonuçları") },
             text = {
@@ -745,6 +765,8 @@ private fun diffAnnotated(content: String, t: dev.pocketagent.ui.theme.PocketTok
         }
     }
 
+// Dosya satırı: türünü söyleyen çizgi ikon (klasör, kod, görsel, arşiv,
+// metin), mono ad + zaman; boyut sağda hizalı okuma. Seçim zeminle + mavi tik.
 @Composable
 private fun RemoteFileRow(
     f: RemoteFile,
@@ -752,46 +774,62 @@ private fun RemoteFileRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
+    val t = Tok
     ListRow(
         title = f.name,
         titleMono = true,
-        subtitle = buildString {
-            if (!f.isDir) append(humanSize(f.size))
-            if (f.mtime > 0) {
-                if (isNotEmpty()) append(" · ")
-                append(relativeTime(f.mtime * 1000))
-            }
-        }.ifBlank { null },
+        subtitle = if (f.mtime > 0) relativeTime(f.mtime * 1000) else null,
         subtitleMono = true,
+        modifier = Modifier.background(if (selected) t.active else androidx.compose.ui.graphics.Color.Transparent),
         leading = {
             Box(
                 Modifier
                     .size(36.dp)
                     .clip(MaterialTheme.shapes.small)
-                    .background(if (selected) Tok.active else Tok.raised),
+                    .background(if (f.isDir) t.raised else t.hover),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    if (f.isDir) Icons.Filled.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
+                    fileIcon(f),
                     contentDescription = null,
-                    tint = if (f.isDir) Tok.text2 else Tok.muted,
+                    tint = if (f.isDir) t.text else t.text2,
                     modifier = Modifier.size(18.dp),
                 )
             }
         },
-        trailing = if (selected) {
-            {
-                Icon(
-                    Icons.Filled.CheckCircle,
+        trailing = {
+            when {
+                selected -> Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = t.accent, modifier = Modifier.size(20.dp))
+                f.isDir -> Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = null,
-                    tint = Tok.accent,
-                    modifier = Modifier.size(20.dp),
+                    tint = t.faint,
+                    modifier = Modifier.size(18.dp),
+                )
+                else -> Text(
+                    humanSize(f.size),
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = androidx.compose.ui.text.font.FontWeight.Normal),
+                    color = t.muted,
                 )
             }
-        } else null,
+        },
         onClick = onClick,
         onLongClick = onLongClick,
     )
+}
+
+private fun fileIcon(f: RemoteFile): androidx.compose.ui.graphics.vector.ImageVector {
+    if (f.isDir) return Icons.Outlined.OutlinedFolder
+    val ext = f.name.substringAfterLast('.', "").lowercase()
+    return when (ext) {
+        "kt", "kts", "java", "go", "rs", "py", "js", "ts", "tsx", "jsx", "c", "h", "cpp", "rb", "swift", "sh", "zsh", "bash", "lua", "php" -> Icons.Outlined.Code
+        "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "heic" -> Icons.Outlined.Image
+        "zip", "gz", "tgz", "tar", "xz", "bz2", "7z", "rar", "zst", "apk", "jar" -> Icons.Outlined.Inventory2
+        "md", "txt", "rst", "log", "pdf", "doc", "docx" -> Icons.Outlined.Description
+        "json", "yaml", "yml", "toml", "ini", "conf", "cfg", "env", "xml", "mod", "sum", "lock", "jsonl" -> Icons.Outlined.DataObject
+        else -> if (f.name.equals("Makefile", true) || f.name.equals("Dockerfile", true)) Icons.Outlined.Build
+        else Icons.AutoMirrored.Outlined.InsertDriveFile
+    }
 }
 
 // Dokunulabilir yol çubuğu: "/a/b/c" → / a / b / c; her segment o derinliğe
@@ -885,6 +923,7 @@ private fun NoSessionCard() {
     ) {
         EmptyState(
             icon = Icons.Filled.Folder,
+            art = PixelArt.Folder,
             title = "Uzak dosyalar",
             body = "Aktif bir SSH oturumu yok. Terminal sekmesinden bir host'a bağlan; bu sekme aynı oturumun SFTP kanalıyla uzak dosya sistemini gösterir.",
         )
