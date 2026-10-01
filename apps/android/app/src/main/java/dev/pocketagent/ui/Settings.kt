@@ -35,10 +35,17 @@ class SettingsViewModel(
     var snippets by mutableStateOf("")
         private set
 
+    // Kalıcı tercihler okunana kadar false: kabuk bu sürede yalnız chrome
+    // zeminini çizer — varsayılan temanın bir kare görünüp seçili temaya
+    // atlaması (tema/font flaşı) olmaz. Store yoksa (testler) hemen hazır.
+    var loaded by mutableStateOf(store == null || scope == null)
+        private set
+
     init {
         if (store != null && scope != null) {
             scope.launch {
-                store.load()?.let { p ->
+                // Bozuk/kilitli store kabuğu sonsuza dek boş bırakmasın: 1.5s tavan.
+                runCatching { kotlinx.coroutines.withTimeoutOrNull(1_500) { store.load() } }.getOrNull()?.let { p ->
                     autoReconnect = p.autoReconnect
                     autoReconnectOnDrop = p.autoReconnectOnDrop
                     theme = AppTheme(p.themeId, p.fontId, p.fontScale.coerceIn(0.8f, 2.0f))
@@ -46,6 +53,7 @@ class SettingsViewModel(
                     tenantToken = p.tenantToken
                     snippets = p.snippets
                 }
+                loaded = true
             }
         }
     }
@@ -99,8 +107,18 @@ class SettingsViewModel(
 
     // "gs=git status\nht=htop" → (etiket, gönderilecek metin) çiftleri.
     // Komut sonuna \n eklenmez — kullanıcı Enter'a basar (iptal şansı kalır).
-    fun snippetList(): List<Pair<String, String>> =
-        snippets.lines().mapNotNull { l ->
+    // Tuş şeridi her terminal çıktısında yeniden kompoze olur; ayrıştırma
+    // yalnız metin değişince yapılır (aynı liste örneği → şerit atlanabilir).
+    private var snippetCache: Pair<String, List<Pair<String, String>>>? = null
+
+    fun snippetList(): List<Pair<String, String>> {
+        val src = snippets
+        snippetCache?.let { (k, v) -> if (k == src) return v }
+        return parseSnippets(src).also { snippetCache = src to it }
+    }
+
+    private fun parseSnippets(src: String): List<Pair<String, String>> =
+        src.lines().mapNotNull { l ->
             val i = l.indexOf('=')
             if (i <= 0) null else l.take(i).trim() to l.substring(i + 1)
         }.filter { it.first.isNotBlank() && it.second.isNotBlank() }

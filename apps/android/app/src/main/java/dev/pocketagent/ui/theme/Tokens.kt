@@ -108,6 +108,19 @@ fun BlinkClockDriver(clock: BlinkClock) {
     }
 }
 
+// Abonelik: saati tıklatır ama değeri okumaz — okuma çizim aşamasında
+// (drawBehind) yapılırsa her tik yalnız yeniden çizim tetikler,
+// yeniden kompozisyon değil.
+@Composable
+fun rememberBlinkClock(): BlinkClock? {
+    val clock = LocalBlinkClock.current ?: return null
+    DisposableEffect(clock) {
+        clock.users++
+        onDispose { clock.users-- }
+    }
+    return clock
+}
+
 @Composable
 fun blinkPhase(): Boolean {
     val clock = LocalBlinkClock.current ?: return true

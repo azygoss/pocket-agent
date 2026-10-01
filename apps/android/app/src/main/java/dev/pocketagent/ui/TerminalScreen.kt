@@ -941,7 +941,7 @@ private fun ActiveTerminal(
                                     modifier = Modifier.fillMaxSize(),
                                     contentPadding = PaddingValues(8.dp),
                                 ) {
-                                    itemsIndexed(lines) { idx, line ->
+                                    itemsIndexed(lines, contentType = { _, _ -> 0 }) { idx, line ->
                                         val isMatch = currentMatch == idx
                                         val hasMatch = matchSet.contains(idx)
                                         val cur = cursor
@@ -1223,17 +1223,17 @@ private fun TerminalKeyBar(
             TermKey("^d", enabled) { onKey("\u0004") }
             TermKey("^z", enabled) { onKey("\u001A") }
             TermKey("^l", enabled) { onKey("\u000C") }
-            Spacer(Modifier.width(5.dp))
+            KeyGroupRule()
             TermKey("←", enabled) { onKey("\u001B[D") }
             TermKey("↑", enabled) { onKey("\u001B[A") }
             TermKey("↓", enabled) { onKey("\u001B[B") }
             TermKey("→", enabled) { onKey("\u001B[C") }
-            Spacer(Modifier.width(5.dp))
+            KeyGroupRule()
             TermKey("home", enabled) { onKey("\u001B[H") }
             TermKey("end", enabled) { onKey("\u001B[F") }
             TermKey("pgup", enabled) { onKey("\u001B[5~") }
             TermKey("pgdn", enabled) { onKey("\u001B[6~") }
-            Spacer(Modifier.width(5.dp))
+            KeyGroupRule()
             TermKey("|", enabled) { onKey("|") }
             TermKey("~", enabled) { onKey("~") }
             TermKey("-", enabled) { onKey("-") }
@@ -1241,6 +1241,7 @@ private fun TerminalKeyBar(
             TermKey("/", enabled) { onKey("/") }
             // Kullanıcı snippet'ları (Ayarlar → Tuş şeridi): etiket basılır,
             // komut metni gönderilir (Enter kullanıcıda — iptal şansı kalır).
+            if (snippets.isNotEmpty()) KeyGroupRule()
             snippets.forEach { (label, cmd) ->
                 TermKey(label, enabled) { onKey(cmd) }
             }
@@ -1661,3 +1662,10 @@ private fun failureText(f: TransportFailure): String = when (f) {
 }
 
 fun defaultTerminalSize(): TerminalSize = TerminalSize(80, 24)
+
+// Tuş grupları arası ince faint çizgi: kontrol / ok / gezinme / sembol /
+// snippet grupları göz ucuyla ayrılır.
+@Composable
+private fun KeyGroupRule() {
+    Box(Modifier.padding(horizontal = 5.dp).width(1.dp).height(18.dp).background(Tok.border))
+}

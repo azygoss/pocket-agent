@@ -63,7 +63,7 @@ npm install -g pocket-agent-cli
 pocket-agent onboard --backend https://<your-domain>
 
 # 3) Android APK
-# https://github.com/azygoss/pocket-agent/releases/latest → app-release.apk
+# https://github.com/azygoss/pocket-agent/releases/latest → pocket-agent-<ver>.apk
 # In the app, scan the QR code or enter the XXXX-XXXX pairing code
 ```
 

@@ -14,8 +14,8 @@ android {
         applicationId = "dev.pocketagent.android"
         minSdk = 29
         targetSdk = 34
-        versionCode = 55
-        versionName = "0.34.0"
+        versionCode = 56
+        versionName = "0.35.0"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
@@ -43,6 +43,22 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+        }
+    }
+    // Dağıtım APK'sı (GitHub Releases + uygulama içi güncelleme). Debug
+    // build debuggable=true olduğundan ART, Compose kütüphanelerinin baseline
+    // profillerini yok sayar ve kodu yorumlar → kaydırma/açılış takılır.
+    // dist: debuggable=false (profileinstaller profilleri kurar, AOT
+    // derlenir) ama R8 kapalı — sshj/BouncyCastle yansıma yolları cihazda
+    // doğrulanmadan küçültülmez. Mevcut kurulumlar debug anahtarıyla
+    // imzalı olduğu için güncelleme zinciri kopmasın diye aynı anahtar.
+    buildTypes {
+        create("dist") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
         }
     }
     compileOptions {
@@ -76,6 +92,9 @@ dependencies {
     implementation("androidx.compose.animation:animation")
     implementation(libs.compose.tooling.preview)
     implementation(libs.androidx.activity.compose)
+    // Sideload kurulumda (Play yok) kütüphane baseline profillerini
+    // ilk açılıştan önce ART'a kurar.
+    implementation("androidx.profileinstaller:profileinstaller:1.3.1")
     implementation(libs.coroutines.android)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

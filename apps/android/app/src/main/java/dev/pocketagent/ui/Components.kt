@@ -64,7 +64,9 @@ import dev.pocketagent.ui.theme.PocketTokens
 import dev.pocketagent.ui.theme.Readout
 import dev.pocketagent.ui.theme.SheetShape
 import dev.pocketagent.ui.theme.Space
-import dev.pocketagent.ui.theme.blinkPhase
+import dev.pocketagent.ui.theme.rememberBlinkClock
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.Stroke
 
 // ── Bileşen kütüphanesi — Pocket tasarım dili (docs/design.md) ──────────────
 // Renk sinyaldir, süs değil: mavi canlı/aktif, amber "sana ihtiyaç var",
@@ -180,7 +182,8 @@ fun ConnectionState.signal(): Signal = when (this) {
 @Composable
 fun SignalPixel(signal: Signal, modifier: Modifier = Modifier, size: Dp = 8.dp) {
     val t = Tok
-    val on = if (signal == Signal.Running) blinkPhase() else true
+    // Yanıp sönme fazı çizim aşamasında okunur → tik başına yalnız redraw.
+    val clock = if (signal == Signal.Running) rememberBlinkClock() else null
     val color = when (signal) {
         Signal.Idle -> t.muted
         Signal.Running, Signal.Live -> t.accent
@@ -189,12 +192,22 @@ fun SignalPixel(signal: Signal, modifier: Modifier = Modifier, size: Dp = 8.dp) 
     }
     val hollow = signal == Signal.Idle || signal == Signal.Running
     Box(
-        modifier
-            .size(size)
-            .then(
-                if (hollow) Modifier.border(1.5.dp, color.copy(alpha = if (on) 1f else 0.25f), PixelShape)
-                else Modifier.clip(PixelShape).background(color),
-            ),
+        modifier.size(size).drawBehind {
+            val r = CornerRadius(2.dp.toPx())
+            if (hollow) {
+                val w = 1.5.dp.toPx()
+                val on = clock?.on ?: true
+                drawRoundRect(
+                    color.copy(alpha = if (on) 1f else 0.25f),
+                    topLeft = Offset(w / 2, w / 2),
+                    size = Size(this.size.width - w, this.size.height - w),
+                    cornerRadius = r,
+                    style = Stroke(width = w),
+                )
+            } else {
+                drawRoundRect(color, cornerRadius = r)
+            }
+        },
     )
 }
 

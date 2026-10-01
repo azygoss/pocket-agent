@@ -72,6 +72,9 @@ import dev.pocketagent.transport.RemoteFile
 import dev.pocketagent.ui.theme.Space
 import dev.pocketagent.ui.theme.Readout
 import androidx.compose.foundation.border
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 // P15: gerçek dosya sekmesi — aktif SSH oturumunun SFTP kanalı üzerinden
 // uzak dosya sistemi gezgini. Backend içerik görmez; trafik SSH içinde kalır.
@@ -366,18 +369,16 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (files.loading && files.entries.isEmpty()) {
-                Column(
-                    Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    BusyPixel("yükleniyor…")
+                // İskelet: gerçek satır geometrisinde loş bloklar — liste geldiğinde
+                // düzen kaymaz (CLS yok). Shimmer yok; tek okuma "yükleniyor".
+                Column(Modifier.fillMaxSize().semantics { contentDescription = "Yükleniyor" }) {
+                    repeat(7) { i -> SkeletonRow(widthFraction = listOf(0.42f, 0.6f, 0.35f, 0.5f, 0.7f, 0.3f, 0.55f)[i]) }
                 }
             } else {
                 val shown = if (filter.isBlank()) files.entries
                 else files.entries.filter { it.name.contains(filter, ignoreCase = true) }
                 LazyColumn(Modifier.fillMaxSize()) {
-                    items(shown, key = { it.path }) { f ->
+                    items(shown, key = { it.path }, contentType = { if (it.isDir) 0 else 1 }) { f ->
                         RemoteFileRow(
                             f,
                             selected = f in selected,
@@ -939,6 +940,24 @@ private fun NoSessionCard() {
                     color = Tok.muted,
                 )
             }
+        }
+    }
+}
+
+// İskelet satırı: ikon karosu + iki çizgi, faint zemin, ListRow ölçüsünde.
+@Composable
+private fun SkeletonRow(widthFraction: Float) {
+    val c = Tok.hover
+    Row(
+        Modifier.fillMaxWidth().height(64.dp).padding(horizontal = Space.lg),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(36.dp).clip(MaterialTheme.shapes.small).background(c))
+        Spacer(Modifier.width(Space.md))
+        Column {
+            Box(Modifier.fillMaxWidth(widthFraction).height(12.dp).clip(RoundedCornerShape(3.dp)).background(c))
+            Spacer(Modifier.height(8.dp))
+            Box(Modifier.fillMaxWidth(widthFraction * 0.5f).height(9.dp).clip(RoundedCornerShape(3.dp)).background(c))
         }
     }
 }

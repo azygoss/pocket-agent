@@ -1,0 +1,6 @@
+# Pocket Agent baseline profili: uygulama kodu küçük — tamamı açılışta AOT
+# derlensin (terminal parser/buffer, Compose ekranları, transport). Kütüphane
+# profilleri (Compose, AndroidX) kendi AAR'larından gelir; profileinstaller
+# sideload kurulumda hepsini ART'a kurar.
+HSPLdev/pocketagent/**;->**(**)**
+Ldev/pocketagent/**;

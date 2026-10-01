@@ -47,6 +47,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.pocketagent.data.ConnectionRepository
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.sample
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.SessionHandle
 import dev.pocketagent.transport.SessionManager
@@ -305,7 +309,17 @@ private fun SessionCard(
 ) {
     val console = LocalConsoleTheme.current
     val t = Tok
-    val lines by h.controller.vm.lines.collectAsState()
+    // Önizleme canlı ama kısıtlı: çıktı patlamasında kart en fazla ~4 kez/sn
+    // yeniden çizilir ve yalnız son 7 satır taşınır (tam buffer değil).
+    // İlk değer hemen (StateFlow.first anında döner), sonrası örneklenmiş.
+    val lines by remember(h) {
+        val src = h.controller.vm.lines
+        kotlinx.coroutines.flow.flow {
+            emit(src.first())
+            @OptIn(kotlinx.coroutines.FlowPreview::class)
+            emitAll(src.sample(250))
+        }.map { it.takeLast(7) }
+    }.collectAsState(initial = emptyList())
     val st by h.controller.state.collectAsState()
     Column(Modifier.width(220.dp)) {
         Column(
@@ -331,8 +345,16 @@ private fun SessionCard(
                 TagPill(h.controller.vm.badge)
             }
             Spacer(Modifier.height(8.dp))
+            if (lines.none { it.text.isNotBlank() }) {
+                // Henüz çıktı yok: kart boş görünmesin — durum okuması.
+                Text(
+                    if (st == ConnectionState.ACTIVE) "› hazır" else "› bağlanıyor…",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = LocalMonoFont.current, fontWeight = FontWeight.Normal),
+                    color = t.muted,
+                )
+            }
             Column {
-                lines.takeLast(7).forEach { l ->
+                lines.forEach { l ->
                     Text(
                         l.toAnnotatedString(ansi = console.term.ansi),
                         color = Color(console.term.foreground),

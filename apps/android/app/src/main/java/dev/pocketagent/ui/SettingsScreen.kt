@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
@@ -829,12 +830,24 @@ private fun ThemeCell(t: ConsoleTheme, selected: Boolean, modifier: Modifier = M
         Text("src/  notes.md", color = Color(t.term.foreground), fontFamily = mono, fontSize = 7.5.sp, maxLines = 1)
         Text("main.go  ok", color = Color(t.term.ansi[2]), fontFamily = mono, fontSize = 7.5.sp, maxLines = 1)
         Spacer(Modifier.height(5.dp))
-        Text(
-            t.name,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color(t.term.foreground).copy(alpha = if (selected) 1f else 0.75f),
-            maxLines = 1,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                t.name,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(t.term.foreground).copy(alpha = if (selected) 1f else 0.75f),
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+            // Seçim biçimle de söylenir (çerçeve + tik) — renk tek ipucu değil.
+            if (selected) {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = "Seçili",
+                    tint = Color(t.term.foreground),
+                    modifier = Modifier.size(12.dp),
+                )
+            }
+        }
     }
 }
 

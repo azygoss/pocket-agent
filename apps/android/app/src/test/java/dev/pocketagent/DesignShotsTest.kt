@@ -157,16 +157,6 @@ class DesignShotsTest {
         File(out, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    // Gerçek kabuk: chrome üst şerit + sheet + alt gezinme.
-    @Test fun appShell() {
-        val ctl = org.robolectric.Robolectric.buildActivity(dev.pocketagent.android.MainActivity::class.java).setup()
-        repeat(5) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); Thread.sleep(150) }
-        val v = ctl.get().window.decorView
-        val bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
-        v.draw(android.graphics.Canvas(bmp))
-        File(out, "app-shell.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-    }
-
     @Test fun homeDark() {
         val m = manager()
         val r = seeded(db())

@@ -7,6 +7,7 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -66,16 +67,21 @@ fun PocketAgentTheme(
     blink: BlinkClock? = null,
     content: @Composable () -> Unit,
 ) {
+    // Tema türetimi (tokenler + 30 rollü şema) ve tipografi yalnız tema
+    // değişince hesaplanır — üst seviye her yeniden kompozisyonda değil.
+    val tokens = remember(theme) { theme.tokens() }
+    val scheme = remember(theme) { theme.colorScheme() }
+    val typography = remember { pocketTypography() }
     CompositionLocalProvider(
         LocalConsoleTheme provides theme,
-        LocalTokens provides theme.tokens(),
+        LocalTokens provides tokens,
         LocalMonoFont provides mono,
         LocalBlinkClock provides blink,
     ) {
         MaterialTheme(
-            colorScheme = theme.colorScheme(),
+            colorScheme = scheme,
             shapes = PocketShapes,
-            typography = pocketTypography(),
+            typography = typography,
             content = content,
         )
     }

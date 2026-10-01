@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -256,6 +257,11 @@ fun PocketAgentApp(
     // Ortak 1 Hz saat: "çalışıyor" pikselleri tek kaynaktan yanıp söner.
     val blink = remember { BlinkClock() }
     BlinkClockDriver(blink)
+    // Tercihler okunana kadar yalnız pencere zemini (splash ile aynı renk).
+    if (!settings.loaded) {
+        Box(Modifier.fillMaxSize().background(Color(0xFF0E0F11)))
+        return
+    }
     PocketAgentTheme(
         theme = console,
         mono = consoleFont(settings.theme.fontId).family,
@@ -263,6 +269,9 @@ fun PocketAgentApp(
     ) {
         val t = Tok
         val immersive = tab == AppTab.Terminal && termFullscreen
+        // Geniş pencere (tablet, yatay, katlanabilir): alt bar yerine sol ray.
+        val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
+        val navVisible = !immersive && (tab != AppTab.Terminal || sessionList.isEmpty() || wide)
         Scaffold(
             containerColor = if (immersive) Color(console.term.background) else t.chrome,
             contentColor = t.text,
@@ -289,7 +298,7 @@ fun PocketAgentApp(
                 // tutamaç çekişi, üst bardaki X veya geri tuşuyla yapılır.
                 // Oturum yokken (boş terminal) bar görünür kalır ki ekran
                 // çıkışsız bir tuzağa dönüşmesin.
-                if (tab != AppTab.Terminal || sessionList.isEmpty()) {
+                if (!wide && (tab != AppTab.Terminal || sessionList.isEmpty())) {
                     ConsoleNavBar(tab, liveSessions = activeCount) { tab = it }
                 }
             },
@@ -301,6 +310,8 @@ fun PocketAgentApp(
             // harekette anında. Sheet dekorasyonu hedef sekmeye göre çizilir.
             val reduced = rememberReducedMotion()
             val syncStatus by app.eventSync.status.collectAsState()
+            Row(Modifier.fillMaxSize().padding(pad)) {
+            if (wide && navVisible) ConsoleNavRail(tab, liveSessions = activeCount) { tab = it }
             AnimatedContent(
                 targetState = tab,
                 transitionSpec = {
@@ -308,7 +319,7 @@ fun PocketAgentApp(
                     else fadeIn(tween(150, delayMillis = 40)) togetherWith fadeOut(tween(90))
                 },
                 label = "tab",
-                modifier = Modifier.fillMaxSize().padding(pad),
+                modifier = Modifier.weight(1f).fillMaxHeight(),
             ) { current ->
                 val sheet = current != AppTab.Terminal || sessionList.isEmpty()
                 Box(
@@ -324,6 +335,14 @@ fun PocketAgentApp(
                             } else Modifier,
                         ),
                 ) {
+                    // Okunabilir ölçü: geniş ekranda içerik 760dp'de ortalanır
+                    // (terminal tam genişliği kullanır).
+                    Box(
+                        Modifier
+                            .fillMaxHeight()
+                            .then(if (current == AppTab.Terminal) Modifier.fillMaxWidth() else Modifier.widthIn(max = 760.dp).fillMaxWidth())
+                            .align(Alignment.TopCenter),
+                    ) {
                     when (current) {
                         AppTab.Home -> HomeScreen(
                             sessions = sessions,
@@ -356,7 +375,9 @@ fun PocketAgentApp(
                             app = app,
                         )
                     }
+                    }
                 }
+            }
             }
         }
 
@@ -561,6 +582,55 @@ private fun ConsoleNavBar(current: AppTab, liveSessions: Int = 0, onSelect: (App
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                     ),
+                    color = if (selected) t.text else t.muted,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+// Geniş pencerede sol ray: aynı seçim dili (zemin), ikon üstte etiket altta.
+@Composable
+private fun ConsoleNavRail(current: AppTab, liveSessions: Int = 0, onSelect: (AppTab) -> Unit) {
+    val t = Tok
+    Column(
+        Modifier
+            .fillMaxHeight()
+            .width(84.dp)
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(start = SheetInset, top = 4.dp, bottom = SheetInset),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        AppTab.entries.forEach { tab ->
+            val selected = current == tab
+            val bg by animateColorAsState(if (selected) t.active else Color.Transparent, tween(130), label = "rail-bg")
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(bg)
+                    .semantics { contentDescription = tab.label }
+                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(tab) }),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Box {
+                    Icon(
+                        if (selected) tab.icon else tab.iconIdle,
+                        contentDescription = null,
+                        tint = if (selected) t.text else t.muted,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    if (tab == AppTab.Terminal && liveSessions > 0) {
+                        SignalPixel(Signal.Live, Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-2).dp), size = 6.dp)
+                    }
+                }
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    tab.label,
+                    style = MaterialTheme.typography.labelSmall,
                     color = if (selected) t.text else t.muted,
                     maxLines = 1,
                 )

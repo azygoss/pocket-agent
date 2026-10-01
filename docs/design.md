@@ -102,6 +102,39 @@ and its clock only ticks while something is actually running. With the
 system "remove animations" setting (animator scale 0) the blink holds steady
 and one-shot motion jumps to its end state.
 
+## Adaptive layout
+
+At 600dp and wider (tablets, landscape, unfolded foldables) the bottom bar
+becomes a left navigation rail with the same selection ground, and sheet
+content is centered at a readable 760dp max width. The terminal always uses
+the full width.
+
+## Performance and energy
+
+- **Ship a non-debuggable build.** Releases use the `dist` build type
+  (`make dist-apk`): `debuggable=false`, so ART honours baseline profiles and
+  AOT-compiles, while staying signed with the same key as earlier releases so
+  in-app updates keep working. R8 stays off until the sshj/BouncyCastle
+  reflection paths are verified on a device.
+- **Baseline profiles.** `profileinstaller` installs the libraries' profiles
+  on sideload installs; `src/main/baseline-prof.txt` marks all app code
+  (terminal parser, buffer, screens) hot.
+- **No IO in composition.** Secret presence checks are cached in
+  `ConnectionRepository` (invalidated on upsert/delete) instead of hitting
+  `File.exists` on every row recomposition.
+- **Derive once.** Theme tokens, the color scheme and typography are
+  remembered per theme; snippet parsing is cached per source string.
+- **Redraw, don't recompose.** The 1 Hz blink is read in the draw phase, so
+  a running pixel only invalidates its own drawing.
+- **Throttle previews.** Home session previews sample the terminal buffer at
+  most 4×/s and carry only the last 7 lines.
+- **No theme flash.** The shell paints only the window color until saved
+  preferences are read (bounded at 1.5s), so the default theme never flashes
+  before the chosen one.
+- **Stable lists.** Lazy lists declare keys and `contentType`; loading
+  states are static skeleton rows in the final geometry (no layout shift, no
+  shimmer).
+
 ## Verifying a change
 
 `DesignShotsTest` renders the main screens in dark and light with Robolectric
@@ -109,5 +142,8 @@ native graphics. It is skipped unless `PA_SHOTS_DIR` is set:
 
 ```bash
 cd apps/android
-PA_SHOTS_DIR=/tmp/shots ./gradlew testDebugUnitTest --tests dev.pocketagent.DesignShotsTest
+PA_SHOTS_DIR=/tmp/shots ./gradlew testDebugUnitTest --tests 'dev.pocketagent.Design*'
 ```
+
+`DesignShellShotsTest` captures the real `MainActivity` shell in compact and
+wide windows.

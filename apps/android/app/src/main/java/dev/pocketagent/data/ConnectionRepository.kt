@@ -21,6 +21,11 @@ class ConnectionRepository(
 
     private val ramSecrets = HashMap<String, Secret>()
 
+    // Kalıcı secret varlığı önbelleği: hasSavedSecret liste satırlarında
+    // her kompozisyonda çağrılır; File.exists ana thread'de disk IO'dur.
+    // Yalnız bu depo yazar/siler → upsert/delete'te geçersiz kılınır.
+    private val persistedCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
     suspend fun refresh() {
         _items.value = dao.all().map { it.toModel() }
     }
@@ -37,6 +42,7 @@ class ConnectionRepository(
             if (!remember) secretStore?.delete(id) // tercih değiştiyse kalıcı kopyayı temizle
         }
         // secret == null → önceki secret (RAM veya Keystore) korunur
+        persistedCache.remove(id)
         refresh()
         return id
     }
@@ -45,6 +51,7 @@ class ConnectionRepository(
         dao.delete(id)
         synchronized(ramSecrets) { ramSecrets.remove(id) }
         secretStore?.delete(id)
+        persistedCache.remove(id)
         refresh()
     }
 
@@ -57,7 +64,8 @@ class ConnectionRepository(
         synchronized(ramSecrets) { ramSecrets[id] } ?: secretStore?.load(id)
 
     fun hasSavedSecret(id: String): Boolean =
-        synchronized(ramSecrets) { ramSecrets.containsKey(id) } || secretStore?.has(id) == true
+        synchronized(ramSecrets) { ramSecrets.containsKey(id) } ||
+            (secretStore != null && persistedCache.getOrPut(id) { secretStore.has(id) })
 
     fun wipeSecrets() {
         synchronized(ramSecrets) { ramSecrets.clear() }

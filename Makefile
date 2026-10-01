@@ -1,5 +1,5 @@
 # Pocket Agent — tek giriş noktası. HANDOFF.md §5'in hedeflere çevrilmiş hali.
-.PHONY: all gates go proto android lint unit apk release live-up live-test \
+.PHONY: all gates go proto android lint unit apk dist-apk release live-up live-test \
         package npm-package sbom ccs mosh clean help
 
 GRADLE := apps/android/gradlew
@@ -33,6 +33,10 @@ android: ## Android: lint + unit test + debug APK
 
 unit: ## Yalnız Android unit testler
 	cd apps/android && ./gradlew :app:testDebugUnitTest
+
+dist-apk: ## Dağıtım APK'sı (debuggable=false, baseline profilli; debug anahtarı)
+	cd apps/android && ./gradlew :app:assembleDist
+	@echo "APK: apps/android/app/build/outputs/apk/dist/app-dist.apk"
 
 apk: ## Yalnız debug APK
 	cd apps/android && ./gradlew :app:assembleDebug
