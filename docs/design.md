@@ -8,11 +8,24 @@ the notification icon.
 
 ## Principles
 
-- **Running things first.** The root screen (*Oturumlar*, `HubScreen`) is
-  ordered by urgency: a pending agent approval, open sessions with a live
-  preview, tmux sessions that live on the host but are not open on this
-  device, agent activity, quick launch profiles, then hosts. There is no tab
-  bar; everything is one scroll.
+- **Running things first, and little else.** The root screen (*Oturumlar*,
+  `HubScreen`) is one scroll ordered by urgency, with nothing shown that has
+  nothing to say:
+  - at most one attention card: a pending approval, else an unreachable
+    backend, else notifications that are turned off;
+  - sessions as one group of one-line rows: status dot, name, and a single
+    summary line (connection trouble, the agent's latest event, or the
+    terminal's last line); host-side tmux sessions not open here follow in
+    the same group with a dim dot and "Bağlan";
+  - the last three agent events (the one in the attention card is not
+    repeated), the rest behind "Tümü";
+  - quick launch profiles as one scrolling row of pills, only when there
+    are profiles;
+  - hosts.
+
+  Every way to add something (QR or code pairing, a host, `~/.ssh/config`,
+  a quick launch profile) sits behind the single "+" in the header instead
+  of a button per section.
 - **Agent events lead to the agent.** The host hook sends the tmux session
   of an agent as `tmux:<name>`. An approval banner and any event row whose
   session is open here (or still alive on the host) open that terminal with
@@ -23,12 +36,14 @@ the notification icon.
   workspace up over the root. It can be dismissed with the chevron, the back
   gesture, or by pulling the session bar down (the workspace follows the
   finger, a hint says when releasing will return). While the root is
-  scrolled past the session cards, a dock at the bottom shows the active
+  scrolled past the session rows, a dock at the bottom shows the active
   session's last line and brings it back with one tap.
 - **Tone, not lines.** Surfaces step up in tone (`bg` → `card` → `raised` →
   `overlay`); there are no hairline borders around cards and no shadows.
   Lists are grouped into one rounded block whose rows are separate lazy
-  items (`GroupRow`), so long lists stay virtualized.
+  items (`GroupRow`), so long lists stay virtualized. The block is clipped
+  while drawing, not in the layer: a layer clip with mixed corner radii
+  makes every touch run a path intersection.
 - **Status is a word plus a shape.** `StatusChip` pairs a dot with the state
   in words ("Bağlı", "Bağlanıyor", "Yeniden bağlanıyor 2/5", "Bağlantı
   hatası"). Dots are filled for a state and hollow for idle; the busy dot
@@ -45,9 +60,9 @@ the notification icon.
   values use IBM Plex Mono (`Code`): hosts, `user@host:port`, paths,
   commands, fingerprints, key caps. The terminal uses the user's chosen
   terminal font (`LocalMonoFont`), independent of both.
-- **Hosts have faces.** `HostAvatar` shows the host's initial on a hue
-  derived from `host + user`, so the same machine looks the same in the
-  session card, the dock, the host list and the host picker.
+- **Quiet faces.** `HostAvatar` shows the host's initial on one neutral
+  tone; the name next to it carries the identity. Color is kept for state
+  (status dots, event kinds) so it still means something.
 - **Agent work reads as steps.** In a transcript (`ChatDialog`) messages are
   plain prose. Each tool call is a row with an icon tile for its kind;
   results are small check/cross chips under it. Three or more consecutive
@@ -209,10 +224,10 @@ readable 640dp width. The terminal always uses the full width of its pane.
 - **No IO in composition.** Secret presence checks are cached in
   `ConnectionRepository` instead of hitting `File.exists` on every row.
 - **Derive once.** Theme tokens, the color scheme and typography are
-  remembered per theme; avatar colors are remembered per host.
+  remembered per theme.
 - **Redraw, don't recompose.** The busy pulse and the cursor blink are read
   in the draw phase (`graphicsLayer`).
-- **Throttle previews.** Session card and dock previews sample the terminal
+- **Throttle previews.** Session row and dock previews sample the terminal
   buffer at most 4×/s and keep only the last non-empty lines.
 - **No theme flash.** The shell paints only the window color until saved
   preferences are read, so the default theme never flashes before the

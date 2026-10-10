@@ -9,11 +9,11 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Autorenew
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.FileOpen
@@ -75,6 +76,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.addOutline
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -104,6 +108,7 @@ import dev.pocketagent.ui.theme.InnerShape
 import dev.pocketagent.ui.theme.LocalMonoFont
 import dev.pocketagent.ui.theme.LocalConsoleTheme
 import dev.pocketagent.ui.theme.Motion
+import dev.pocketagent.ui.theme.PillShape
 import dev.pocketagent.ui.theme.Space
 import dev.pocketagent.ui.theme.rememberReducedMotion
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -122,7 +127,6 @@ import kotlinx.coroutines.launch
 private val NewHost = SavedConnection(name = "", host = "", port = 22, user = "", credentialRef = "ram:password")
 private val NewProfile = SavedProfile(name = "", command = "")
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HubScreen(
     sessions: SessionManager,
@@ -166,6 +170,8 @@ fun HubScreen(
     var importPreview by remember { mutableStateOf<List<dev.pocketagent.transport.SshConfigEntry>?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var allEvents by rememberSaveable { mutableStateOf(false) }
+    // Tek "Ekle" girişi: host, eşleme, içe aktarma, hızlı başlat profili.
+    var addMenu by remember { mutableStateOf(false) }
 
     // Host'taki pa-* oturumlarını keşfet: aktif oturumu olan her conn'in
     // exec kanalından, 15s'de bir. Başka cihazların açtığı terminaller
@@ -345,9 +351,7 @@ fun HubScreen(
         saved.firstOrNull { it.id == connId }?.let { c -> terms.map { c to it } } ?: emptyList()
     }.filter { it.second.tmux !in openTmux }
     val events = inbox?.rows.orEmpty()
-    val unread = events.count { it.unread }
     val pendingApprovals = events.filter { it.unread && isApproval(it.category) }
-    val shownEvents = if (allEvents) events.take(24) else events.take(4)
     val hosts = remember(saved, query) {
         val sorted = saved.sortedByDescending { it.lastConnectedAt }
         if (query.isBlank()) sorted
@@ -372,7 +376,7 @@ fun HubScreen(
             contentPadding = PaddingValues(start = Space.lg, end = Space.lg, bottom = if (showDock && active != null) 112.dp else 40.dp),
         ) {
             item(key = "header") {
-                HubHeader(onPair = openPair, onSettings = onOpenSettings)
+                HubHeader(onAdd = { addMenu = true }, onSettings = onOpenSettings)
             }
 
             if (firstRun) {
@@ -390,37 +394,10 @@ fun HubScreen(
                 return@LazyColumn
             }
 
-            if (settings?.backendConfigured == true && !notifOn && !notifHidden) {
-                item(key = "notif") {
-                    Banner(
-                        Status.Idle,
-                        "Onay bildirimleri kapalı",
-                        body = "Agent onay beklerken telefon haber veremez.",
-                        icon = Icons.Rounded.NotificationsOff,
-                        modifier = Modifier.padding(top = Space.sm),
-                        actions = {
-                            GhostButton("Şimdi değil", color = t.text2, onClick = { notifHidden = true })
-                            TonalButton(if (notifAsked) "Ayarları aç" else "Bildirimleri aç", onClick = ::enableNotifications)
-                        },
-                    )
-                }
-            }
-
-            if (backendTrouble) {
-                item(key = "backend") {
-                    Banner(
-                        Status.Warn,
-                        "Backend'e ulaşılamıyor",
-                        body = "Agent olayları güncellenmiyor. " + syncStatus.orEmpty().removePrefix("hata: "),
-                        modifier = Modifier.padding(top = Space.sm),
-                        actions = { GhostButton("Ayarlar", onClick = onOpenSettings) },
-                    )
-                }
-            }
-
-            // ── Bekleyen onay: en acil şey en üstte; agent'ın oturumuna götürür.
-            if (pendingApprovals.isNotEmpty()) {
-                item(key = "approvals") {
+            // ── Dikkat: aynı anda en fazla bir kart. Önce bekleyen onay, sonra
+            // backend sorunu, sonra kapalı bildirimler.
+            when {
+                pendingApprovals.isNotEmpty() -> item(key = "attention") {
                     val first = pendingApprovals.first()
                     val go = eventTarget(first)
                     val who = first.source.ifBlank { "agent" }.replaceFirstChar { it.titlecase(java.util.Locale.forLanguageTag("tr")) }
@@ -445,72 +422,84 @@ fun HubScreen(
                         },
                     )
                 }
-            }
-
-            // ── Açık oturumlar ─────────────────────────────────────────────
-            if (sessionList.isNotEmpty() || remoteItems.isNotEmpty()) {
-                item(key = "sec-sessions") {
-                    SectionHeader(
-                        "Oturumlar",
-                        count = if (sessionList.size > 1) "${sessionList.size}" else null,
-                        modifier = Modifier.padding(top = Space.lg),
+                backendTrouble -> item(key = "attention") {
+                    Banner(
+                        Status.Warn,
+                        "Backend'e ulaşılamıyor",
+                        body = "Agent olayları güncellenmiyor. " + syncStatus.orEmpty().removePrefix("hata: "),
+                        modifier = Modifier.padding(top = Space.sm),
+                        actions = { GhostButton("Ayarlar", onClick = onOpenSettings) },
                     )
                 }
+                settings?.backendConfigured == true && !notifOn && !notifHidden -> item(key = "attention") {
+                    Banner(
+                        Status.Idle,
+                        "Onay bildirimleri kapalı",
+                        body = "Agent onay beklerken telefon haber veremez.",
+                        icon = Icons.Rounded.NotificationsOff,
+                        modifier = Modifier.padding(top = Space.sm),
+                        actions = {
+                            GhostButton("Şimdi değil", color = t.text2, onClick = { notifHidden = true })
+                            TonalButton(if (notifAsked) "Ayarları aç" else "Bildirimleri aç", onClick = ::enableNotifications)
+                        },
+                    )
+                }
+            }
+
+            // ── Oturumlar: bu cihazda açık olanlar, ardından host'ta yaşayıp
+            // burada açık olmayanlar; tek grup, sade satırlar.
+            val sessionRows = sessionList.size + remoteItems.size
+            if (sessionRows > 0) {
+                item(key = "sec-sessions") { SectionHeader("Oturumlar", modifier = Modifier.padding(top = Space.lg)) }
                 itemsIndexed(sessionList, key = { _, h -> "s-" + h.id }, contentType = { _, _ -> "session" }) { idx, h ->
                     val same = sessionList.count { it.conn.id == h.conn.id }
                     val nth = sessionList.take(idx).count { it.conn.id == h.conn.id }
                     val name = customNames[h.id] ?: if (same > 1) "${h.conn.name} · ${nth + 1}" else h.conn.name
                     val tmux = tmuxNames[h.id]
                     val agent = tmux?.let { tm -> events.firstOrNull { tmuxOfEvent(it.sessionId) == tm } }
-                    SessionCard(
-                        h = h,
-                        name = name,
-                        agent = agent,
-                        onOpen = { openSession(h) },
-                        onRename = { renaming = h },
-                        onMenu = { sessionMenu = h },
-                        modifier = Modifier.padding(bottom = Space.md),
-                    )
-                }
-                if (remoteItems.isNotEmpty()) {
-                    item(key = "sec-remote") {
-                        Text(
-                            "Host'ta çalışıyor, bu cihazda açık değil",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = t.text2,
-                            modifier = Modifier.padding(top = Space.xs, bottom = Space.sm, start = 4.dp),
+                    GroupRow(idx, sessionRows) {
+                        SessionRow(
+                            h = h,
+                            name = name,
+                            agent = agent,
+                            onOpen = { openSession(h) },
+                            onRename = { renaming = h },
+                            onMenu = { sessionMenu = h },
                         )
                     }
-                    itemsIndexed(remoteItems, key = { _, p -> "r-" + p.second.tmux }) { i, (c, r) ->
-                        val enabled = repo.hasSavedSecret(c.id)
-                        GroupRow(i, remoteItems.size) {
-                            RemoteSessionRow(
-                                name = r.name ?: r.tmux,
-                                tmux = r.tmux,
-                                address = "${c.user}@${c.host}",
-                                otherDevice = r.device != null && r.device != sessions.deviceId,
-                                enabled = enabled,
-                                onAttach = { attachRemote(c, r) },
-                            )
-                        }
+                }
+                itemsIndexed(remoteItems, key = { _, p -> "r-" + p.second.tmux }) { i, (c, r) ->
+                    GroupRow(sessionList.size + i, sessionRows) {
+                        RemoteSessionRow(
+                            name = r.name ?: r.tmux,
+                            tmux = r.tmux,
+                            hostName = c.name,
+                            otherDevice = r.device != null && r.device != sessions.deviceId,
+                            enabled = repo.hasSavedSecret(c.id),
+                            onAttach = { attachRemote(c, r) },
+                        )
                     }
                 }
             }
 
-            // ── Agent etkinliği ────────────────────────────────────────────
-            if (events.isNotEmpty()) {
+            // ── Agent etkinliği: son üç olay; gerisi "Tümü" ile.
+            // Üstteki onay kartında duran olay burada tekrarlanmaz.
+            val bannerEvent = pendingApprovals.firstOrNull()?.eventId
+            val log = events.filter { it.eventId != bannerEvent }
+            if (log.isNotEmpty()) {
+                val shown = if (allEvents) log.take(24) else log.take(3)
                 item(key = "sec-agents") {
                     SectionHeader(
                         "Agent etkinliği",
-                        count = if (unread > 0) "$unread yeni" else null,
-                        modifier = Modifier.padding(top = Space.section - Space.md),
-                        action = if (events.size > 4) {
-                            { GhostButton(if (allEvents) "Daralt" else "Tümü (${events.size})", onClick = { allEvents = !allEvents }) }
+                        count = log.count { it.unread }.takeIf { it > 0 }?.let { "$it yeni" },
+                        modifier = Modifier.padding(top = Space.xl),
+                        action = if (log.size > 3) {
+                            { GhostButton(if (allEvents) "Daralt" else "Tümü", onClick = { allEvents = !allEvents }, color = t.text2) }
                         } else null,
                     )
                 }
-                itemsIndexed(shownEvents, key = { _, e -> "e-" + e.eventId }) { i, e ->
-                    GroupRow(i, shownEvents.size) {
+                itemsIndexed(shown, key = { _, e -> "e-" + e.eventId }) { i, e ->
+                    GroupRow(i, shown.size) {
                         val go = eventTarget(e)
                         AgentEventRow(e, canOpen = go != null) {
                             inbox?.markRead(e.eventId)
@@ -520,62 +509,29 @@ fun HubScreen(
                 }
             }
 
-            // ── Hızlı başlat ───────────────────────────────────────────────
-            if (saved.isNotEmpty()) {
-                item(key = "sec-quick") {
-                    SectionHeader(
-                        "Hızlı başlat",
-                        modifier = Modifier.padding(top = Space.section - Space.md),
-                        action = { GhostButton("Profil ekle", onClick = { profileEditor = NewProfile }, icon = Icons.Rounded.Add) },
-                    )
-                }
+            // ── Hızlı başlat: yalnız profil varsa, tek satır.
+            if (profileList.isNotEmpty()) {
+                item(key = "sec-quick") { SectionHeader("Hızlı başlat", modifier = Modifier.padding(top = Space.xl)) }
                 item(key = "quick") {
-                    if (profileList.isEmpty()) {
-                        PocketCard(onClick = { profileEditor = NewProfile }) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconTile(Icons.Rounded.PlayArrow, tone = t.accent)
-                                Spacer(Modifier.width(Space.md + 2.dp))
-                                Text(
-                                    "Bir komutu tek dokunuşla yeni oturumda başlat — örneğin claude ya da htop.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = t.text2,
-                                )
-                            }
-                        }
-                    } else {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(Space.sm),
-                            verticalArrangement = Arrangement.spacedBy(Space.sm),
-                        ) {
-                            profileList.forEach { p ->
-                                ProfileChip(
-                                    p,
-                                    hostName = saved.firstOrNull { it.id == p.connectionId }?.name,
-                                    onLaunch = { launchProfile(p) },
-                                    onMenu = { profileMenu = p },
-                                )
-                            }
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(Space.sm),
+                    ) {
+                        profileList.forEach { p ->
+                            ProfilePill(
+                                p,
+                                hostName = saved.firstOrNull { it.id == p.connectionId }?.name,
+                                onLaunch = { launchProfile(p) },
+                                onMenu = { profileMenu = p },
+                            )
                         }
                     }
                 }
             }
 
-            // ── Hostlar ────────────────────────────────────────────────────
+            // ── Hostlar
             item(key = "sec-hosts") {
-                SectionHeader(
-                    "Hostlar",
-                    count = "${saved.size}",
-                    modifier = Modifier.padding(top = Space.section - Space.md),
-                    action = { GhostButton("Host ekle", onClick = { editor = NewHost }, icon = Icons.Rounded.Add) },
-                )
-                if (sessionList.isEmpty()) {
-                    Text(
-                        "Oturum açmak için bir host'a dokun.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = t.text2,
-                        modifier = Modifier.padding(start = 4.dp, bottom = Space.sm),
-                    )
-                }
+                SectionHeader("Hostlar", modifier = Modifier.padding(top = if (sessionRows > 0 || log.isNotEmpty() || profileList.isNotEmpty()) Space.xl else Space.lg))
             }
             if (saved.size > 5) {
                 item(key = "search") {
@@ -624,12 +580,6 @@ fun HubScreen(
                     }
                 }
             }
-            item(key = "more") {
-                Row(Modifier.fillMaxWidth().padding(top = Space.sm), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    GhostButton("QR ile eşle", onClick = openPair, icon = Icons.Rounded.QrCodeScanner, color = t.text2)
-                    GhostButton("~/.ssh/config", onClick = openImport, icon = Icons.Rounded.FileOpen, color = t.text2)
-                }
-            }
         }
 
         // ── Terminale dön şeridi ────────────────────────────────────────────
@@ -652,6 +602,23 @@ fun HubScreen(
     }
 
     // ── Katmanlar ───────────────────────────────────────────────────────────
+
+    if (addMenu) {
+        PocketSheet(onDismiss = { addMenu = false }, title = "Ekle") { dismiss ->
+            SheetAction(Icons.Rounded.QrCodeScanner, "QR veya kodla eşle", sublabel = "Host'ta pocket-agent pair çalıştır", onClick = {
+                dismiss(); openPair()
+            })
+            SheetAction(Icons.Rounded.Dns, "Host ekle", sublabel = "Adres, kullanıcı, parola ya da SSH anahtarı", onClick = {
+                dismiss(); editor = NewHost
+            })
+            SheetAction(Icons.Rounded.FileOpen, "~/.ssh/config içe aktar", onClick = { dismiss(); openImport() })
+            if (saved.isNotEmpty()) {
+                SheetAction(Icons.Rounded.PlayArrow, "Hızlı başlat profili", sublabel = "Tek dokunuşla komut çalıştıran kısayol", onClick = {
+                    dismiss(); profileEditor = NewProfile
+                })
+            }
+        }
+    }
 
     sessionMenu?.let { h ->
         val st = h.controller.state.collectAsState().value
@@ -829,7 +796,7 @@ fun HubScreen(
 // ── Başlık ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun HubHeader(onPair: () -> Unit, onSettings: () -> Unit) {
+private fun HubHeader(onAdd: () -> Unit, onSettings: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -840,7 +807,7 @@ private fun HubHeader(onPair: () -> Unit, onSettings: () -> Unit) {
         BrandMark(size = 30.dp)
         Spacer(Modifier.width(Space.md))
         Text("Pocket Agent", style = MaterialTheme.typography.titleLarge, color = Tok.text, modifier = Modifier.weight(1f))
-        IconAction(Icons.Rounded.QrCodeScanner, "QR ile eşle", onPair)
+        IconAction(Icons.Rounded.Add, "Ekle", onAdd)
         IconAction(Icons.Rounded.Settings, "Ayarlar", onSettings)
     }
 }
@@ -913,113 +880,90 @@ private fun StepCard(n: Int?, title: String, body: String, content: @Composable 
 // Bir listenin satırları ayrı öğelerdir (sanallaştırılır) ama tek kart gibi
 // görünür: ilk satır üst, son satır alt köşeleri yuvarlar; araya ayırıcı.
 
+// Kırpma çizimde yapılır (katmanda değil): köşeleri eşit olmayan bir
+// şekille katman kırpması dokunmayı Path.op ile sınar; bu her dokunuşta
+// yol kesişimi demek ve Robolectric'te dokunmaları tümden düşürüyordu.
 @Composable
 fun GroupRow(index: Int, count: Int, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val r = 22.dp
-    val shape: Shape = RoundedCornerShape(
-        topStart = if (index == 0) r else 4.dp,
-        topEnd = if (index == 0) r else 4.dp,
-        bottomStart = if (index == count - 1) r else 4.dp,
-        bottomEnd = if (index == count - 1) r else 4.dp,
-    )
-    Column(modifier.fillMaxWidth().padding(bottom = 2.dp).clip(shape).background(Tok.card)) { content() }
+    val shape: Shape = remember(index == 0, index == count - 1) {
+        RoundedCornerShape(
+            topStart = if (index == 0) r else 4.dp,
+            topEnd = if (index == 0) r else 4.dp,
+            bottomStart = if (index == count - 1) r else 4.dp,
+            bottomEnd = if (index == count - 1) r else 4.dp,
+        )
+    }
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(bottom = 2.dp)
+            .drawWithCache {
+                val clip = androidx.compose.ui.graphics.Path().apply { addOutline(shape.createOutline(size, layoutDirection, this@drawWithCache)) }
+                onDrawWithContent { clipPath(clip) { this@onDrawWithContent.drawContent() } }
+            }
+            .background(Tok.card),
+    ) { content() }
 }
 
-// ── Oturum kartı ────────────────────────────────────────────────────────────
-// Canlı mini terminal: buffer'ın son dolu satırları, en fazla 4×/sn
-// örneklenir. Dokun → terminal; uzun bas → yeniden adlandır; ⋮ → seçenekler.
+// ── Oturum satırı ───────────────────────────────────────────────────────────
+// Sade satır: durum noktası, ad, tek satır özet. Özet sırası: bağlantı
+// sorunu (renk + metin), agent'ın son olayı, terminalin son dolu satırı.
+// Dokun → terminal; uzun bas → yeniden adlandır; ⋮ → seçenekler.
 
 @Composable
-private fun SessionCard(
+private fun SessionRow(
     h: SessionHandle,
     name: String,
     agent: InboxRow?,
     onOpen: () -> Unit,
     onRename: () -> Unit,
     onMenu: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val t = Tok
-    val console = LocalConsoleTheme.current
     val st by h.controller.state.collectAsState()
     val retry by h.controller.retryAttempt.collectAsState()
-    val lines by rememberPreviewLines(h, 5)
-    PocketCard(
-        modifier = modifier,
-        onClick = onOpen,
-        onLongClick = onRename,
-        onLongClickLabel = "Yeniden adlandır",
-        contentPadding = PaddingValues(start = Space.lg, end = 4.dp, top = Space.md, bottom = Space.lg),
+    val last by rememberPreviewLines(h, 1)
+    val status = if (retry > 0) Status.Warn else st.status()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .tap(onOpen, onRename, label = "Terminali aç", longLabel = "Yeniden adlandır")
+            .heightIn(min = 64.dp)
+            .padding(start = Space.lg, end = 4.dp, top = Space.md, bottom = Space.md),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            HostAvatar(h.conn.name, h.conn.host + h.conn.user, size = 36.dp)
-            Spacer(Modifier.width(Space.md))
-            Column(Modifier.weight(1f)) {
-                Text(name, style = MaterialTheme.typography.titleMedium, color = t.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    "${h.conn.user}@${h.conn.host}",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code),
-                    color = t.text2,
+        StatusDot(status, Modifier.semantics { contentDescription = st.label(retry) })
+        Spacer(Modifier.width(Space.md))
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.titleMedium, color = t.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            when {
+                st != ConnectionState.ACTIVE || retry > 0 -> Text(
+                    st.label(retry),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = status.tone().text,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-            Spacer(Modifier.width(Space.sm))
-            StatusChip(if (retry > 0) Status.Warn else st.status(), st.label(retry))
-            IconAction(Icons.Rounded.MoreVert, "$name seçenekleri", onMenu)
-        }
-        Spacer(Modifier.height(Space.md))
-        Column(
-            Modifier
-                .padding(end = Space.md)
-                .fillMaxWidth()
-                .clip(InnerShape)
-                .background(Color(console.term.background))
-                .border(1.dp, t.line, InnerShape)
-                // Ham terminal satırları ekran okuyucuya okunmaz; kart adı ve
-                // durumu yeterli.
-                .clearAndSetSemantics { }
-                .padding(horizontal = Space.md, vertical = 10.dp)
-                .heightIn(min = 72.dp),
-        ) {
-            if (lines.isEmpty()) {
-                Text(
-                    when (st) {
-                        ConnectionState.ACTIVE -> "Hazır. Dokun ve yazmaya başla."
-                        ConnectionState.CONNECTING -> "Bağlanıyor…"
-                        else -> "Çıktı yok"
-                    },
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
-                    color = Color(console.term.foreground).copy(alpha = 0.6f),
-                )
-            }
-            lines.forEach { l ->
-                Text(
-                    l.toAnnotatedString(ansi = console.term.ansi),
-                    color = Color(console.term.foreground),
-                    fontFamily = LocalMonoFont.current,
-                    fontSize = 10.5.sp,
-                    lineHeight = 14.sp,
-                    maxLines = 1,
-                    softWrap = false,
-                )
-            }
-        }
-        if (agent != null) {
-            val kind = agentKind(agent.category)
-            Spacer(Modifier.height(Space.md))
-            Row(Modifier.padding(end = Space.md), verticalAlignment = Alignment.CenterVertically) {
-                Icon(kind.icon, contentDescription = null, tint = kind.status.tone().fg, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(Space.sm))
-                Text(
-                    listOf(agent.source.ifBlank { "agent" }, kind.label).joinToString(" · ") + " — " + agent.title,
+                agent != null -> Text(
+                    listOf(agent.source.ifBlank { "agent" }, agentKind(agent.category).label).joinToString(" · ") + " — " + agent.title,
                     style = MaterialTheme.typography.bodySmall,
                     color = t.text2,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                else -> Text(
+                    last.firstOrNull()?.text?.trim().orEmpty().ifEmpty { "Hazır" },
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = LocalMonoFont.current),
+                    color = t.text2,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // Ham terminal satırı ekran okuyucuya okunmaz.
+                    modifier = Modifier.clearAndSetSemantics { },
+                )
             }
         }
+        IconAction(Icons.Rounded.MoreVert, "$name seçenekleri", onMenu)
     }
 }
 
@@ -1036,38 +980,40 @@ private fun rememberPreviewLines(h: SessionHandle, n: Int) = remember(h) {
 }.collectAsState(initial = emptyList())
 
 // Host'ta yaşayan ama bu cihazda açık olmayan oturum: dokun → aynı tmux'a attach.
+// Host'ta yaşayan ama bu cihazda açık olmayan tmux oturumu: aynı satır
+// düzeni, sönük nokta. Parola kayıtlı değilse dokunuş düzenleyiciyi açar.
 @Composable
 private fun RemoteSessionRow(
     name: String,
     tmux: String,
-    address: String,
+    hostName: String,
     otherDevice: Boolean,
     enabled: Boolean,
     onAttach: () -> Unit,
 ) {
-    // Parola kayıtlı değilse dokunuş düzenleyiciyi açar (attachRemote).
-    ListRow(
-        title = name,
-        subtitle = "$tmux · $address",
-        subtitleMono = true,
-        onClick = onAttach,
-        leading = {
-            Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                StatusDot(Status.Idle, size = 10.dp)
-            }
-        },
-        trailing = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (otherDevice) Tag("başka cihaz")
-                Spacer(Modifier.width(Space.sm))
-                if (enabled) {
-                    TonalButton("Bağlan", onClick = onAttach)
-                } else {
-                    GhostButton("Parola gir", onClick = onAttach, color = Tok.text2)
-                }
-            }
-        },
-    )
+    val t = Tok
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .tap(onAttach, label = "Bağlan")
+            .heightIn(min = 64.dp)
+            .padding(start = Space.lg, end = Space.sm, top = Space.md, bottom = Space.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StatusDot(Status.Idle, Modifier.semantics { contentDescription = "bu cihazda açık değil" })
+        Spacer(Modifier.width(Space.md))
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.titleMedium, color = t.text2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                listOfNotNull("host'ta çalışıyor", hostName, if (otherDevice) "başka cihaz" else null, tmux).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = t.text2,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        GhostButton(if (enabled) "Bağlan" else "Parola gir", onClick = onAttach, color = if (enabled) t.primary else t.text2)
+    }
 }
 
 // "Terminale dön" şeridi: oturum kartları görünmezken altta durur; aktif
@@ -1136,6 +1082,8 @@ internal fun agentKind(category: String): AgentKind = when (category) {
     else -> AgentKind(Status.Idle, category.lowercase(), Icons.Rounded.Notifications)
 }
 
+// Olay satırı: küçük tür ikonu, başlık, alt satırda tür · kaynak · zaman.
+// Tür metin olarak da yazılı (renk tek başına anlam taşımaz).
 @Composable
 private fun AgentEventRow(e: InboxRow, canOpen: Boolean, onClick: () -> Unit) {
     val t = Tok
@@ -1146,36 +1094,31 @@ private fun AgentEventRow(e: InboxRow, canOpen: Boolean, onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .tap(onClick, label = if (canOpen) "Terminale git" else "Okundu işaretle")
-            .padding(horizontal = Space.lg, vertical = Space.md),
-        verticalAlignment = Alignment.Top,
+            .heightIn(min = 56.dp)
+            .padding(start = Space.lg, end = Space.md, top = Space.md, bottom = Space.md),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconTile(kind.icon, tone = tone, size = 36.dp)
-        Spacer(Modifier.width(Space.md + 2.dp))
+        Icon(kind.icon, contentDescription = null, tint = tone.fg, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(Space.md))
         Column(Modifier.weight(1f)) {
-            // Tek metin: dar ekranda ya da büyük yazıda kırılarak sarar,
-            // zaman bilgisi kesilmez.
-            Text(
-                buildAnnotatedString {
-                    withStyle(SpanStyle(color = tone.text, fontWeight = FontWeight.Medium)) { append(kind.label) }
-                    append(" · " + listOf(e.source.ifBlank { "agent" }, relativeTime(ts)).joinToString(" · "))
-                },
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal),
-                color = t.text2,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(2.dp))
             Text(
                 e.title,
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (e.unread) FontWeight.Medium else FontWeight.Normal),
                 color = if (e.unread) t.text else t.text2,
-                maxLines = 2,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                listOf(kind.label, e.source.ifBlank { "agent" }, relativeTime(ts)).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = t.text2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         if (e.unread) {
             Spacer(Modifier.width(Space.sm))
-            Box(Modifier.padding(top = 6.dp).size(8.dp).clip(RoundedCornerShape(4.dp)).background(t.primary).semantics { contentDescription = "okunmadı" })
+            Box(Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(t.primary).semantics { contentDescription = "okunmadı" })
         }
         // Agent'ın oturumu bulunduysa satır oraya götürür.
         if (canOpen) {
@@ -1183,7 +1126,7 @@ private fun AgentEventRow(e: InboxRow, canOpen: Boolean, onClick: () -> Unit) {
                 Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                 contentDescription = null,
                 tint = t.text3,
-                modifier = Modifier.padding(start = Space.xs, top = 6.dp).size(20.dp),
+                modifier = Modifier.padding(start = Space.xs).size(20.dp),
             )
         }
     }
@@ -1191,31 +1134,23 @@ private fun AgentEventRow(e: InboxRow, canOpen: Boolean, onClick: () -> Unit) {
 
 // ── Hızlı başlat ────────────────────────────────────────────────────────────
 
+// Tek satırlık başlat hapı: ad görünür, bağlı host dokunma etiketinde.
+// Uzun bas → profil seçenekleri.
 @Composable
-private fun ProfileChip(p: SavedProfile, hostName: String?, onLaunch: () -> Unit, onMenu: () -> Unit) {
+private fun ProfilePill(p: SavedProfile, hostName: String?, onLaunch: () -> Unit, onMenu: () -> Unit) {
     val t = Tok
     Row(
         Modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(PillShape)
             .background(t.card)
-            .tap(onLaunch, onMenu, label = "Başlat")
-            .heightIn(min = 52.dp)
-            .padding(start = Space.md, end = Space.lg, top = Space.sm, bottom = Space.sm),
+            .tap(onLaunch, onMenu, label = hostName?.let { "$it'ta başlat" } ?: "Başlat", longLabel = "Seçenekler")
+            .heightIn(min = 48.dp)
+            .padding(start = Space.md, end = Space.lg),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(28.dp).clip(RoundedCornerShape(9.dp)).background(t.accent.soft), contentAlignment = Alignment.Center) {
-            Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = t.accent.onSoft, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.width(Space.md - 2.dp))
-        Column {
-            Text(p.name, style = MaterialTheme.typography.titleSmall, color = t.text, maxLines = 1)
-            Text(
-                hostName ?: "host seç",
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Normal),
-                color = t.text2,
-                maxLines = 1,
-            )
-        }
+        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = t.primary, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(Space.sm))
+        Text(p.name, style = MaterialTheme.typography.labelLarge, color = t.text, maxLines = 1)
     }
 }
 
@@ -1239,7 +1174,7 @@ private fun HostRow(
         subtitleMono = true,
         onClick = onConnect,
         contentPadding = PaddingValues(start = Space.lg, end = 4.dp, top = Space.md, bottom = Space.md),
-        leading = { HostAvatar(conn.name, conn.host + conn.user) },
+        leading = { HostAvatar(conn.name) },
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (state != null) {

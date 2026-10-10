@@ -215,14 +215,11 @@ fun Tag(text: String, modifier: Modifier = Modifier, tone: Tone? = null, mono: B
 // Host avatarı: adın ilk harfi, host+kullanıcıdan türetilen tonda yuvarlak
 // kare. Aynı makine her ekranda aynı renkle görünür.
 @Composable
-fun HostAvatar(name: String, seed: String, modifier: Modifier = Modifier, size: Dp = 40.dp, dim: Boolean = false) {
+fun HostAvatar(name: String, modifier: Modifier = Modifier, size: Dp = 40.dp, dim: Boolean = false) {
     val t = Tok
-    val (bg, fg) = remember(seed, t) {
-        val h = seed.fold(0x811C9DC5.toInt()) { acc, c -> (acc xor c.code) * 0x01000193 }
-        val hue = t.avatars[Math.floorMod(h, t.avatars.size)]
-        val b = lerp(t.card, hue, if (t.dark) 0.24f else 0.16f)
-        b to hue.readableOn(b, t.text, 4.5f)
-    }
+    // Sade görünüm: tek ton. Ayırt edici olan baş harf ve yanındaki ad.
+    val bg = wellColor
+    val fg = t.text2
     val letter = name.trim().firstOrNull { it.isLetterOrDigit() }?.uppercase(java.util.Locale.forLanguageTag("tr")) ?: "?"
     Box(
         modifier

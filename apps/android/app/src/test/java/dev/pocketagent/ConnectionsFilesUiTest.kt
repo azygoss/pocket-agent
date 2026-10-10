@@ -3,6 +3,7 @@ package dev.pocketagent
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.room.Room
@@ -53,7 +54,9 @@ class ConnectionsFilesUiTest {
         RuntimeEnvironment.getApplication(), AppDatabase::class.java,
     ).allowMainThreadQueries().build()
 
-    @Test fun savedHostShowsQuickLaunchSection() {
+    // Sade ana sayfa: profil yokken "Hızlı başlat" bölümü yer kaplamaz;
+    // profil eklemek tek "Ekle" girişinden.
+    @Test fun quickLaunchProfileIsAddedFromAddSheet() {
         val db = db()
         val r = ConnectionRepository(db.connections())
         runBlocking {
@@ -61,8 +64,11 @@ class ConnectionsFilesUiTest {
         }
         rule.setContent { hub(r, ProfileRepository(db.profiles()), manager()) }
         rule.waitForIdle()
-        rule.onNodeWithText("Hızlı başlat").assertIsDisplayed()
-        rule.onNodeWithText("Profil ekle").assertIsDisplayed()
+        rule.onNodeWithText("Hızlı başlat").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Ekle").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("QR veya kodla eşle").assertExists()
+        rule.onNodeWithText("Hızlı başlat profili").assertExists()
     }
 
     @Test fun profileTapOpensSessionAndSendsCommand() {

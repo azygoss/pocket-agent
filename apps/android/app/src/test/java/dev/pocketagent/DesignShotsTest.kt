@@ -223,7 +223,7 @@ class DesignShotsTest {
 
     @Test fun hubDark() = hub(PocketConsoleTheme, "hub-dark", withInbox = true)
 
-    @Test fun hubDarkScrolled() = hub(PocketConsoleTheme, "hub-dark-scrolled", withInbox = true, scroll = "more")
+    @Test fun hubDarkScrolled() = hub(PocketConsoleTheme, "hub-dark-scrolled", withInbox = true, scroll = "sec-hosts")
 
     @Test fun hubLight() = hub(PocketPaperTheme, "hub-light", withInbox = true)
 

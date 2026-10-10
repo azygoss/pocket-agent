@@ -636,7 +636,7 @@ fun HostPickerSheet(
                     subtitle = "${c.user}@${c.host}:${c.port}",
                     subtitleMono = true,
                     contentPadding = PaddingValues(horizontal = Space.xxl, vertical = Space.md),
-                    leading = { HostAvatar(c.name, c.host + c.user) },
+                    leading = { HostAvatar(c.name) },
                     onClick = { dismiss(); onPick(c) },
                 )
             }
