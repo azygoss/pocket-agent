@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p dist
-VER="${VER:-0.1.0}"
+VER="${VER:-0.1.1}"
 for os in linux darwin; do for arch in amd64 arm64; do
   echo "building $os/$arch..."
   GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=$VER" -o "dist/pocket-agent-hook-$os-$arch" ./cmd/pocket-agent-hook
