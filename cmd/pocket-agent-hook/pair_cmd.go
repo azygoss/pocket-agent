@@ -44,6 +44,10 @@ type pairPayload struct {
 	SSHPort    int    `json:"ssh_port"`
 	SSHUser    string `json:"ssh_user"`
 	PrivateKey string `json:"private_key"` // OpenSSH PEM, tek-kullanım pairing anahtarı
+	// Olayların gittiği tenant: uygulama eşleşince backend ayarını bununla
+	// kendisi doldurur (elle tenant yazmak gerekmez). Backend bunu zaten her
+	// istekte X-Tenant olarak görür; yük 5dk TTL'li ve tek kullanımlık.
+	Tenant string `json:"tenant,omitempty"`
 }
 
 func cmdPair(args []string) {
@@ -96,7 +100,7 @@ func cmdPair(args []string) {
 	}
 
 	// 3) backend pairing session (5dk TTL, tek-kullanım)
-	payload, _ := json.Marshal(pairPayload{SSHHost: host, SSHPort: port, SSHUser: usr, PrivateKey: string(privPEM)})
+	payload, _ := json.Marshal(pairPayload{SSHHost: host, SSHPort: port, SSHUser: usr, PrivateKey: string(privPEM), Tenant: tenant()})
 	body, _ := json.Marshal(map[string]string{"code": code, "host_id": "host:local", "payload": string(payload)})
 	req, _ := http.NewRequest("POST", strings.TrimRight(backend, "/")+"/v1/pairing-sessions", bytes.NewReader(body))
 	req.Header.Set("X-Tenant", "pairing")

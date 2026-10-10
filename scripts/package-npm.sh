@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VER=${VER:-0.1.1}
+VER=${VER:-0.1.2}
 PKGVER=$(node -p "require('./packages/npm/package.json').version")
 if [ "$PKGVER" != "$VER" ]; then
   echo "package-npm: packages/npm/package.json version=$PKGVER, VER=$VER ile uyuşmuyor" >&2
