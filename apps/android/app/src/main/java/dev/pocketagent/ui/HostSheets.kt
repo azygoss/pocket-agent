@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -45,6 +46,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -82,6 +85,7 @@ fun HostEditor(
     onDismiss: () -> Unit,
     onSave: (SavedConnection, Secret?, Boolean) -> Unit,
     onDelete: (() -> Unit)? = null,
+    existing: List<SavedConnection> = emptyList(),
 ) {
     val isNew = initial.id.isBlank()
     var name by remember { mutableStateOf(initial.name) }
@@ -99,6 +103,7 @@ fun HostEditor(
     var probing by remember { mutableStateOf(false) }
     var probeResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     var generatedPub by remember { mutableStateOf<String?>(null) }
+    var confirmDiscard by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -113,6 +118,19 @@ fun HostEditor(
             context.contentResolver.openInputStream(uri)?.use { s -> secretText = s.readBytes().decodeToString() }
         }.onFailure { probeResult = false to "Dosya okunamadı: ${it.message}" }
     }
+
+    // Yazılanlar kaybolmasın: değişiklik varken kapatmak onay ister.
+    val dirty = name != initial.name || host != initial.host || user != initial.user ||
+        port != (initial.port.takeIf { it > 0 }?.toString() ?: "22") || secretText.isNotEmpty()
+    val requestClose = { if (dirty) confirmDiscard = true else onDismiss() }
+    // Aynı adres zaten kayıtlıysa uyar (engellemez: farklı anahtarla ikinci
+    // kayıt bilinçli olabilir).
+    val duplicate = existing.firstOrNull {
+        it.id != initial.id && it.host.equals(host.trim(), ignoreCase = true) &&
+            it.user == user.trim() && it.port == (port.toIntOrNull() ?: 22)
+    }
+    // Alan değişince eski "sına" sonucu artık geçerli değil.
+    LaunchedEffect(host, user, port, secretText, authKind) { probeResult = null }
 
     fun save() {
         val p = port.toIntOrNull() ?: 0
@@ -145,7 +163,7 @@ fun HostEditor(
         onSave(conn, secret, keep)
     }
 
-    FullScreenDialog(onDismiss = onDismiss) {
+    FullScreenDialog(onDismiss = requestClose) {
         Column(
             Modifier
                 .fillMaxSize()
@@ -154,7 +172,7 @@ fun HostEditor(
         ) {
             PocketTopBar(
                 title = if (isNew) "Yeni host" else "Hostu düzenle",
-                onBack = onDismiss,
+                onBack = requestClose,
                 backIcon = Icons.Rounded.Close,
                 backDesc = "Kapat",
                 insetTop = false,
@@ -172,23 +190,32 @@ fun HostEditor(
                 Column(Modifier.widthIn(max = 640.dp).align(Alignment.CenterHorizontally)) {
                     Spacer(Modifier.height(Space.sm))
                     FormSection("Bağlantı") {
-                        PocketTextField(name, { name = it; errors = errors - "name" }, label = "Ad", placeholder = "prod-web", error = errors["name"])
+                        PocketTextField(
+                            name, { name = it; errors = errors - "name" },
+                            label = "Ad", placeholder = "prod-web", error = errors["name"],
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        )
                         PocketTextField(
                             host, { host = it.trim(); errors = errors - "host" },
                             label = "Host", placeholder = "192.168.1.10 ya da ornek.com", mono = true, error = errors["host"],
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
+                            helper = duplicate?.let { "Bu adres zaten kayıtlı: ${it.name}" },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Next),
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
                             PocketTextField(
                                 user, { user = it.trim(); errors = errors - "user" },
                                 label = "Kullanıcı", placeholder = "root", mono = true, error = errors["user"],
-                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
+                                keyboardOptions = KeyboardOptions(
+                                    capitalization = KeyboardCapitalization.None,
+                                    autoCorrectEnabled = false,
+                                    imeAction = ImeAction.Next,
+                                ),
                                 modifier = Modifier.weight(1f),
                             )
                             PocketTextField(
                                 port, { port = it.filter(Char::isDigit).take(5); errors = errors - "port" },
                                 label = "Port", mono = true, error = errors["port"],
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                                 modifier = Modifier.width(104.dp),
                             )
                         }
@@ -207,7 +234,8 @@ fun HostEditor(
                                 helper = if (isNew) null else "Boş bırakırsan kayıtlı parola korunur.",
                                 error = errors["secret"],
                                 visualTransformation = if (showSecret) VisualTransformation.None else PasswordVisualTransformation(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = { save() }),
                                 trailing = {
                                     IconAction(
                                         if (showSecret) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
@@ -296,6 +324,16 @@ fun HostEditor(
         }
     }
 
+    if (confirmDiscard) {
+        ConfirmDialog(
+            title = "Değişiklikler kaydedilmedi",
+            message = "Çıkarsan bu formda yazdıkların silinir.",
+            confirmLabel = "Çık",
+            onConfirm = { confirmDiscard = false; onDismiss() },
+            onDismiss = { confirmDiscard = false },
+        )
+    }
+
     // Üretilen anahtarın public parçası: host'ta authorized_keys'e eklenecek.
     generatedPub?.let { pub ->
         PocketDialog(
@@ -378,8 +416,15 @@ fun PairingSheet(
             PocketTextField(
                 code,
                 { v ->
-                    val clean = v.uppercase().filter { it.isLetterOrDigit() }.take(8)
-                    code = if (clean.length > 4) clean.take(4) + "-" + clean.drop(4) else clean
+                    // QR içeriği ("pa1|…") yapıştırıldıysa doğrudan eşle.
+                    val raw = v.trim()
+                    if (raw.startsWith("pa1|")) {
+                        code = ""
+                        onCode(backend.ifBlank { backendUrl }, raw)
+                    } else {
+                        val clean = v.uppercase().filter { it.isLetterOrDigit() }.take(8)
+                        code = if (clean.length > 4) clean.take(4) + "-" + clean.drop(4) else clean
+                    }
                 },
                 label = "Eşleme kodu",
                 placeholder = "XXXX-XXXX",

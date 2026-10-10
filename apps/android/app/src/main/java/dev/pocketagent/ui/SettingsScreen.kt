@@ -215,7 +215,7 @@ private fun sessionSubtitle(s: SettingsViewModel): String {
     val n = s.snippetList().size
     val snip = if (n == 0) "kısayol yok" else "$n kısayol"
     val rec = if (s.autoReconnectOnDrop) "otomatik yeniden bağlanır" else "yeniden bağlanma kapalı"
-    return "$rec · $snip"
+    return listOfNotNull(rec, if (s.keepScreenOn) "ekran açık" else null, snip).joinToString(" · ")
 }
 
 private fun backendSubtitle(url: String): String {
@@ -424,6 +424,22 @@ private fun SessionContent(settings: SettingsViewModel) {
             checked = settings.autoReconnectOnDrop,
             onToggle = { settings.toggleAutoReconnectOnDrop() },
             subtitle = "5 denemeye kadar artan aralıklarla. Kimlik ya da host anahtarı hatasında durur.",
+        )
+    }
+    Spacer(Modifier.height(Space.md))
+    PocketCard(contentPadding = PaddingValues(vertical = 4.dp)) {
+        SwitchRow(
+            "Terminalde ekranı açık tut",
+            checked = settings.keepScreenOn,
+            onToggle = { settings.toggleKeepScreenOn() },
+            subtitle = "Agent çalışırken ekran kararmaz. Yalnız terminal görünürken geçerli.",
+        )
+        InsetDivider(Space.lg)
+        SwitchRow(
+            "Tuş titreşimi",
+            checked = settings.keyHaptics,
+            onToggle = { settings.toggleKeyHaptics() },
+            subtitle = "Tuş paneline her dokunuşta kısa titreşim.",
         )
     }
 
@@ -667,6 +683,8 @@ private fun DataContent(settings: SettingsViewModel, usage: UsageViewModel, app:
                         themeId = settings.theme.themeId,
                         fontId = settings.theme.fontId,
                         snippets = settings.snippets,
+                        keepScreenOn = settings.keepScreenOn,
+                        keyHaptics = settings.keyHaptics,
                     ),
                 )
                 context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }

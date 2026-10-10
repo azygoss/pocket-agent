@@ -93,14 +93,16 @@ Full list: `pocket-agent help`.
 
 - **Terminal**: full-screen VT100/xterm emulation, alternate screen,
   atomic TUI frames via synchronized output (DECSET 2026), 50k-line
-  scrollback, pinch-zoom, selection + OSC52 copy
+  scrollback, pinch-zoom, selection + OSC52 copy, key panel with hold-to-
+  repeat arrows, keep-screen-on while watching an agent
 - **Connection**: SSH keepalive, automatic reconnect, hard-stop warning on
   TOFU pin change, experimental Mosh roaming
 - **Sessions**: named tmux sessions, live session cards, attach to tmux
   sessions started on another device, close or detach (keep running on
   the host)
-- **Files**: SFTP browser, upload/download/share, workspace + git diff
-  view, HTTP preview
+- **Files**: SFTP browser, upload/download/share, image viewer, line-numbered
+  reader (grep jumps to the matching line), hidden files and sorting,
+  workspace + git diff view, HTTP preview
 - **App**: IBM Plex Sans/Mono interface, theme and terminal font settings,
   key panel snippets, agent activity feed, notifications and approval
   dialogs

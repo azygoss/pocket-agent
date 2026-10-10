@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -101,8 +102,18 @@ val wellColor: Color
 
 // Tıklama + uzun basma tek yerden: uzun basma varsa combinedClickable.
 @OptIn(ExperimentalFoundationApi::class)
-fun Modifier.tap(onClick: (() -> Unit)?, onLongClick: (() -> Unit)? = null, label: String? = null): Modifier = when {
-    onLongClick != null -> combinedClickable(onClickLabel = label, onClick = { onClick?.invoke() }, onLongClick = onLongClick)
+fun Modifier.tap(
+    onClick: (() -> Unit)?,
+    onLongClick: (() -> Unit)? = null,
+    label: String? = null,
+    longLabel: String? = null,
+): Modifier = when {
+    onLongClick != null -> combinedClickable(
+        onClickLabel = label,
+        onLongClickLabel = longLabel,
+        onClick = { onClick?.invoke() },
+        onLongClick = onLongClick,
+    )
     onClick != null -> clickable(onClickLabel = label, onClick = onClick)
     else -> this
 }
@@ -218,7 +229,9 @@ fun HostAvatar(name: String, seed: String, modifier: Modifier = Modifier, size: 
             .size(size)
             .graphicsLayer { alpha = if (dim) 0.5f else 1f }
             .clip(RoundedCornerShape(size * 0.32f))
-            .background(bg),
+            .background(bg)
+            // Baş harf, hemen yanındaki host adının tekrarı.
+            .clearAndSetSemantics { },
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -251,6 +264,7 @@ fun PocketCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
     color: Color = Tok.card,
     shape: Shape = CardShape,
     contentPadding: PaddingValues = PaddingValues(Space.lg),
@@ -262,7 +276,7 @@ fun PocketCard(
                 .fillMaxWidth()
                 .clip(shape)
                 .background(color)
-                .tap(onClick, onLongClick)
+                .tap(onClick, onLongClick, longLabel = onLongClickLabel)
                 .padding(contentPadding),
             content = content,
         )

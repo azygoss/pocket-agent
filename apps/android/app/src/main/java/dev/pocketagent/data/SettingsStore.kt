@@ -25,6 +25,10 @@ data class PersistedSettings(
     val fontId: String = "jetbrains",
     // Tuş şeridi snippet'ları: her satır "etiket=komut" (örn. "gs=git status").
     val snippets: String = "",
+    // Terminal açıkken ekran kararmasın (agent izlerken).
+    val keepScreenOn: Boolean = false,
+    // Tuş paneli dokunuşlarında titreşim.
+    val keyHaptics: Boolean = true,
 )
 
 interface SettingsStore {
@@ -43,6 +47,8 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
     private val themeIdKey = stringPreferencesKey("theme_id")
     private val fontIdKey = stringPreferencesKey("font_id")
     private val snippetsKey = stringPreferencesKey("snippets")
+    private val keepScreenOnKey = booleanPreferencesKey("keep_screen_on")
+    private val keyHapticsKey = booleanPreferencesKey("key_haptics")
 
     override suspend fun load(): PersistedSettings? {
         val p = context.prefs.data.first()
@@ -56,6 +62,8 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
             themeId = p[themeIdKey] ?: "pocket",
             fontId = p[fontIdKey] ?: "jetbrains",
             snippets = p[snippetsKey] ?: "",
+            keepScreenOn = p[keepScreenOnKey] ?: false,
+            keyHaptics = p[keyHapticsKey] ?: true,
         )
     }
 
@@ -69,6 +77,8 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
             it[themeIdKey] = s.themeId
             it[fontIdKey] = s.fontId
             it[snippetsKey] = s.snippets
+            it[keepScreenOnKey] = s.keepScreenOn
+            it[keyHapticsKey] = s.keyHaptics
         }
     }
 

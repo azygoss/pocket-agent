@@ -248,12 +248,20 @@ class SshjTransport(
     }
 
     override suspend fun list(path: String): List<RemoteFile> = withContext(Dispatchers.IO) {
-        sftp().ls(path).map {
+        val client = sftp()
+        client.ls(path).map {
+            val full = if (path.endsWith("/")) path + it.name else "$path/${it.name}"
+            // ls bağın kendisini döndürür: dizine işaret eden symlink'ler
+            // (~/projects -> /data/...) hedefi stat'lanarak dizin sayılır.
+            val dir = it.isDirectory || (
+                it.attributes.type == net.schmizz.sshj.sftp.FileMode.Type.SYMLINK &&
+                    runCatching { client.stat(full).type == net.schmizz.sshj.sftp.FileMode.Type.DIRECTORY }.getOrDefault(false)
+                )
             RemoteFile(
                 name = it.name,
-                path = if (path.endsWith("/")) path + it.name else "$path/${it.name}",
-                isDir = it.isDirectory,
-                size = if (it.isDirectory) 0 else it.attributes.size,
+                path = full,
+                isDir = dir,
+                size = if (dir) 0 else it.attributes.size,
                 mtime = it.attributes.mtime,
             )
         }.sortedWith(compareByDescending<RemoteFile> { it.isDir }.thenBy { it.name.lowercase() })

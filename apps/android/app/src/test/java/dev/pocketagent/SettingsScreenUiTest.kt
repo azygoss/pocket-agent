@@ -69,6 +69,17 @@ class SettingsScreenUiTest {
         rule.onAllNodesWithText("gs").fetchSemanticsNodes().isNotEmpty().let(org.junit.Assert::assertTrue)
     }
 
+    @Test fun terminalTogglesWriteSettings() {
+        val vm = SettingsViewModel()
+        setContent(vm)
+        rule.onNodeWithText("Terminal ve oturum").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Tuş titreşimi").performScrollTo().performClick()
+        org.junit.Assert.assertFalse(vm.keyHaptics)
+        rule.onNodeWithText("Terminalde ekranı açık tut").performScrollTo().performClick()
+        org.junit.Assert.assertTrue(vm.keepScreenOn)
+    }
+
     @Test fun autoReconnectOnDropDefaultsOn() {
         val vm = SettingsViewModel()
         assert(vm.autoReconnectOnDrop) { "varsayılan açık olmalı" }

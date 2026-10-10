@@ -23,6 +23,8 @@ object Backup {
             put("theme_id", s.themeId)
             put("font_id", s.fontId)
             put("snippets", s.snippets)
+            put("keep_screen_on", s.keepScreenOn)
+            put("key_haptics", s.keyHaptics)
         })
         val arr = JSONArray()
         conns.forEach { c ->
@@ -58,6 +60,8 @@ object Backup {
                 themeId = it.optString("theme_id", "pocket"),
                 fontId = it.optString("font_id", "jetbrains"),
                 snippets = it.optString("snippets", ""),
+                keepScreenOn = it.optBoolean("keep_screen_on", false),
+                keyHaptics = it.optBoolean("key_haptics", true),
             )
         }
         val arr = root.optJSONArray("connections") ?: JSONArray()

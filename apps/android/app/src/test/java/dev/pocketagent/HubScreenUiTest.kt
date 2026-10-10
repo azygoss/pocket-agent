@@ -131,7 +131,7 @@ class HubScreenUiTest {
         rule.setContent { HubScreen(m, repo(), profiles(), onOpenSession = {}) }
         m.open(SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1"), Secret.Password("pw"))
         rule.waitForIdle()
-        rule.onNodeWithContentDescription("Oturum seçenekleri").performClick()
+        rule.onNodeWithContentDescription("sunucu seçenekleri").performClick()
         rule.waitForIdle()
         // Sayfa içi dokunuşlar semantik eylemle: Robolectric'te ModalBottomSheet
         // penceresine enjekte edilen dokunma güvenilir değil.
@@ -176,5 +176,64 @@ class HubScreenUiTest {
         org.junit.Assert.assertEquals(2, m.sessions.value.size)
         org.junit.Assert.assertTrue(m.tmuxNames.value.values.toList().containsAll(listOf("pa-own00001", "pa-a1b2c3d4")))
         m.closeAll()
+    }
+
+    // Bekleyen onay en üstte; "Terminale git" agent'ın çalıştığı tmux
+    // oturumunu açar ve olayı okundu işaretler.
+    @Test fun pendingApprovalOpensAgentSession() {
+        val m = manager()
+        m.open(SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1"), Secret.Password("pw"), forceNew = true, tmuxName = "pa-agent001")
+        val now = java.time.Instant.now()
+        val inbox = dev.pocketagent.ui.InboxViewModel().apply {
+            mergeRemote(listOf(dev.pocketagent.net.BackendEvent(
+                "e1", "h:1", "tmux:pa-agent001", "claude", "APPROVAL_REQUIRED", "Bash: rm -rf build/",
+                "d1", "1", now.toString(), now.plusSeconds(3600).toString(),
+            )))
+        }
+        var opened = false
+        rule.setContent { HubScreen(m, repo(), profiles(), inbox = inbox, onOpenSession = { opened = true }) }
+        rule.waitForIdle()
+        rule.onNodeWithText("Claude onay bekliyor").assertIsDisplayed()
+        rule.onNodeWithText("Terminale git").performClick()
+        rule.waitForIdle()
+        org.junit.Assert.assertTrue(opened)
+        org.junit.Assert.assertFalse(inbox.rows.single().unread)
+        rule.onNodeWithText("Claude onay bekliyor").assertDoesNotExist()
+        m.closeAll()
+    }
+
+    // Yazılanlar sessizce kaybolmasın: değişiklik varken kapatmak onay ister,
+    // dokunulmamış form hemen kapanır.
+    @Test fun hostEditorAsksBeforeDiscarding() {
+        var dismissed = 0
+        rule.setContent {
+            dev.pocketagent.ui.HostEditor(
+                SavedConnection("", "", 22, "", "ram:password"),
+                onDismiss = { dismissed++ },
+                onSave = { _, _, _ -> },
+            )
+        }
+        rule.onAllNodes(hasSetTextAction())[0].performTextInput("prod")
+        rule.onNodeWithContentDescription("Kapat").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Değişiklikler kaydedilmedi").assertIsDisplayed()
+        org.junit.Assert.assertEquals(0, dismissed)
+        rule.onNodeWithText("Çık").performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
+        org.junit.Assert.assertEquals(1, dismissed)
+    }
+
+    @Test fun untouchedHostEditorClosesImmediately() {
+        var dismissed = false
+        rule.setContent {
+            dev.pocketagent.ui.HostEditor(
+                SavedConnection("prod", "10.0.0.5", 22, "root", "ram:password", id = "c1"),
+                onDismiss = { dismissed = true },
+                onSave = { _, _, _ -> },
+            )
+        }
+        rule.onNodeWithContentDescription("Kapat").performClick()
+        rule.waitForIdle()
+        org.junit.Assert.assertTrue(dismissed)
     }
 }

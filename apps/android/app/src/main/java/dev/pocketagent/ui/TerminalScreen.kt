@@ -11,11 +11,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,7 +41,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -69,6 +70,7 @@ import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.KeyboardHide
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
@@ -97,6 +99,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -106,18 +109,25 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -133,6 +143,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -361,7 +372,7 @@ private fun ActiveTerminal(
     val sessionList by manager.sessions.collectAsState()
     val customNames by manager.customNames.collectAsState()
     val tmuxNames by manager.tmuxNames.collectAsState()
-    var ctrl by remember { mutableStateOf(false) }
+    var ctrl by remember(handle.id) { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     val searchOpen = chrome.searchOpen
     val fullscreen = chrome.fullscreen
@@ -377,22 +388,28 @@ private fun ActiveTerminal(
     // Viewport her değiştiğinde (klavye aç/kapa, tam ekran) artar; aktif satır
     // görünür kalsın diye alta kaydırmayı tetikler.
     var viewportEpoch by remember { mutableIntStateOf(0) }
-    // Klavye aç/kapa animasyonu onSizeChanged'i her frame'de tetikler —
-    // her karede PTY'ye Resize göndermek uzak tarafı SIGWINCH yağmuruna
-    // tutar (prompt defalarca yeniden basılır). Gönderim debounce'lu.
-    var resizeJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    // Terminal yüzeyinin son ölçüsü; boyut hesabı aşağıda debounce'lu efektte.
+    var canvas by remember { mutableStateOf(IntSize.Zero) }
+    // Oturum çubuğunun (sekmeler dahil) son ölçülen yüksekliği: kompakt
+    // modda gizlenince satır hesabına geri eklenir.
+    var barPx by remember { mutableIntStateOf(0) }
     val inputFocus = remember { FocusRequester() }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    val listState = rememberLazyListState()
+    // Her oturum kendi kaydırma konumunu korur: sekmeler arasında geri
+    // dönülünce aynı yerde açılır; ilk kez açılan oturum çıktının sonundan.
+    val listStates = remember { HashMap<String, LazyListState>() }
+    if (listStates.size > sessionList.size) listStates.keys.retainAll(sessionList.mapTo(HashSet()) { it.id })
+    val listState = listStates.getOrPut(handle.id) { LazyListState(firstVisibleItemIndex = (lines.size - 1).coerceAtLeast(0)) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     val t = Tok
 
-    var menuOpen by remember { mutableStateOf(false) }
-    var closing by remember { mutableStateOf(false) }
-    var renaming by remember { mutableStateOf(false) }
+    var menuOpen by remember(handle.id) { mutableStateOf(false) }
+    var closing by remember(handle.id) { mutableStateOf(false) }
+    var renaming by remember(handle.id) { mutableStateOf(false) }
     var picking by remember { mutableStateOf(false) }
+    val hosts = repo?.items?.collectAsState()?.value.orEmpty()
 
     // OSC 52: uzak taraf panoya yazdı → cihaz panosuna aktar.
     val clipboard = LocalClipboardManager.current
@@ -405,10 +422,21 @@ private fun ActiveTerminal(
 
     val view = LocalView.current
 
-    // BEL (\u0007): uzak zil → hafif haptic. Sayaç değişimi tetikler.
-    val bellCount by vm.bellCount.collectAsState()
-    LaunchedEffect(bellCount) {
-        if (bellCount > 0) view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+    // BEL (\u0007): uzak zil → hafif haptic. Yalnız sayaç artınca; oturum
+    // değişince başlangıç değeri yeniden okunur (geçişte titremez).
+    LaunchedEffect(handle.id) {
+        var last = vm.bellCount.value
+        vm.bellCount.collect { n ->
+            if (n > last) view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            last = n
+        }
+    }
+
+    // Ekranı açık tut (Ayarlar / taşma menüsü): yalnız çalışma alanı
+    // görünürken; ekrandan çıkınca sistem zaman aşımı geri gelir.
+    DisposableEffect(settings.keepScreenOn) {
+        view.keepScreenOn = settings.keepScreenOn
+        onDispose { view.keepScreenOn = false }
     }
 
     // Tam ekran: sistem çubuklarını gizle.
@@ -428,8 +456,8 @@ private fun ActiveTerminal(
     // prompt üstte durur; dolunca imleç satırı viewport'un altında tutulur.
     // visRows = görünen satır sayısı (klavye açıkken kısalır).
     var visRows by remember { mutableIntStateOf(24) }
-    var ptySize by remember { mutableStateOf(vm.size) }
-    val atBottom by remember {
+    var ptySize by remember(handle.id) { mutableStateOf(vm.size) }
+    val atBottom by remember(listState) {
         derivedStateOf {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -474,11 +502,25 @@ private fun ActiveTerminal(
         else lines.mapIndexedNotNull { i, l -> if (l.text.contains(query, ignoreCase = true)) i else null }
     }
     val matchSet = remember(matches) { matches.toSet() }
-    var matchCursor by remember { mutableIntStateOf(0) }
+    var matchCursor by remember(handle.id) { mutableIntStateOf(0) }
     val currentMatch = matches.getOrNull(matchCursor)
 
     fun sendText(s: String) {
         controller.send(TerminalInput.Text(s))
+    }
+
+    // Yeni oturum: tek host varsa doğrudan açılır, birden fazlaysa seçici,
+    // hiç yoksa Oturumlar'a dönülür. Secret yoksa düzenleyici sorar.
+    fun openOn(c: SavedConnection) {
+        val secret = repo?.secret(c.id)
+        if (secret == null) onEditHost(c) else manager.open(c, secret, forceNew = true)
+    }
+    fun newSession() {
+        when {
+            repo == null || hosts.isEmpty() -> onNewConnection()
+            hosts.size == 1 -> openOn(hosts.single())
+            else -> picking = true
+        }
     }
 
     // Yazılanı doğrudan PTY'ye gönder. ctrl mandalı açıkken tek harf kontrol
@@ -568,6 +610,18 @@ private fun ActiveTerminal(
     val connected = state == ConnectionState.ACTIVE
     val imeInsets = WindowInsets.ime
     val navInsets = WindowInsets.navigationBars
+    // Kısa pencerede (yatay telefon) klavye açıkken oturum çubuğu gizlenir —
+    // aksi halde terminale birkaç satır kalır. Klavye kapanınca geri gelir.
+    // Klavye, gerçek inset yüksekliğiyle anlaşılır (gezinme çubuğunun ötesinde
+    // ≥80dp); türetilmiş durum, animasyon karelerinde yeniden çizim yapmaz.
+    val shortScreen = LocalConfiguration.current.screenHeightDp < 480
+    val keyboardUp by remember(density, shortScreen) {
+        derivedStateOf {
+            shortScreen && imeInsets.getBottom(density) - navInsets.getBottom(density) > with(density) { 80.dp.roundToPx() }
+        }
+    }
+    val compact = !fullscreen && keyboardUp
+    val showBar = !fullscreen && !compact
 
     // Çubuktan aşağı çekme: çalışma alanı parmağı spring ile izler; eşik
     // altında bırakılırsa geri yaylanır, üstünde aşağı akıp Oturumlar'a döner.
@@ -584,6 +638,42 @@ private fun ActiveTerminal(
     val name = sessionLabel(handle, sessionList, customNames)
     val padH = 10.dp
     val padV = 6.dp
+
+    // Boyut: her ölçümde, oturum değişince ve font değişince yeniden hesaplanır.
+    // Klavye animasyonu her karede ölçüm üretir; efekt yeniden başladıkça
+    // önceki bekleme iptal olur → PTY'ye yalnız son boyut gider (SIGWINCH
+    // yağmuru yok). Satırlar klavyesiz ölçülür: klavye açılınca görünen alan
+    // kısalır ama terminal modeli (ve remote PTY) değişmez. Gezinme çubuğu
+    // payı iki durumda da vardır; yalnız klavyenin onun ötesine taşan kısmı
+    // ve kompakt modda gizlenen çubuk geri eklenir.
+    LaunchedEffect(handle.id, canvas, charW, lineH, compact) {
+        if (canvas == IntSize.Zero) return@LaunchedEffect
+        val padPx = with(density) { (padH * 2).toPx() }
+        val padVPx = with(density) { (padV * 2).toPx() }
+        val cols = ((canvas.width - padPx) / charW).toInt().coerceIn(20, 500)
+        val imeExtra = (imeInsets.getBottom(density) - navInsets.getBottom(density)).coerceAtLeast(0)
+        val hiddenBar = if (compact) barPx else 0
+        // Yuvarla (floor değil): piksel-sapmalı ölçümler sınırda ±1 satır
+        // üretmesin — gereksiz reflow'u önler.
+        val rows = ((canvas.height - padVPx + imeExtra - hiddenBar) / lineH).roundToInt().coerceIn(4, 200)
+        visRows = ((canvas.height - padVPx) / lineH).toInt().coerceAtLeast(1)
+        kotlinx.coroutines.delay(160)
+        val newSize = TerminalSize(cols, rows)
+        if (newSize != vm.size) {
+            vm.setSize(newSize)
+            if (controller.state.value == ConnectionState.ACTIVE) controller.send(TerminalInput.Resize(newSize))
+        }
+        ptySize = newSize
+    }
+
+    // Pinch-zoom geri bildirimi: ölçek değişince kısa süre ortada görünür.
+    var zoomHud by remember { mutableStateOf(false) }
+    LaunchedEffect(zoomHud, settings.theme.fontScale) {
+        if (zoomHud) {
+            kotlinx.coroutines.delay(900)
+            zoomHud = false
+        }
+    }
 
     Box(
         Modifier
@@ -617,16 +707,15 @@ private fun ActiveTerminal(
                 .graphicsLayer { alpha = 1f - (pullY / pullMax) * 0.35f }
                 .clip(if (pullY > 1f) RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp) else RoundedCornerShape(0.dp))
                 .background(termBg)
-                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
+                .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.ime).union(WindowInsets.navigationBars)),
         ) {
-            if (!fullscreen) {
+            if (showBar) {
                 // ── Oturum çubuğu: aşağı çekilebilir. Düğme dokunuşları çalışır;
                 // sürükleme yalnız dikey kayma eşiği aşılınca olayı alır.
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .background(t.bg)
-                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .onSizeChanged { barPx = it.height }
                         .then(
                             if (showBack) Modifier.pointerInput(Unit) {
                                 detectVerticalDragGestures(
@@ -689,7 +778,7 @@ private fun ActiveTerminal(
                             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }, containerColor = t.raised) {
                                 MenuItem(Icons.Rounded.Add, "Yeni oturum") {
                                     menuOpen = false
-                                    if (repo != null) picking = true else onNewConnection()
+                                    newSession()
                                 }
                                 MenuItem(Icons.Rounded.Edit, "Yeniden adlandır") { menuOpen = false; renaming = true }
                                 MenuItem(Icons.Rounded.Language, "Web önizleme", enabled = connected && controller.tcpip() != null) {
@@ -697,6 +786,10 @@ private fun ActiveTerminal(
                                 }
                                 MenuItem(Icons.Rounded.Share, "Scrollback'i paylaş") { menuOpen = false; shareScrollback(context, lines) }
                                 MenuItem(Icons.Rounded.Fullscreen, "Tam ekran") { menuOpen = false; chrome.fullscreen = true }
+                                MenuItem(
+                                    Icons.Rounded.LightMode, "Ekranı açık tut",
+                                    checked = settings.keepScreenOn,
+                                ) { menuOpen = false; settings.toggleKeepScreenOn() }
                                 if ((state == ConnectionState.CLOSED || state == ConnectionState.FAILED) && controller.canReconnect()) {
                                     MenuItem(Icons.Rounded.Refresh, "Yeniden bağlan") { menuOpen = false; controller.reconnect() }
                                 }
@@ -711,7 +804,7 @@ private fun ActiveTerminal(
                             activeId = handle.id,
                             names = customNames,
                             onSelect = { manager.setActive(it) },
-                            onAdd = { if (repo != null) picking = true else onNewConnection() },
+                            onAdd = { newSession() },
                         )
                     }
                 }
@@ -724,34 +817,8 @@ private fun ActiveTerminal(
                     .fillMaxWidth()
                     .background(termBg)
                     .semantics { contentDescription = "Terminal çıktısı" }
-                    .onSizeChanged { sz ->
-                        val pad = with(density) { (padH * 2).toPx() }
-                        val cols = ((sz.width - pad) / charW).toInt().coerceIn(20, 500)
-                        // Satır sayısı klavyesiz ölçülür: klavye açılınca görünen
-                        // alan kısalır ama terminal modeli (ve remote PTY)
-                        // değişmez — LazyColumn kırpar, scroll imleci izler.
-                        // Gezinme çubuğu payı her iki durumda da vardır; yalnız
-                        // klavyenin onun ötesine taşan kısmı geri eklenir.
-                        val imeExtra = (imeInsets.getBottom(density) - navInsets.getBottom(density)).coerceAtLeast(0)
-                        val padVPx = with(density) { (padV * 2).toPx() }
-                        // Yuvarla (floor değil): piksel-sapmalı ölçümler sınırda
-                        // ±1 satır üretmesin — gereksiz reflow'u önler.
-                        val rows = ((sz.height - padVPx + imeExtra) / lineH).roundToInt().coerceIn(4, 200)
-                        val newSize = TerminalSize(cols, rows)
-                        visRows = ((sz.height - padVPx) / lineH).toInt().coerceAtLeast(1)
-                        resizeJob?.cancel()
-                        resizeJob = scope.launch {
-                            kotlinx.coroutines.delay(160)
-                            if (newSize != vm.size) {
-                                vm.setSize(newSize)
-                                ptySize = newSize
-                                if (controller.state.value == ConnectionState.ACTIVE) {
-                                    controller.send(TerminalInput.Resize(newSize))
-                                }
-                            } else {
-                                ptySize = newSize
-                            }
-                        }
+                    .onSizeChanged {
+                        canvas = it
                         viewportEpoch++
                     }
                     .then(
@@ -765,7 +832,10 @@ private fun ActiveTerminal(
                     // Pinch-to-zoom: iki parmak fontScale'i anlık büyütür/küçültür.
                     .pointerInput(Unit) {
                         detectTransformGestures { _, _, zoom, _ ->
-                            if (zoom != 1f) settings.setFontScale(settings.theme.fontScale * zoom)
+                            if (zoom != 1f) {
+                                settings.setFontScale(settings.theme.fontScale * zoom)
+                                zoomHud = true
+                            }
                         }
                     },
             ) {
@@ -798,9 +868,15 @@ private fun ActiveTerminal(
                                     val letter = 'a'.code + (k.keyCode - Key.A.keyCode).toInt()
                                     sendText(((letter and 0x1F).toChar()).toString()); true
                                 }
+                                // Alt+harf → ESC öneki (kabukta kelime atlama/silme).
+                                ev.isAltPressed && k.keyCode in Key.A.keyCode..Key.Z.keyCode -> {
+                                    val letter = 'a'.code + (k.keyCode - Key.A.keyCode).toInt()
+                                    sendText("\u001B" + letter.toChar()); true
+                                }
                                 k == Key.Enter || k == Key.NumPadEnter -> { sendText("\r"); true }
                                 k == Key.Backspace -> { sendText("\u007F"); true }
-                                k == Key.Tab -> { sendText("\t"); true }
+                                k == Key.Tab -> { sendText(if (ev.isShiftPressed) "\u001B[Z" else "\t"); true }
+                                k == Key.Delete -> { sendText("\u001B[3~"); true }
                                 k == Key.DirectionUp -> { sendText("\u001B[A"); true }
                                 k == Key.DirectionDown -> { sendText("\u001B[B"); true }
                                 k == Key.DirectionRight -> { sendText("\u001B[C"); true }
@@ -877,6 +953,20 @@ private fun ActiveTerminal(
                             }
                         }
                     }
+                }
+
+                // Pinch-zoom okuması: yeni ölçek ve terminal boyutu.
+                if (zoomHud) {
+                    Text(
+                        "%.1f×".format(settings.theme.fontScale) + " · ${ptySize.cols}×${ptySize.rows}",
+                        style = MaterialTheme.typography.titleSmall.copy(fontFamily = Code),
+                        color = t.text,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .clip(PillShape)
+                            .background(t.raised.copy(alpha = 0.94f))
+                            .padding(horizontal = Space.lg, vertical = Space.sm),
+                    )
                 }
 
                 // Alta in (çıktı alanı içinde; tuş panelinin üstünde).
@@ -982,6 +1072,7 @@ private fun ActiveTerminal(
                 ctrl = ctrl,
                 enabled = connected,
                 typing = typing,
+                haptics = settings.keyHaptics,
                 snippets = settings.snippetList(),
                 attachEnabled = connected && !uploading && controller.sftp() != null,
                 onAttach = { attachLauncher.launch("*/*") },
@@ -1040,18 +1131,13 @@ private fun ActiveTerminal(
             onSave = { n -> manager.rename(handle.id, n); renaming = false },
         )
     }
-    if (picking && repo != null) {
-        val hosts by repo.items.collectAsState()
+    if (picking) {
         HostPickerSheet(
             title = "Yeni oturum",
             subtitle = "Aynı host'ta paralel terminal açabilirsin.",
             hosts = hosts,
             onDismiss = { picking = false },
-            onPick = { c ->
-                picking = false
-                val secret = repo.secret(c.id)
-                if (secret == null) onEditHost(c) else manager.open(c, secret, forceNew = true)
-            },
+            onPick = { c -> picking = false; openOn(c) },
         )
     }
 }
@@ -1071,13 +1157,24 @@ private fun rememberBlink(enabled: Boolean): androidx.compose.runtime.State<Bool
 }
 
 @Composable
-private fun MenuItem(icon: ImageVector, label: String, enabled: Boolean = true, danger: Boolean = false, onClick: () -> Unit) {
+private fun MenuItem(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean = true,
+    danger: Boolean = false,
+    checked: Boolean? = null,
+    onClick: () -> Unit,
+) {
     val t = Tok
     DropdownMenuItem(
         text = { Text(label, color = if (!enabled) t.text3 else if (danger) t.danger.text else t.text) },
         leadingIcon = { Icon(icon, contentDescription = null, tint = if (!enabled) t.text3 else if (danger) t.danger.fg else t.text2) },
+        trailingIcon = checked?.let { on ->
+            { PocketSwitch(checked = on, onCheckedChange = null, modifier = Modifier.scale(0.8f)) }
+        },
         enabled = enabled,
         onClick = onClick,
+        modifier = if (checked != null) Modifier.semantics { toggleableState = androidx.compose.ui.state.ToggleableState(checked) } else Modifier,
     )
 }
 
@@ -1193,13 +1290,15 @@ private fun SearchBar(
 // ── Tuş paneli ──────────────────────────────────────────────────────────────
 // Solda ctrl mandalı, ortada kayan tuşlar (agent istemleri için en sık
 // gerekenler başta: esc, enter, oklar), sağda yapıştır / dosya ekle /
-// klavye. Ripple yok; basılı zemin + haptic.
+// klavye. Ripple yok; basılı zemin + (açıksa) haptic. Oklar ve sayfa
+// tuşları basılı tutulunca tekrar eder.
 
 @Composable
 private fun KeyToolbar(
     ctrl: Boolean,
     enabled: Boolean,
     typing: Boolean,
+    haptics: Boolean,
     snippets: List<Pair<String, String>>,
     attachEnabled: Boolean,
     onAttach: () -> Unit,
@@ -1219,68 +1318,123 @@ private fun KeyToolbar(
             .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        KeyCap("ctrl", enabled = enabled, latched = ctrl, desc = if (ctrl) "Ctrl basılı" else null, onTap = onCtrl)
+        KeyCap("ctrl", enabled, haptics, latched = ctrl, desc = if (ctrl) "Ctrl basılı" else null, onTap = onCtrl)
         KeySep()
         Row(
             Modifier.weight(1f).horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(3.dp),
         ) {
-            KeyCap("esc", enabled) { onKey("\u001B") }
-            IconKeyCap(Icons.AutoMirrored.Rounded.KeyboardReturn, "Enter", enabled) { onKey("\r") }
-            IconKeyCap(Icons.Rounded.KeyboardArrowUp, "Yukarı ok", enabled) { onKey("\u001B[A") }
-            IconKeyCap(Icons.Rounded.KeyboardArrowDown, "Aşağı ok", enabled) { onKey("\u001B[B") }
-            IconKeyCap(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Sol ok", enabled) { onKey("\u001B[D") }
-            IconKeyCap(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Sağ ok", enabled) { onKey("\u001B[C") }
-            KeyCap("tab", enabled) { onKey("\t") }
-            KeyCap("⇧tab", enabled, desc = "Shift Tab") { onKey("\u001B[Z") }
+            KeyCap("esc", enabled, haptics) { onKey("\u001B") }
+            IconKeyCap(Icons.AutoMirrored.Rounded.KeyboardReturn, "Enter", enabled, haptics) { onKey("\r") }
+            IconKeyCap(Icons.Rounded.KeyboardArrowUp, "Yukarı ok", enabled, haptics, repeat = true) { onKey("\u001B[A") }
+            IconKeyCap(Icons.Rounded.KeyboardArrowDown, "Aşağı ok", enabled, haptics, repeat = true) { onKey("\u001B[B") }
+            IconKeyCap(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Sol ok", enabled, haptics, repeat = true) { onKey("\u001B[D") }
+            IconKeyCap(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Sağ ok", enabled, haptics, repeat = true) { onKey("\u001B[C") }
+            KeyCap("tab", enabled, haptics) { onKey("\t") }
+            KeyCap("⇧tab", enabled, haptics, desc = "Shift Tab") { onKey("\u001B[Z") }
             KeySep()
-            KeyCap("^C", enabled, desc = "Ctrl C") { onKey("\u0003") }
-            KeyCap("^D", enabled, desc = "Ctrl D") { onKey("\u0004") }
-            KeyCap("^Z", enabled, desc = "Ctrl Z") { onKey("\u001A") }
-            KeyCap("^L", enabled, desc = "Ctrl L") { onKey("\u000C") }
+            KeyCap("^C", enabled, haptics, desc = "Ctrl C") { onKey("\u0003") }
+            KeyCap("^D", enabled, haptics, desc = "Ctrl D") { onKey("\u0004") }
+            KeyCap("^Z", enabled, haptics, desc = "Ctrl Z") { onKey("\u001A") }
+            KeyCap("^L", enabled, haptics, desc = "Ctrl L") { onKey("\u000C") }
             KeySep()
-            KeyCap("home", enabled) { onKey("\u001B[H") }
-            KeyCap("end", enabled) { onKey("\u001B[F") }
-            KeyCap("pgup", enabled) { onKey("\u001B[5~") }
-            KeyCap("pgdn", enabled) { onKey("\u001B[6~") }
+            KeyCap("home", enabled, haptics) { onKey("\u001B[H") }
+            KeyCap("end", enabled, haptics) { onKey("\u001B[F") }
+            KeyCap("pgup", enabled, haptics, repeat = true) { onKey("\u001B[5~") }
+            KeyCap("pgdn", enabled, haptics, repeat = true) { onKey("\u001B[6~") }
             KeySep()
-            KeyCap("|", enabled) { onKey("|") }
-            KeyCap("~", enabled) { onKey("~") }
-            KeyCap("-", enabled) { onKey("-") }
-            KeyCap("_", enabled) { onKey("_") }
-            KeyCap("/", enabled) { onKey("/") }
+            KeyCap("|", enabled, haptics) { onKey("|") }
+            KeyCap("~", enabled, haptics) { onKey("~") }
+            KeyCap("-", enabled, haptics) { onKey("-") }
+            KeyCap("_", enabled, haptics) { onKey("_") }
+            KeyCap("/", enabled, haptics) { onKey("/") }
             // Kullanıcı snippet'ları (Ayarlar → Terminal): etiket basılır,
             // komut metni gönderilir (Enter kullanıcıda — iptal şansı kalır).
             if (snippets.isNotEmpty()) KeySep()
             snippets.forEach { (label, cmd) ->
-                KeyCap(label, enabled, accent = true) { onKey(cmd) }
+                KeyCap(label, enabled, haptics, accent = true) { onKey(cmd) }
             }
         }
         KeySep()
-        IconKeyCap(Icons.Rounded.ContentPaste, "Yapıştır", enabled, onTap = onPaste)
-        IconKeyCap(Icons.Rounded.AttachFile, "Dosya ekle", attachEnabled, onTap = onAttach)
+        IconKeyCap(Icons.Rounded.ContentPaste, "Yapıştır", enabled, haptics, onTap = onPaste)
+        IconKeyCap(Icons.Rounded.AttachFile, "Dosya ekle", attachEnabled, haptics, onTap = onAttach)
         IconKeyCap(
             if (typing) Icons.Rounded.KeyboardHide else Icons.Rounded.Keyboard,
             if (typing) "Klavyeyi kapat" else "Klavyeyi aç",
             enabled,
+            haptics,
             onTap = onKeyboard,
         )
     }
 }
 
+// Tuş dokunuşu: parmak kalkınca bir kez basar; şerit kaydırılırsa tuş
+// tetiklenmez (kaydırma olayı tüketince iptal). repeat açıkken 400ms
+// basılı tutmak ~16/sn tekrar başlatır. Ekran okuyucu için düğme rolü ve
+// tıklama eylemi ayrıca tanımlanır.
+@Composable
+private fun Modifier.keyPress(
+    enabled: Boolean,
+    haptics: Boolean,
+    repeat: Boolean,
+    desc: String?,
+    onPressed: (Boolean) -> Unit,
+    onTap: () -> Unit,
+): Modifier {
+    val view = LocalView.current
+    val tap by androidx.compose.runtime.rememberUpdatedState(onTap)
+    val buzz by androidx.compose.runtime.rememberUpdatedState(haptics)
+    fun fire() {
+        if (buzz) view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+        tap()
+    }
+    return this
+        .semantics(mergeDescendants = true) {
+            role = androidx.compose.ui.semantics.Role.Button
+            if (desc != null) contentDescription = desc
+            if (!enabled) disabled()
+            onClick { if (enabled) { tap(); true } else false }
+        }
+        .pointerInput(enabled, repeat) {
+            if (!enabled) return@pointerInput
+            kotlinx.coroutines.coroutineScope {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    onPressed(true)
+                    var repeated = false
+                    val job = if (repeat) {
+                        launch {
+                            kotlinx.coroutines.delay(400)
+                            fire()
+                            repeated = true
+                            while (true) {
+                                kotlinx.coroutines.delay(60)
+                                tap()
+                            }
+                        }
+                    } else null
+                    val up = waitForUpOrCancellation()
+                    job?.cancel()
+                    onPressed(false)
+                    if (up != null && !repeated) fire()
+                }
+            }
+        }
+}
+
 @Composable
 private fun KeyCap(
     label: String,
-    enabled: Boolean = true,
+    enabled: Boolean,
+    haptics: Boolean,
     latched: Boolean = false,
     accent: Boolean = false,
+    repeat: Boolean = false,
     desc: String? = null,
     onTap: () -> Unit,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val view = LocalView.current
+    var pressed by remember { mutableStateOf(false) }
     val t = Tok
     Box(
         Modifier
@@ -1295,16 +1449,7 @@ private fun KeyCap(
                     else -> t.card
                 },
             )
-            .then(if (desc != null) Modifier.semantics { contentDescription = desc } else Modifier)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                enabled = enabled,
-                onClick = {
-                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                    onTap()
-                },
-            )
+            .keyPress(enabled, haptics, repeat, desc, { pressed = it }, onTap)
             .padding(horizontal = 9.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -1326,28 +1471,25 @@ private fun KeyCap(
 }
 
 @Composable
-private fun IconKeyCap(icon: ImageVector, desc: String, enabled: Boolean, onTap: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val view = LocalView.current
+private fun IconKeyCap(
+    icon: ImageVector,
+    desc: String,
+    enabled: Boolean,
+    haptics: Boolean,
+    repeat: Boolean = false,
+    onTap: () -> Unit,
+) {
+    var pressed by remember { mutableStateOf(false) }
     val t = Tok
     Box(
         Modifier
             .size(40.dp)
             .clip(KeyShape)
             .background(if (pressed && enabled) t.overlay else t.card)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                enabled = enabled,
-                onClick = {
-                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                    onTap()
-                },
-            ),
+            .keyPress(enabled, haptics, repeat, desc, { pressed = it }, onTap),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = desc, modifier = Modifier.size(20.dp), tint = if (enabled) t.text else t.text3)
+        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = if (enabled) t.text else t.text3)
     }
 }
 

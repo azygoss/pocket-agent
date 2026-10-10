@@ -85,6 +85,67 @@ class PanelsTest {
         return vm
     }
 
+    // Her host'un kendi home'u ve listesi olan SFTP sahtesi.
+    private class HomeSftp(
+        val homeDir: String,
+        val inner: dev.pocketagent.transport.FakeSshTransport = dev.pocketagent.transport.FakeSshTransport(),
+    ) : dev.pocketagent.transport.SshTransport by inner, dev.pocketagent.transport.SftpSession {
+        override suspend fun home() = homeDir
+        override suspend fun list(path: String) =
+            listOf(dev.pocketagent.transport.RemoteFile("on-${homeDir.substringAfterLast('/')}", "$path/x", false, 1, 0))
+        override suspend fun readBytes(path: String, maxBytes: Long) = ByteArray(0)
+        override suspend fun writeBytes(path: String, data: ByteArray) {}
+        override suspend fun mkdir(path: String) {}
+        override suspend fun delete(path: String, isDir: Boolean) {}
+        override suspend fun rename(from: String, to: String) {}
+    }
+
+    // Regresyon: aktif oturum başka host'a geçince Dosyalar eski host'un
+    // yolunu yeni host'ta listeliyordu. Şimdi durum sıfırlanır ve yeni
+    // oturumun home'u açılır.
+    @Test fun filesRebindWhenActiveSessionChanges() = kotlinx.coroutines.runBlocking {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        val mgr = dev.pocketagent.transport.SessionManager(
+            scope,
+            dev.pocketagent.transport.TofuHostKeyStore(java.io.File.createTempFile("khst", null).apply { delete() }),
+        ) {
+            object : dev.pocketagent.transport.SshConnector {
+                override suspend fun open(
+                    c: dev.pocketagent.transport.SavedConnection,
+                    s: dev.pocketagent.transport.Secret?,
+                    size: dev.pocketagent.transport.TerminalSize,
+                ): dev.pocketagent.transport.SshTransport =
+                    HomeSftp("/home/${c.host}").also { it.openPty("xterm-256color", size) }
+            }
+        }
+        suspend fun openOn(host: String, id: String): String {
+            val ctl = mgr.open(
+                dev.pocketagent.transport.SavedConnection(host, host, 22, "u", "ram:password", id = id),
+                dev.pocketagent.transport.Secret.Password("pw"),
+                forceNew = true,
+            )
+            kotlinx.coroutines.withTimeout(5_000) {
+                while (ctl.state.value != dev.pocketagent.transport.ConnectionState.ACTIVE) kotlinx.coroutines.delay(10)
+            }
+            return mgr.activeId.value!!
+        }
+        val a = openOn("alpha", "c1")
+        val vm = FilesViewModel(mgr, scope, java.io.File.createTempFile("cache", "d"))
+        vm.open()
+        kotlinx.coroutines.withTimeout(5_000) { while (vm.path != "/home/alpha") kotlinx.coroutines.delay(10) }
+
+        openOn("beta", "c2")
+        vm.open()
+        kotlinx.coroutines.withTimeout(5_000) { while (vm.path != "/home/beta") kotlinx.coroutines.delay(10) }
+        assertEquals(listOf("on-beta"), vm.entries.map { it.name })
+
+        mgr.setActive(a)
+        vm.open()
+        kotlinx.coroutines.withTimeout(5_000) { while (vm.path != "/home/alpha") kotlinx.coroutines.delay(10) }
+        assertEquals(listOf("on-alpha"), vm.entries.map { it.name })
+        mgr.closeAll()
+    }
+
     @Test fun filesLongPressOps() = kotlinx.coroutines.runBlocking {
         // Uzun-basma aksiyonları: rename/delete/mkdir-inside SFTP'ye,
         // "terminale yaz" aktif PTY'ye shell-quote'lu gider.

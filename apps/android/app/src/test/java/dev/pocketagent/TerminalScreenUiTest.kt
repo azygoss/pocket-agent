@@ -11,6 +11,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.FakeSshTransport
 import dev.pocketagent.transport.SavedConnection
@@ -186,4 +187,38 @@ class TerminalScreenUiTest {
         rule.waitForIdle()
         org.junit.Assert.assertTrue(collapsed)
     }
+
+    // Ekranı açık tut: taşma menüsünden açılır, ayara yazılır.
+    @Test fun keepScreenOnToggleFromMenu() {
+        val m = manager()
+        val vm = SettingsViewModel()
+        rule.setContent { TerminalScreen(m, vm, {}) }
+        openActive(m)
+        rule.onNodeWithContentDescription("Diğer").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Ekranı açık tut").performClick()
+        rule.waitForIdle()
+        org.junit.Assert.assertTrue(vm.keepScreenOn)
+        m.closeAll()
+    }
+
+    // Ok tuşunu basılı tutmak tekrar eder (agent seçim listelerinde gezinme);
+    // kısa dokunuş tek basış.
+    @Test fun holdingArrowRepeats() {
+        val connector = UiFakeConnector()
+        val m = manager(connector)
+        rule.setContent { TerminalScreen(m, SettingsViewModel(), {}) }
+        openActive(m)
+        fun ups() = connector.last?.sent.orEmpty().filterIsInstance<TerminalInput.Text>().count { it.s == "\u001B[A" }
+        rule.onNodeWithContentDescription("Yukarı ok").performClick()
+        rule.waitUntil(3_000) { ups() == 1 }
+        rule.onNodeWithContentDescription("Yukarı ok").performTouchInput {
+            down(center)
+            advanceEventTime(1_000)
+            up()
+        }
+        rule.waitUntil(3_000) { ups() >= 5 }
+        m.closeAll()
+    }
 }
+

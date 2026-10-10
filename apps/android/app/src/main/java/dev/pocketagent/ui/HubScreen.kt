@@ -79,9 +79,13 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -260,6 +264,31 @@ fun HubScreen(
         if (h.controller.canReconnect()) h.controller.reconnect()
         onOpenSession()
     }
+    // Host'ta yaşayan tmux oturumuna attach; secret yoksa önce düzenleyici.
+    fun attachRemote(c: SavedConnection, r: dev.pocketagent.transport.RemoteTerm) {
+        val secret = repo.secret(c.id)
+        if (secret == null) { editor = c; return }
+        sessions.open(
+            c, secret,
+            forceNew = true,
+            tmuxName = r.tmux,
+            customName = r.name,
+            // Başkasının oturumu: kapatma yalnız ayırsın.
+            shared = r.device != sessions.deviceId,
+        )
+        onOpenSession()
+    }
+    // Agent olayı → agent'ın çalıştığı oturum: bu cihazda açıksa ona geçer,
+    // host'ta yaşıyorsa attach eder; eşleşme yoksa null (yalnız okundu).
+    fun eventTarget(e: InboxRow): (() -> Unit)? {
+        val tm = tmuxOfEvent(e.sessionId) ?: return null
+        sessionList.firstOrNull { tmuxNames[it.id] == tm }?.let { h -> return { openSession(h) } }
+        for ((connId, terms) in remote) {
+            val c = saved.firstOrNull { it.id == connId } ?: continue
+            terms.firstOrNull { it.tmux == tm }?.let { r -> return { attachRemote(c, r) } }
+        }
+        return null
+    }
 
     // Yerelde açık tmux uzak listede kalırsa (probe yarışı) aynı oturum iki
     // kez görünürdü — render'da da ele.
@@ -269,6 +298,7 @@ fun HubScreen(
     }.filter { it.second.tmux !in openTmux }
     val events = inbox?.rows.orEmpty()
     val unread = events.count { it.unread }
+    val pendingApprovals = events.filter { it.unread && isApproval(it.category) }
     val shownEvents = if (allEvents) events.take(24) else events.take(4)
     val hosts = remember(saved, query) {
         val sorted = saved.sortedByDescending { it.lastConnectedAt }
@@ -324,6 +354,28 @@ fun HubScreen(
                 }
             }
 
+            // ── Bekleyen onay: en acil şey en üstte; agent'ın oturumuna götürür.
+            if (pendingApprovals.isNotEmpty()) {
+                item(key = "approvals") {
+                    val first = pendingApprovals.first()
+                    val go = eventTarget(first)
+                    val who = first.source.ifBlank { "agent" }.replaceFirstChar { it.titlecase(java.util.Locale.forLanguageTag("tr")) }
+                    Banner(
+                        Status.Warn,
+                        if (pendingApprovals.size == 1) "$who onay bekliyor" else "${pendingApprovals.size} onay bekliyor",
+                        body = first.title,
+                        icon = Icons.Rounded.PanTool,
+                        modifier = Modifier.padding(top = Space.sm),
+                        actions = {
+                            GhostButton("Okundu", color = t.text2, onClick = { pendingApprovals.forEach { inbox?.markRead(it.eventId) } })
+                            if (go != null) {
+                                TonalButton("Terminale git", onClick = { inbox?.markRead(first.eventId); go() })
+                            }
+                        },
+                    )
+                }
+            }
+
             // ── Açık oturumlar ─────────────────────────────────────────────
             if (sessionList.isNotEmpty() || remoteItems.isNotEmpty()) {
                 item(key = "sec-sessions") {
@@ -338,7 +390,7 @@ fun HubScreen(
                     val nth = sessionList.take(idx).count { it.conn.id == h.conn.id }
                     val name = customNames[h.id] ?: if (same > 1) "${h.conn.name} · ${nth + 1}" else h.conn.name
                     val tmux = tmuxNames[h.id]
-                    val agent = tmux?.let { tm -> events.firstOrNull { it.sessionId == "tmux:$tm" } }
+                    val agent = tmux?.let { tm -> events.firstOrNull { tmuxOfEvent(it.sessionId) == tm } }
                     SessionCard(
                         h = h,
                         name = name,
@@ -367,17 +419,7 @@ fun HubScreen(
                                 address = "${c.user}@${c.host}",
                                 otherDevice = r.device != null && r.device != sessions.deviceId,
                                 enabled = enabled,
-                                onAttach = {
-                                    sessions.open(
-                                        c, repo.secret(c.id),
-                                        forceNew = true,
-                                        tmuxName = r.tmux,
-                                        customName = r.name,
-                                        // Başkasının oturumu: kapatma yalnız ayırsın.
-                                        shared = r.device != sessions.deviceId,
-                                    )
-                                    onOpenSession()
-                                },
+                                onAttach = { attachRemote(c, r) },
                             )
                         }
                     }
@@ -398,7 +440,11 @@ fun HubScreen(
                 }
                 itemsIndexed(shownEvents, key = { _, e -> "e-" + e.eventId }) { i, e ->
                     GroupRow(i, shownEvents.size) {
-                        AgentEventRow(e) { inbox?.markRead(e.eventId) }
+                        val go = eventTarget(e)
+                        AgentEventRow(e, canOpen = go != null) {
+                            inbox?.markRead(e.eventId)
+                            go?.invoke()
+                        }
                     }
                 }
             }
@@ -451,6 +497,14 @@ fun HubScreen(
                     modifier = Modifier.padding(top = Space.section - Space.md),
                     action = { GhostButton("Host ekle", onClick = { editor = NewHost }, icon = Icons.Rounded.Add) },
                 )
+                if (sessionList.isEmpty()) {
+                    Text(
+                        "Oturum açmak için bir host'a dokun.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = t.text2,
+                        modifier = Modifier.padding(start = 4.dp, bottom = Space.sm),
+                    )
+                }
             }
             if (saved.size > 5) {
                 item(key = "search") {
@@ -543,6 +597,7 @@ fun HubScreen(
                     enabled = st == ConnectionState.ACTIVE,
                     onClick = { dismiss(); sessions.setActive(h.id); onOpenFiles() },
                 )
+                SheetAction(Icons.Rounded.Add, "Aynı host'ta yeni oturum", onClick = { dismiss(); newSession(h.conn) })
                 SheetAction(Icons.Rounded.Edit, "Yeniden adlandır", onClick = { dismiss(); renaming = h })
                 if (h.controller.canReconnect()) {
                     SheetAction(Icons.Rounded.Refresh, "Yeniden bağlan", onClick = { dismiss(); h.controller.reconnect() })
@@ -567,14 +622,18 @@ fun HubScreen(
             onDismiss = { editor = null },
             onSave = { conn, secret, remember ->
                 scope.launch {
-                    repo.upsert(conn, secret, remember)
-                    editor = null
-                    notify(if (conn.id.isBlank()) "${conn.name} eklendi" else "${conn.name} kaydedildi")
+                    runCatching { repo.upsert(conn, secret, remember) }
+                        .onSuccess {
+                            editor = null
+                            notify(if (conn.id.isBlank()) "${conn.name} eklendi" else "${conn.name} kaydedildi")
+                        }
+                        .onFailure { notify("Kaydedilemedi: ${it.message ?: "hata"}") }
                 }
             },
             onDelete = if (initial.id.isNotBlank()) {
                 { editor = null; deletingHost = initial }
             } else null,
+            existing = saved,
         )
     }
     deletingHost?.let { c ->
@@ -598,8 +657,9 @@ fun HubScreen(
             onDismiss = { profileEditor = null },
             onSave = { np ->
                 scope.launch {
-                    profiles.upsert(np)
-                    profileEditor = null
+                    runCatching { profiles.upsert(np) }
+                        .onSuccess { profileEditor = null }
+                        .onFailure { notify("Profil kaydedilemedi: ${it.message ?: "hata"}") }
                 }
             },
         )
@@ -800,6 +860,7 @@ private fun SessionCard(
         modifier = modifier,
         onClick = onOpen,
         onLongClick = onRename,
+        onLongClickLabel = "Yeniden adlandır",
         contentPadding = PaddingValues(start = Space.lg, end = 4.dp, top = Space.md, bottom = Space.lg),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -817,7 +878,7 @@ private fun SessionCard(
             }
             Spacer(Modifier.width(Space.sm))
             StatusChip(if (retry > 0) Status.Warn else st.status(), st.label(retry))
-            IconAction(Icons.Rounded.MoreVert, "Oturum seçenekleri", onMenu)
+            IconAction(Icons.Rounded.MoreVert, "$name seçenekleri", onMenu)
         }
         Spacer(Modifier.height(Space.md))
         Column(
@@ -827,6 +888,9 @@ private fun SessionCard(
                 .clip(InnerShape)
                 .background(Color(console.term.background))
                 .border(1.dp, t.line, InnerShape)
+                // Ham terminal satırları ekran okuyucuya okunmaz; kart adı ve
+                // durumu yeterli.
+                .clearAndSetSemantics { }
                 .padding(horizontal = Space.md, vertical = 10.dp)
                 .heightIn(min = 72.dp),
         ) {
@@ -893,11 +957,12 @@ private fun RemoteSessionRow(
     enabled: Boolean,
     onAttach: () -> Unit,
 ) {
+    // Parola kayıtlı değilse dokunuş düzenleyiciyi açar (attachRemote).
     ListRow(
         title = name,
         subtitle = "$tmux · $address",
         subtitleMono = true,
-        onClick = if (enabled) onAttach else null,
+        onClick = onAttach,
         leading = {
             Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
                 StatusDot(Status.Idle, size = 10.dp)
@@ -910,7 +975,7 @@ private fun RemoteSessionRow(
                 if (enabled) {
                     TonalButton("Bağlan", onClick = onAttach)
                 } else {
-                    Text("parola gerekli", style = MaterialTheme.typography.labelMedium, color = Tok.text2)
+                    GhostButton("Parola gir", onClick = onAttach, color = Tok.text2)
                 }
             }
         },
@@ -965,6 +1030,13 @@ private fun SessionDock(h: SessionHandle, name: String, others: Int, onOpen: () 
 
 internal data class AgentKind(val status: Status, val label: String, val icon: ImageVector)
 
+internal fun isApproval(category: String) = category == "APPROVAL_REQUIRED" || category == "APPROVAL"
+
+// Olayın tmux oturumu: host hook'u agent bir tmux pane'indeyse oturumu
+// "tmux:<ad>" olarak ham yollar (uygulama oraya götürebilsin diye).
+internal fun tmuxOfEvent(sessionId: String): String? =
+    sessionId.takeIf { it.startsWith("tmux:") }?.removePrefix("tmux:")?.takeIf { it.isNotBlank() }
+
 internal fun agentKind(category: String): AgentKind = when (category) {
     "APPROVAL_REQUIRED", "APPROVAL" -> AgentKind(Status.Warn, "Onay bekliyor", Icons.Rounded.PanTool)
     "ERROR" -> AgentKind(Status.Error, "Hata", Icons.Rounded.ErrorOutline)
@@ -977,7 +1049,7 @@ internal fun agentKind(category: String): AgentKind = when (category) {
 }
 
 @Composable
-private fun AgentEventRow(e: InboxRow, onClick: () -> Unit) {
+private fun AgentEventRow(e: InboxRow, canOpen: Boolean, onClick: () -> Unit) {
     val t = Tok
     val kind = agentKind(e.category)
     val tone = kind.status.tone()
@@ -985,22 +1057,25 @@ private fun AgentEventRow(e: InboxRow, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .tap(onClick)
+            .tap(onClick, label = if (canOpen) "Terminale git" else "Okundu işaretle")
             .padding(horizontal = Space.lg, vertical = Space.md),
         verticalAlignment = Alignment.Top,
     ) {
         IconTile(kind.icon, tone = tone, size = 36.dp)
         Spacer(Modifier.width(Space.md + 2.dp))
         Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(kind.label, style = MaterialTheme.typography.labelLarge, color = tone.text)
-                Text(
-                    " · " + listOf(e.source.ifBlank { "agent" }, relativeTime(ts)).joinToString(" · "),
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal),
-                    color = t.text2,
-                    maxLines = 1,
-                )
-            }
+            // Tek metin: dar ekranda ya da büyük yazıda kırılarak sarar,
+            // zaman bilgisi kesilmez.
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(color = tone.text, fontWeight = FontWeight.Medium)) { append(kind.label) }
+                    append(" · " + listOf(e.source.ifBlank { "agent" }, relativeTime(ts)).joinToString(" · "))
+                },
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal),
+                color = t.text2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             Spacer(Modifier.height(2.dp))
             Text(
                 e.title,
@@ -1013,6 +1088,15 @@ private fun AgentEventRow(e: InboxRow, onClick: () -> Unit) {
         if (e.unread) {
             Spacer(Modifier.width(Space.sm))
             Box(Modifier.padding(top = 6.dp).size(8.dp).clip(RoundedCornerShape(4.dp)).background(t.primary).semantics { contentDescription = "okunmadı" })
+        }
+        // Agent'ın oturumu bulunduysa satır oraya götürür.
+        if (canOpen) {
+            Icon(
+                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = t.text3,
+                modifier = Modifier.padding(start = Space.xs, top = 6.dp).size(20.dp),
+            )
         }
     }
 }
@@ -1115,7 +1199,8 @@ private fun HostRow(
 @Composable
 fun BrandMark(modifier: Modifier = Modifier, size: Dp = 28.dp) {
     val t = Tok
-    androidx.compose.foundation.Canvas(modifier.size(size).semantics { contentDescription = "Pocket Agent" }) {
+    // Hep bir başlığın yanında durur → ekran okuyucuya tekrar okunmasın.
+    androidx.compose.foundation.Canvas(modifier.size(size).clearAndSetSemantics { }) {
         val s = this.size.width
         drawRoundRect(t.primary, cornerRadius = androidx.compose.ui.geometry.CornerRadius(s * 0.3f))
         val ink = t.onPrimary

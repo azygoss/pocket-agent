@@ -102,12 +102,24 @@ class DesignShotsTest {
             fun d(n: String, age: Long) = dev.pocketagent.transport.RemoteFile(n, "$path/$n", true, 0, now - age)
             fun f(n: String, size: Long, age: Long) = dev.pocketagent.transport.RemoteFile(n, "$path/$n", false, size, now - age)
             return listOf(
+                d(".git", 60), d(".github", 86400), f(".env", 120, 600),
                 d("apps", 3600), d("backend", 86400), d("docs", 600), d("host", 7200),
                 f("README.md", 9_412, 300), f("Makefile", 2_210, 90_000), f("go.mod", 1_024, 400_000),
                 f("icon.png", 182_400, 5_000), f("release.tar.gz", 48_000_000, 20_000), f("main.go", 4_800, 120),
             )
         }
-        override suspend fun readBytes(path: String, maxBytes: Long) = ByteArray(0)
+        override suspend fun readBytes(path: String, maxBytes: Long): ByteArray = when {
+            path.endsWith(".png") -> {
+                // Gradyan + çerçeve: görsel okuyucu çekimi için.
+                val b = Bitmap.createBitmap(640, 400, Bitmap.Config.ARGB_8888)
+                val c = android.graphics.Canvas(b)
+                c.drawColor(0xFF1B1F23.toInt())
+                val p = android.graphics.Paint().apply { color = 0xFF3DDC97.toInt() }
+                c.drawRoundRect(android.graphics.RectF(160f, 80f, 480f, 320f), 48f, 48f, p)
+                java.io.ByteArrayOutputStream().also { b.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+            }
+            else -> MAIN_GO.toByteArray()
+        }
         override suspend fun writeBytes(path: String, data: ByteArray) {}
         override suspend fun mkdir(path: String) {}
         override suspend fun delete(path: String, isDir: Boolean) {}
@@ -159,6 +171,9 @@ class DesignShotsTest {
     // doğrudan bir bitmap'e çizmek native grafikte güvenilir. Diyalog kendi
     // penceresindedir → WindowManagerGlobal'daki son kök.
     private fun shot(name: String, dialog: Boolean = false) {
+        // Thread.sleep Compose saatini ilerletmez: debounce'lu boyut hesabı ve
+        // animasyonlar çekimden önce tamamlansın.
+        rule.mainClock.advanceTimeBy(600)
         rule.waitForIdle()
         val view = if (dialog) {
             val wmg = Class.forName("android.view.WindowManagerGlobal")
@@ -173,14 +188,18 @@ class DesignShotsTest {
 
     private fun inbox(): dev.pocketagent.ui.InboxViewModel = dev.pocketagent.ui.InboxViewModel().apply {
         val now = java.time.Instant.now()
+        // Olay 1 ve 3, demo oturumunun tmux'unda çalışan agent'tan gelir.
         fun ev(id: String, cat: String, src: String, msg: String, ago: Long) = dev.pocketagent.net.BackendEvent(
-            id, "h:1", "s-$id", src, cat, msg, "d$id", "r$id", now.minusSeconds(ago).toString(), now.plusSeconds(86400).toString(),
+            id, "h:1", if (id == "1" || id == "3") "tmux:pa-demo0001" else "s-$id", src, cat, msg, "d$id", "r$id",
+            now.minusSeconds(ago).toString(), now.plusSeconds(86400).toString(),
         )
+        // Backend olayları zaman sırasıyla gelir: aynı oturumdan yenisi eskiyi
+        // (okunmamışsa) geçersiz kılar — onay, çalışan aracı izler.
         mergeRemote(listOf(
-            ev("1", "APPROVAL_REQUIRED", "claude", "Bash: rm -rf build/ çalıştırmak için onay bekliyor", 40),
+            ev("4", "ERROR", "codex", "lint başarısız: 3 uyarı hata olarak işaretlendi", 3600),
             ev("2", "TASK_COMPLETE", "codex", "Testler geçti, PR açıklaması hazır", 600),
             ev("3", "TOOL_RUNNING", "claude", "go test ./... çalışıyor", 90),
-            ev("4", "ERROR", "codex", "lint başarısız: 3 uyarı hata olarak işaretlendi", 3600),
+            ev("1", "APPROVAL_REQUIRED", "claude", "Bash: rm -rf build/ çalıştırmak için onay bekliyor", 40),
         ))
         markRead("4")
     }
@@ -194,7 +213,7 @@ class DesignShotsTest {
         rule.setContent {
             Shell(theme) { HubScreen(m, r, p, inbox = ib, syncStatus = if (withInbox) "bağlı" else null, onOpenSession = {}) }
         }
-        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
+        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"), forceNew = true, tmuxName = "pa-demo0001")
         Thread.sleep(900)
         if (scroll != null) rule.onNode(androidx.compose.ui.test.hasScrollToKeyAction()).performScrollToKey(scroll)
         shot(name)
@@ -374,7 +393,76 @@ class DesignShotsTest {
         shot("launcher-icon")
     }
 
+    @Test fun textViewerFocusedLine() {
+        val m = manager(listing = true)
+        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
+        Thread.sleep(500)
+        val files = FilesViewModel(m, CoroutineScope(Dispatchers.IO), File.createTempFile("cache", "").parentFile!!)
+        rule.setContent { Shell(PocketConsoleTheme) { FilesScreen(files, onBack = {}) } }
+        rule.waitForIdle(); Thread.sleep(400)
+        files.revealPath("/home/berk/src/pocket-agent/main.go", 14)
+        Thread.sleep(600)
+        shot("viewer-text-dark", dialog = true)
+        m.closeAll()
+    }
+
+    @Test fun imageViewer() {
+        val m = manager(listing = true)
+        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
+        Thread.sleep(500)
+        val files = FilesViewModel(m, CoroutineScope(Dispatchers.IO), File.createTempFile("cache", "").parentFile!!)
+        rule.setContent { Shell(PocketConsoleTheme) { FilesScreen(files, onBack = {}) } }
+        rule.waitForIdle(); Thread.sleep(400)
+        files.onFile(dev.pocketagent.transport.RemoteFile("icon.png", "/home/berk/src/pocket-agent/icon.png", false, 182_400, 0))
+        Thread.sleep(800)
+        shot("viewer-image-dark", dialog = true)
+        m.closeAll()
+    }
+
+    // Yatay telefon: oturumlar ve terminal; büyük yazı: sistem ölçeği 1.5.
+    @Test @Config(sdk = [34], qualifiers = "w852dp-h393dp-land-xhdpi")
+    fun hubLandscape() = hub(PocketConsoleTheme, "hub-landscape-dark", withInbox = true)
+
+    @Test @Config(sdk = [34], qualifiers = "w852dp-h393dp-land-xhdpi")
+    fun workspaceLandscape() {
+        val m = manager()
+        rule.setContent { Shell(PocketConsoleTheme) { TerminalScreen(m, SettingsViewModel(), {}) } }
+        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
+        Thread.sleep(900)
+        shot("workspace-landscape-dark")
+        m.closeAll()
+    }
+
+    @Test fun hubLargeFont() {
+        RuntimeEnvironment.setFontScale(1.5f)
+        hub(PocketConsoleTheme, "hub-font150-dark", withInbox = true)
+    }
+
+    @Test fun workspaceLargeFont() {
+        RuntimeEnvironment.setFontScale(1.5f)
+        val m = manager()
+        rule.setContent { Shell(PocketConsoleTheme) { TerminalScreen(m, SettingsViewModel(), {}) } }
+        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
+        m.open(SavedConnection("build-box", "192.168.1.40", 22, "berk", "ram:password", id = "c2"), Secret.Password("x"))
+        Thread.sleep(900)
+        shot("workspace-font150-dark")
+        m.closeAll()
+    }
+
+    @Test @Config(sdk = [34], qualifiers = "w360dp-h740dp-xhdpi")
+    fun hubSmallPhone() = hub(PocketPaperTheme, "hub-small-light", withInbox = true)
+
     companion object {
+        val MAIN_GO = (1..40).joinToString("\n") { i ->
+            when (i) {
+                1 -> "package main"
+                3 -> "import \"fmt\""
+                5 -> "func main() {"
+                14 -> "    if err := store.Wipe(user); err != nil { // TODO: rows remain"
+                40 -> "}"
+                else -> "    fmt.Println(\"step $i\")"
+            }
+        }
         const val DEMO =
             "\u001B[38;5;114m~/src/pocket-agent\u001B[0m \u001B[1m❯\u001B[0m go test ./...\r\n" +
                 "ok   dev/pocketagent/host/gateway   0.41s\r\n" +

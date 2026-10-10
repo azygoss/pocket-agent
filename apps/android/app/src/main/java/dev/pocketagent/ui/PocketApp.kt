@@ -19,6 +19,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -273,7 +278,14 @@ fun PocketAgentApp(
             }
 
             val reduced = rememberReducedMotion()
-            Box(Modifier.fillMaxSize().background(if (top == Route.Workspace) t.termBg else t.bg)) {
+            // Yatay güvenli alan (yan gezinme çubuğu, kamera çentiği) tüm
+            // ekranlar için burada; dikey kenarları her ekran kendi uygular.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(if (top == Route.Workspace) t.termBg else t.bg)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+            ) {
                 if (wide) {
                     // Geniş pencere: solda Oturumlar sabit, sağda seçili katman.
                     Row(Modifier.fillMaxSize()) {
@@ -323,9 +335,15 @@ fun PocketAgentApp(
                         label = "route",
                     ) { (r, _) -> Screen(r, twoPane = false) }
                 }
+                // Şerit tuş panelini ve Oturumlar'daki "terminale dön" şeridini örtmesin.
+                val snackLift = when {
+                    top == Route.Workspace -> 72.dp
+                    top == Route.Hub && !wide && sessionList.isNotEmpty() -> 88.dp
+                    else -> 0.dp
+                }
                 SnackbarHost(
                     snackbar,
-                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding().padding(bottom = if (top == Route.Workspace) 72.dp else 0.dp),
+                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding().padding(bottom = snackLift),
                 ) { PocketSnackbar(it) }
             }
 

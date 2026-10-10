@@ -34,6 +34,10 @@ class SettingsViewModel(
     // Tuş şeridi snippet'ları: her satır "etiket=komut".
     var snippets by mutableStateOf("")
         private set
+    var keepScreenOn by mutableStateOf(false)
+        private set
+    var keyHaptics by mutableStateOf(true)
+        private set
 
     // Kalıcı tercihler okunana kadar false: kabuk bu sürede yalnız chrome
     // zeminini çizer — varsayılan temanın bir kare görünüp seçili temaya
@@ -52,6 +56,8 @@ class SettingsViewModel(
                     backendUrl = p.backendUrl
                     tenantToken = p.tenantToken
                     snippets = p.snippets
+                    keepScreenOn = p.keepScreenOn
+                    keyHaptics = p.keyHaptics
                 }
                 loaded = true
             }
@@ -75,6 +81,16 @@ class SettingsViewModel(
 
     fun toggleAutoReconnectOnDrop() {
         autoReconnectOnDrop = !autoReconnectOnDrop
+        persist()
+    }
+
+    fun toggleKeepScreenOn() {
+        keepScreenOn = !keepScreenOn
+        persist()
+    }
+
+    fun toggleKeyHaptics() {
+        keyHaptics = !keyHaptics
         persist()
     }
 
@@ -102,6 +118,8 @@ class SettingsViewModel(
         autoReconnect = p.autoReconnect
         autoReconnectOnDrop = p.autoReconnectOnDrop
         snippets = p.snippets
+        keepScreenOn = p.keepScreenOn
+        keyHaptics = p.keyHaptics
         persist()
     }
 
@@ -129,7 +147,10 @@ class SettingsViewModel(
     private fun persist() {
         val s = store ?: return
         val sc = scope ?: return
-        val snap = PersistedSettings(theme.fontScale, backendUrl, tenantToken, autoReconnect, autoReconnectOnDrop, theme.themeId, theme.fontId, snippets)
+        val snap = PersistedSettings(
+            theme.fontScale, backendUrl, tenantToken, autoReconnect, autoReconnectOnDrop,
+            theme.themeId, theme.fontId, snippets, keepScreenOn, keyHaptics,
+        )
         sc.launch { s.save(snap) }
     }
 }

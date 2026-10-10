@@ -22,7 +22,10 @@ class BackupTest {
     @Test fun roundTrip() {
         val json = Backup.export(
             listOf(conn("vps"), conn("nas").copy(autoTmux = true, port = 2200)),
-            PersistedSettings(fontScale = 1.4f, backendUrl = "https://b", themeId = "nord", snippets = "gs=git status"),
+            PersistedSettings(
+                fontScale = 1.4f, backendUrl = "https://b", themeId = "nord", snippets = "gs=git status",
+                keepScreenOn = true, keyHaptics = false,
+            ),
         )
         val r = Backup.import(json)
         assertEquals(2, r.connections.size)
@@ -31,6 +34,8 @@ class BackupTest {
         assertEquals(2200, r.connections[1].port)
         assertEquals(1.4f, r.settings!!.fontScale, 0.001f)
         assertEquals("gs=git status", r.settings!!.snippets)
+        assertTrue(r.settings!!.keepScreenOn)
+        assertFalse(r.settings!!.keyHaptics)
         assertEquals(0, r.skipped)
     }
 

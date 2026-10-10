@@ -9,9 +9,16 @@ the notification icon.
 ## Principles
 
 - **Running things first.** The root screen (*Oturumlar*, `HubScreen`) is
-  ordered by urgency: open sessions with a live preview, tmux sessions that
-  live on the host but are not open on this device, agent activity, quick
-  launch profiles, then hosts. There is no tab bar; everything is one scroll.
+  ordered by urgency: a pending agent approval, open sessions with a live
+  preview, tmux sessions that live on the host but are not open on this
+  device, agent activity, quick launch profiles, then hosts. There is no tab
+  bar; everything is one scroll.
+- **Agent events lead to the agent.** The host hook sends the tmux session
+  of an agent as `tmux:<name>`. An approval banner and any event row whose
+  session is open here (or still alive on the host) open that terminal with
+  one tap ("Terminale git"); other rows only mark the event read. Approvals
+  are answered in the terminal itself, because the backend does not carry
+  the decision.
 - **The terminal is a layer, not a tab.** Tapping a session slides the
   workspace up over the root. It can be dismissed with the chevron, the back
   gesture, or by pulling the session bar down (the workspace follows the
@@ -111,6 +118,11 @@ pulsing.
 
 ## Adaptive layout
 
+The activity handles rotation, keyboard, density and window-size changes
+itself (`configChanges`), so turning the phone or attaching a keyboard never
+drops the open layer, a sheet or a half-typed form. Side navigation bars and
+display cutouts are kept clear on every screen.
+
 At 840dp and wider (tablets, unfolded foldables, landscape tablets) the root
 stays on the left at 400dp and the selected layer (terminal, files,
 settings) opens on the right; the dock and the pull-to-dismiss gesture are
@@ -128,7 +140,37 @@ readable 640dp width. The terminal always uses the full width of its pane.
 - Key panel: `ctrl` latch on the left; scrolling keys ordered for agent
   prompts (`esc`, Enter, arrows, `tab`, Shift+Tab, `^C` `^D` `^Z` `^L`,
   navigation, symbols, user snippets); paste, attach file and keyboard
-  toggle fixed on the right.
+  toggle fixed on the right. Keys fire when the finger lifts, so scrolling
+  the strip never types. Arrows and page keys repeat after 400ms of holding.
+- Short windows (landscape phones): while the keyboard is up the session
+  bar hides, so the terminal keeps its rows; the hidden bar height is added
+  back to the row count, so the remote PTY still does not resize.
+- Each session keeps its own scroll position; switching tabs recomputes the
+  PTY size for the new session.
+- Pinch zoom shows the new scale and grid size for a moment. "Ekranı açık
+  tut" (overflow menu or settings) keeps the screen on only while the
+  terminal is visible; key haptics can be turned off.
+- Hardware keyboards: Ctrl+letter, Alt+letter (ESC prefix), Shift+Tab,
+  Delete, arrows, Home/End and Page keys are mapped.
+
+## Files
+
+- Dotfiles are hidden by default; the list footer says how many and shows
+  them with one tap. A filter that starts with `.` searches them too.
+- Sorting by name, modification time or size, folders always first.
+- Images (up to 10 MB) open in a viewer with pinch zoom and double-tap.
+- Text and diffs open in a virtualized, line-numbered reader. A grep hit
+  opens its file scrolled to the matching line, highlighted.
+- The listing belongs to the active session: switching to a session on
+  another host resets the path and opens that host's home.
+
+## Forms
+
+- The host editor asks before discarding typed values, warns when the same
+  address is already saved, chains fields with the keyboard's Next action
+  and saves on Done. A stale "sına" result clears when a field changes.
+- Pairing accepts a pasted `pa1|…` QR payload as well as the 8-character
+  code.
 
 ## Performance and energy
 

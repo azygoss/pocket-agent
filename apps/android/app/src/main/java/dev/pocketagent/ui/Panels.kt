@@ -183,6 +183,59 @@ class UsageViewModel {
 
 enum class FilesMode { SFTP, WORKSPACE }
 
+enum class FileSort(val label: String) { Name("Ad"), Date("Değişiklik"), Size("Boyut") }
+
+// Görünen liste: gizli öğeler (nokta ile başlayan) istenirse elenir —
+// süzgeç "." ile başlıyorsa gizliler de aranır; dizinler her sıralamada üstte.
+internal fun arrangeFiles(
+    list: List<dev.pocketagent.transport.RemoteFile>,
+    sort: FileSort,
+    showHidden: Boolean,
+    filter: String,
+): List<dev.pocketagent.transport.RemoteFile> {
+    val q = filter.trim()
+    val keepHidden = showHidden || q.startsWith(".")
+    val cmp = when (sort) {
+        FileSort.Name -> compareBy<dev.pocketagent.transport.RemoteFile> { it.name.lowercase() }
+        FileSort.Date -> compareByDescending { it.mtime }
+        FileSort.Size -> compareByDescending { it.size }
+    }
+    return list
+        .filter { (keepHidden || !it.name.startsWith(".")) && (q.isEmpty() || it.name.contains(q, ignoreCase = true)) }
+        .sortedWith(compareByDescending<dev.pocketagent.transport.RemoteFile> { it.isDir }.then(cmp))
+}
+
+// Workspace girdileri: yol, listelenen dizine (base) göre kurulur. Önceden
+// bir önceki dizinin yolu kullanılıyordu → ikinci seviyede yanlış dosya.
+internal fun workspaceFiles(base: String, list: List<dev.pocketagent.net.GatewayEntry>): List<dev.pocketagent.transport.RemoteFile> =
+    list.map {
+        dev.pocketagent.transport.RemoteFile(
+            name = it.name,
+            path = if (base.isEmpty()) it.name else "$base/${it.name}",
+            isDir = it.isDir,
+            size = it.size,
+            mtime = it.mtime,
+        )
+    }
+
+private val IMAGE_EXT = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif")
+
+internal fun isImageName(name: String): Boolean = name.substringAfterLast('.', "").lowercase() in IMAGE_EXT
+
+// Uzun kenarı maxSide'ı aşmayacak şekilde 2'nin katlarıyla örnekleyip çözer
+// (16 MP fotoğraf belleği patlatmasın). Çözülemezse null.
+internal fun decodeScaled(bytes: ByteArray, maxSide: Int): android.graphics.Bitmap? {
+    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxSide) sample *= 2
+    return android.graphics.BitmapFactory.decodeByteArray(
+        bytes, 0, bytes.size,
+        android.graphics.BitmapFactory.Options().apply { inSampleSize = sample },
+    )
+}
+
 // Önizleme koruması: ilk 8KB'da NUL varsa metin diyaloğuna binary basılmaz.
 internal fun looksBinary(bytes: ByteArray): Boolean =
     bytes.take(8192).any { it == 0.toByte() }
@@ -228,7 +281,50 @@ class FilesViewModel(
         private set // workspace-göreli, "/"sız
     private var gatewayClient: dev.pocketagent.net.GatewayClient? = null
 
+    // Görünüm tercihleri (oturum boyunca): gizli öğeler ve sıralama.
+    var showHidden by mutableStateOf(false)
+    var sort by mutableStateOf(FileSort.Name)
+
+    // Görsel önizleme: dosya + çözülmüş bitmap (10 MB, uzun kenar ≤2048 px).
+    var image by mutableStateOf<Pair<dev.pocketagent.transport.RemoteFile, android.graphics.Bitmap>?>(null)
+        private set
+    fun dismissImage() { image = null }
+
+    // Grep sonucundan açılan önizlemede odaklanacak satır (1 tabanlı).
+    var previewLine by mutableStateOf<Int?>(null)
+        private set
+
+    // Durum hangi oturuma ait: aktif oturum (başka host) değişince eski yol
+    // ve girdiler yeni makinede kullanılmasın diye sıfırlanır. gen, uçuştaki
+    // eski isteklerin sonucunu düşürür.
+    val activeId: kotlinx.coroutines.flow.StateFlow<String?> get() = manager.activeId
+    private var boundTo: String? = null
+    private var gen = 0
+
+    private fun rebind(id: String?) {
+        boundTo = id
+        gen++
+        mode = FilesMode.SFTP
+        path = null
+        entries.clear()
+        loading = false
+        error = null
+        preview = null
+        previewLine = null
+        image = null
+        chatBlocks = null
+        grepResults = null
+        gatewayAvailable = null
+        gatewayClient = null
+        gwPath = ""
+        transcripts = null
+    }
+
     fun hasActiveSftp(): Boolean = sftp() != null
+
+    // Aktif oturumun bağlantı durumu: ekran, bağlantı kurulunca kendini
+    // yeniden çizsin (SFTP ancak ACTIVE'de var).
+    fun activeState(): kotlinx.coroutines.flow.StateFlow<dev.pocketagent.transport.ConnectionState>? = manager.active()?.state
 
     // Başlıktaki okuma: aktif oturumun user@host'u.
     fun hostLabel(): String? = manager.active()?.connectedTo?.value?.let { "${it.user}@${it.host}" }
@@ -238,15 +334,21 @@ class FilesViewModel(
 
     // Oturum açıldığında/aktif değiştiğinde çağrılır.
     fun open() {
+        val id = manager.activeId.value
+        if (id != boundTo) rebind(id)
         if (path != null || loading) return
         val s = sftp() ?: return
+        val g = gen
         scope.launch {
             loading = true; error = null
             try {
-                load(s.home())
+                val home = s.home()
+                if (g == gen) load(home)
             } catch (e: Exception) {
-                error = e.message ?: "SFTP açılamadı"
-                loading = false
+                if (g == gen) {
+                    error = e.message ?: "SFTP açılamadı"
+                    loading = false
+                }
             }
         }
     }
@@ -275,16 +377,18 @@ class FilesViewModel(
 
     private fun load(p: String) {
         val s = sftp() ?: run { error = "Aktif SSH oturumu yok"; return }
+        val g = gen
         scope.launch {
             loading = true; error = null
             try {
                 val list = s.list(p)
+                if (g != gen) return@launch
                 entries.clear(); entries.addAll(list)
                 path = p
             } catch (e: Exception) {
-                error = e.message ?: "Liste okunamadı"
+                if (g == gen) error = e.message ?: "Liste okunamadı"
             } finally {
-                loading = false
+                if (g == gen) loading = false
             }
         }
     }
@@ -297,7 +401,30 @@ class FilesViewModel(
             if (f.name.endsWith(".jsonl")) { gwChat(f); return }
             gwPreview(f); return
         }
-        if (f.size <= 64 * 1024) loadPreview(f) else download(f)
+        when {
+            isImageName(f.name) && f.size <= 10L * 1024 * 1024 -> loadImage(f)
+            f.size <= 64 * 1024 -> loadPreview(f)
+            else -> download(f)
+        }
+    }
+
+    private fun loadImage(f: dev.pocketagent.transport.RemoteFile) {
+        val s = sftp() ?: return
+        val g = gen
+        scope.launch {
+            loading = true; error = null
+            try {
+                val bytes = s.readBytes(f.path, 10L * 1024 * 1024)
+                val bmp = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { decodeScaled(bytes, 2048) }
+                if (g == gen) {
+                    if (bmp == null) error = "Görsel çözülemedi" else image = f to bmp
+                }
+            } catch (e: Exception) {
+                if (g == gen) error = e.message ?: "Okunamadı"
+            } finally {
+                if (g == gen) loading = false
+            }
+        }
     }
 
     // Sohbet görünümü için bloklar (null = kapalı)
@@ -326,22 +453,25 @@ class FilesViewModel(
         }
     }
 
-    fun dismissPreview() { preview = null }
+    fun dismissPreview() { preview = null; previewLine = null }
     fun clearDownloaded() { downloaded = null }
 
-    private fun loadPreview(f: dev.pocketagent.transport.RemoteFile) {
+    private fun loadPreview(f: dev.pocketagent.transport.RemoteFile, line: Int? = null) {
         val s = sftp() ?: return
+        val g = gen
         scope.launch {
             loading = true; error = null
             try {
                 val bytes = s.readBytes(f.path, 64 * 1024)
+                if (g != gen) return@launch
+                previewLine = line
                 preview = f.name to
                     if (looksBinary(bytes)) "(ikili dosya — önizleme yok)"
                     else bytes.decodeToString()
             } catch (e: Exception) {
-                error = e.message ?: "Okunamadı"
+                if (g == gen) error = e.message ?: "Okunamadı"
             } finally {
-                loading = false
+                if (g == gen) loading = false
             }
         }
     }
@@ -379,12 +509,13 @@ class FilesViewModel(
     fun upload(name: String, data: ByteArray) {
         val p = path ?: return
         val s = sftp() ?: return
+        val g = gen
         scope.launch {
             loading = true; error = null
             try {
                 val target = if (p.endsWith("/")) p + name else "$p/$name"
                 s.writeBytes(target, data)
-                load(p)
+                if (g == gen) load(p)
             } catch (e: Exception) {
                 error = e.message ?: "Yüklenemedi"
                 loading = false
@@ -400,11 +531,12 @@ class FilesViewModel(
     fun deleteAll(fs: List<dev.pocketagent.transport.RemoteFile>) {
         val p = path ?: return
         val s = sftp() ?: return
+        val g = gen
         scope.launch {
             loading = true; error = null
             try {
                 fs.forEach { s.delete(it.path, it.isDir) }
-                load(p)
+                if (g == gen) load(p)
             } catch (e: Exception) {
                 error = e.message ?: "Silinemedi"
                 loading = false
@@ -443,12 +575,13 @@ class FilesViewModel(
         }
     }
 
-    // Grep sonucuna git: üst dizine in + dosyayı önizle (64KB cap'li).
-    fun revealPath(p: String) {
+    // Grep sonucuna git: üst dizine in + dosyayı önizle (64KB cap'li),
+    // eşleşen satıra kaydırılmış olarak.
+    fun revealPath(p: String, line: Int? = null) {
         val name = p.substringAfterLast('/')
         if (name.isEmpty()) return
         load(p.substringBeforeLast('/').ifEmpty { "/" })
-        loadPreview(dev.pocketagent.transport.RemoteFile(name, p, false, 0, 0))
+        loadPreview(dev.pocketagent.transport.RemoteFile(name, p, false, 0, 0), line)
     }
 
     fun rename(f: dev.pocketagent.transport.RemoteFile, newName: String) {
@@ -456,11 +589,12 @@ class FilesViewModel(
         if (clean.isEmpty() || clean == f.name || clean.contains('/')) return
         val p = path ?: return
         val s = sftp() ?: return
+        val g = gen
         scope.launch {
             loading = true; error = null
             try {
                 s.rename(f.path, if (p.endsWith("/")) p + clean else "$p/$clean")
-                load(p)
+                if (g == gen) load(p)
             } catch (e: Exception) {
                 error = e.message ?: "Ad değiştirilemedi"
                 loading = false
@@ -475,11 +609,12 @@ class FilesViewModel(
         if (clean.isEmpty() || clean.contains('/')) return
         val parent = inside?.path ?: path ?: return
         val s = sftp() ?: return
+        val g = gen
         scope.launch {
             loading = true; error = null
             try {
                 s.mkdir(if (parent.endsWith("/")) parent + clean else "$parent/$clean")
-                load(parent)
+                if (g == gen) load(parent)
             } catch (e: Exception) {
                 error = e.message ?: "Klasör oluşturulamadı"
                 loading = false
@@ -516,6 +651,7 @@ class FilesViewModel(
         val s = sftp()
         val tunnel = manager.active()?.gateway()
         if (s == null || tunnel == null) { gatewayAvailable = false; return }
+        val g = gen
         scope.launch {
             loading = true; error = null
             try {
@@ -524,10 +660,11 @@ class FilesViewModel(
                 if (token.isEmpty()) throw IllegalStateException("gateway token boş")
                 val client = dev.pocketagent.net.GatewayClient(tunnel, token)
                 val probe = client.ls("") // 200 gelmezse exception
+                if (g != gen) return@launch
                 gatewayClient = client
                 gatewayAvailable = true
-                gwEntries(probe)
                 gwPath = ""
+                gwEntries(probe, "")
             } catch (e: Exception) {
                 gatewayAvailable = false
                 gatewayClient = null
@@ -540,10 +677,12 @@ class FilesViewModel(
 
     fun gwRefresh() {
         val c = gatewayClient ?: return probeGateway()
+        val g = gen
         scope.launch {
             loading = true; error = null
             try {
-                gwEntries(c.ls(gwPath))
+                val list = c.ls(gwPath)
+                if (g == gen) gwEntries(list, gwPath)
             } catch (e: Exception) {
                 error = e.message ?: "workspace listesi okunamadı"
             } finally {
@@ -554,11 +693,14 @@ class FilesViewModel(
 
     private fun gwLoad(rel: String) {
         val c = gatewayClient ?: return probeGateway()
+        val g = gen
         scope.launch {
             loading = true; error = null
             try {
-                gwEntries(c.ls(rel))
+                val list = c.ls(rel)
+                if (g != gen) return@launch
                 gwPath = rel
+                gwEntries(list, rel)
             } catch (e: Exception) {
                 error = e.message ?: "dizin okunamadı"
             } finally {
@@ -567,19 +709,9 @@ class FilesViewModel(
         }
     }
 
-    private fun gwEntries(list: List<dev.pocketagent.net.GatewayEntry>) {
+    private fun gwEntries(list: List<dev.pocketagent.net.GatewayEntry>, base: String) {
         entries.clear()
-        entries.addAll(
-            list.map {
-                dev.pocketagent.transport.RemoteFile(
-                    name = it.name,
-                    path = if (gwPath.isEmpty()) it.name else "$gwPath/${it.name}",
-                    isDir = it.isDir,
-                    size = it.size,
-                    mtime = it.mtime,
-                )
-            },
-        )
+        entries.addAll(workspaceFiles(base, list))
     }
 
     private fun gwPreview(f: dev.pocketagent.transport.RemoteFile) {

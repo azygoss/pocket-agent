@@ -5,6 +5,9 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -28,9 +31,11 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -51,12 +56,16 @@ import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.RadioButtonChecked
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.TravelExplore
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Code
@@ -68,28 +77,38 @@ import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -123,8 +142,12 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}, onBack: 
     var grepOpen by remember { mutableStateOf(false) }
     var devServerOpen by remember { mutableStateOf(false) }
 
-    // Oturum açıldığında home dizinine gir
-    LaunchedEffect(files.hasActiveSftp()) { files.open() }
+    // Oturum açıldığında (ya da aktif oturum başka bir host'a geçince) o
+    // oturumun home dizinine gir; eski host'un yolu yeni host'ta kullanılmaz.
+    val activeSession by files.activeId.collectAsState()
+    val connState = remember(activeSession) { files.activeState() }?.collectAsState()?.value
+    LaunchedEffect(activeSession) { selected.clear() }
+    LaunchedEffect(activeSession, connState) { files.open() }
 
     // İndirme tamamlanınca paylaşım sayfası (tek dosya → SEND, çoklu → SEND_MULTIPLE)
     LaunchedEffect(files.downloaded) {
@@ -151,7 +174,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}, onBack: 
     val isGw = files.mode == FilesMode.WORKSPACE
     // Geri tuşu: önce seçim, sonra bu ekranda girilen alt dizinlerden yukarı;
     // giriş dizinine dönünce ekrandan çıkar.
-    var entryPath by remember { mutableStateOf<String?>(null) }
+    var entryPath by remember(activeSession) { mutableStateOf<String?>(null) }
     LaunchedEffect(files.path) { if (entryPath == null && files.path != null) entryPath = files.path }
     val canGoUp = if (isGw) files.gwPath.isNotEmpty() else files.path != null && files.path != "/"
     val backGoesUp = if (isGw) files.gwPath.isNotEmpty()
@@ -207,6 +230,25 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}, onBack: 
                         FileMenuItem(Icons.Rounded.FolderOpen, "Yola git") { menuOpen = false; gotoOpen = true }
                         if (!isGw) FileMenuItem(Icons.Rounded.CreateNewFolder, "Yeni klasör") { menuOpen = false; mkdirOpen = true }
                         FileMenuItem(Icons.Rounded.Refresh, "Yenile") { menuOpen = false; files.refresh() }
+                        HorizontalDivider(color = t.line)
+                        FileMenuItem(
+                            if (files.showHidden) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                            if (files.showHidden) "Gizli öğeleri gizle" else "Gizli öğeleri göster",
+                        ) { menuOpen = false; files.showHidden = !files.showHidden }
+                        FileSort.entries.forEach { srt ->
+                            DropdownMenuItem(
+                                text = { Text("Sırala: ${srt.label}", color = t.text) },
+                                leadingIcon = {
+                                    Icon(
+                                        if (files.sort == srt) Icons.Rounded.RadioButtonChecked else Icons.Rounded.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = if (files.sort == srt) t.primary else t.text2,
+                                    )
+                                },
+                                onClick = { menuOpen = false; files.sort = srt },
+                                modifier = Modifier.semantics { this.selected = files.sort == srt },
+                            )
+                        }
                     }
                 }
             }
@@ -283,8 +325,8 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}, onBack: 
         }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            val shown = if (filter.isBlank()) files.entries.toList()
-            else files.entries.filter { it.name.contains(filter, ignoreCase = true) }
+            val shown by remember { derivedStateOf { arrangeFiles(files.entries, files.sort, files.showHidden, filter) } }
+            val hiddenCount by remember { derivedStateOf { if (files.showHidden) 0 else files.entries.count { it.name.startsWith(".") } } }
             when {
                 // İskelet: gerçek satır geometrisinde loş bloklar — liste
                 // geldiğinde düzen kaymaz. Tek okuma "yükleniyor".
@@ -293,12 +335,20 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}, onBack: 
                 ) {
                     repeat(7) { i -> SkeletonRow(listOf(0.42f, 0.6f, 0.35f, 0.5f, 0.7f, 0.3f, 0.55f)[i]) }
                 }
-                shown.isEmpty() && !files.loading -> Text(
-                    if (filter.isNotBlank()) "\"$filter\" ile eşleşen öğe yok." else "Bu dizin boş.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = t.text2,
-                    modifier = Modifier.padding(horizontal = Space.xl, vertical = Space.lg),
-                )
+                shown.isEmpty() && !files.loading -> Column(Modifier.padding(horizontal = Space.xl, vertical = Space.lg)) {
+                    Text(
+                        when {
+                            filter.isNotBlank() -> "\"$filter\" ile eşleşen öğe yok."
+                            hiddenCount > 0 -> "Burada yalnız gizli öğeler var ($hiddenCount)."
+                            else -> "Bu dizin boş."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = t.text2,
+                    )
+                    if (hiddenCount > 0 && filter.isBlank()) {
+                        GhostButton("Gizli öğeleri göster", onClick = { files.showHidden = true }, modifier = Modifier.padding(top = Space.sm))
+                    }
+                }
                 else -> LazyColumn(
                     Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = Space.lg, end = Space.lg, top = Space.sm, bottom = Space.xxl),
@@ -321,13 +371,25 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}, onBack: 
                         }
                     }
                     item(key = "footer") {
-                        Text(
-                            (if (isGw) "Gateway · SSH tüneli · workspace sınırında" else "SFTP · SSH oturumu içinde · indirme ≤10 MB") +
-                                " · ${files.entries.size} öğe",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = t.text2,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = Space.md),
-                        )
+                        Column(Modifier.padding(horizontal = 4.dp, vertical = Space.md)) {
+                            if (hiddenCount > 0 && filter.isBlank()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        "$hiddenCount gizli öğe gösterilmiyor",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = t.text2,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    GhostButton("Göster", onClick = { files.showHidden = true })
+                                }
+                            }
+                            Text(
+                                (if (isGw) "Gateway · SSH tüneli · workspace sınırında" else "SFTP · SSH oturumu içinde · indirme ≤10 MB") +
+                                    " · ${files.entries.size} öğe",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = t.text2,
+                            )
+                        }
                     }
                 }
             }
@@ -354,14 +416,26 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}, onBack: 
         ChatDialog(title = name, blocks = blocks, onClose = { files.dismissChat() })
     }
 
-    // Önizleme: tam ekran okuyucu (diff içeriği renklendirilir).
+    // Önizleme: tam ekran okuyucu (diff içeriği renklendirilir; grep'ten
+    // gelindiyse eşleşen satıra kayar ve satır vurgulanır).
     files.preview?.let { (name, content) ->
         TextViewer(
             title = name,
             content = content,
             diff = name.startsWith("git diff"),
+            focusLine = files.previewLine,
             onCopy = { clipboard.setText(AnnotatedString(content)); notify("Kopyalandı") },
             onClose = { files.dismissPreview() },
+        )
+    }
+
+    files.image?.let { (f, bmp) ->
+        ImageViewer(
+            name = f.name,
+            bitmap = bmp,
+            sizeLabel = humanSize(f.size),
+            onShare = { files.download(f) },
+            onClose = { files.dismissImage() },
         )
     }
 
@@ -504,7 +578,7 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}, onBack: 
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .tap({ files.revealPath(h.path); dismiss() })
+                                .tap({ files.revealPath(h.path, h.line); dismiss() })
                                 .padding(horizontal = Space.xxl, vertical = Space.sm + 2.dp),
                         ) {
                             Text(
@@ -579,50 +653,161 @@ private fun ToolChip(icon: ImageVector, label: String, tone: Tone, onClick: () -
     }
 }
 
-// Tam ekran metin okuyucu: mono, seçilebilir; diff satırları renklenir.
+// Tam ekran metin okuyucu: satırlar sanal listede (büyük diff'ler
+// takılmasın), numaralı kenar boşluğu, seçilebilir metin. Diff satırları
+// zemin rengiyle ayrılır; grep'ten gelinen satır vurgulanır ve görünür
+// alana kaydırılır.
 @Composable
-private fun TextViewer(title: String, content: String, diff: Boolean, onCopy: () -> Unit, onClose: () -> Unit) {
+private fun TextViewer(
+    title: String,
+    content: String,
+    diff: Boolean,
+    focusLine: Int?,
+    onCopy: () -> Unit,
+    onClose: () -> Unit,
+) {
     val t = Tok
+    val lines = remember(content) { content.removeSuffix("\n").lines() }
+    val digits = lines.size.toString().length
+    val listState = rememberLazyListState()
+    LaunchedEffect(focusLine, lines) {
+        val f = focusLine ?: return@LaunchedEffect
+        if (f in 1..lines.size) listState.scrollToItem((f - 4).coerceAtLeast(0))
+    }
+    val style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code, fontSize = 12.5.sp, lineHeight = 18.sp)
     FullScreenDialog(onDismiss = onClose) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.navigationBars))) {
-            PocketTopBar(title, onBack = onClose, backIcon = Icons.Rounded.Close, backDesc = "Kapat", insetTop = false) {
+            PocketTopBar(
+                title,
+                onBack = onClose,
+                backIcon = Icons.Rounded.Close,
+                backDesc = "Kapat",
+                insetTop = false,
+                subtitle = {
+                    Text(
+                        "${lines.size} satır" + (focusLine?.takeIf { it in 1..lines.size }?.let { " · satır $it" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
+            ) {
                 IconAction(Icons.Rounded.ContentCopy, "İçeriği kopyala", onCopy)
             }
             SelectionContainer(Modifier.weight(1f)) {
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = Space.lg, vertical = Space.sm),
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = Space.sm, bottom = Space.x3),
                 ) {
-                    Text(
-                        if (diff) diffAnnotated(content, t) else AnnotatedString(content),
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code, fontSize = 12.5.sp, lineHeight = 18.sp),
-                        color = t.text,
-                    )
-                    Spacer(Modifier.height(Space.x3))
+                    itemsIndexed(lines, contentType = { _, _ -> 0 }) { i, line ->
+                        val (bg, fg, bold) = lineLook(line, diff, focusLine == i + 1, t)
+                        Row(Modifier.fillMaxWidth().background(bg).padding(end = Space.lg)) {
+                            if (diff) {
+                                Spacer(Modifier.width(Space.lg))
+                            } else {
+                                DisableSelection {
+                                    Text(
+                                        (i + 1).toString().padStart(digits),
+                                        style = style,
+                                        color = t.text3,
+                                        modifier = Modifier.padding(start = Space.md, end = Space.md),
+                                    )
+                                }
+                            }
+                            Text(
+                                line.ifEmpty { " " },
+                                style = if (bold) style.copy(fontWeight = FontWeight.Bold) else style,
+                                color = fg,
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-// Diff renklendirme: + yeşil, - mercan, @@ mavi, başlıklar kalın, +++/--- soluk.
-private fun diffAnnotated(content: String, t: dev.pocketagent.ui.theme.PocketTokens): AnnotatedString =
-    androidx.compose.ui.text.buildAnnotatedString {
-        content.lines().forEach { line ->
-            val style = when {
-                line.startsWith("+++") || line.startsWith("---") -> androidx.compose.ui.text.SpanStyle(color = t.text2)
-                line.startsWith("+") -> androidx.compose.ui.text.SpanStyle(color = t.live.text, background = t.live.soft)
-                line.startsWith("-") -> androidx.compose.ui.text.SpanStyle(color = t.danger.text, background = t.danger.soft)
-                line.startsWith("@@") -> androidx.compose.ui.text.SpanStyle(color = t.busy.text)
-                line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("commit ") ->
-                    androidx.compose.ui.text.SpanStyle(color = t.text, fontWeight = FontWeight.Bold)
-                else -> null
+// Satır görünümü (zemin, metin, kalın): diff'te + yeşil, - mercan, @@ mavi,
+// başlıklar kalın, +++/--- soluk; odak satırı amber zemin.
+private fun lineLook(
+    line: String,
+    diff: Boolean,
+    focused: Boolean,
+    t: dev.pocketagent.ui.theme.PocketTokens,
+): Triple<androidx.compose.ui.graphics.Color, androidx.compose.ui.graphics.Color, Boolean> {
+    val clear = androidx.compose.ui.graphics.Color.Transparent
+    if (focused) return Triple(t.warn.soft, t.warn.onSoft, false)
+    if (!diff) return Triple(clear, t.text, false)
+    return when {
+        line.startsWith("+++") || line.startsWith("---") -> Triple(clear, t.text2, false)
+        line.startsWith("+") -> Triple(t.live.soft, t.live.onSoft, false)
+        line.startsWith("-") -> Triple(t.danger.soft, t.danger.onSoft, false)
+        line.startsWith("@@") -> Triple(clear, t.busy.text, false)
+        line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("commit ") -> Triple(clear, t.text, true)
+        else -> Triple(clear, t.text, false)
+    }
+}
+
+// Görsel okuyucu: sığdırılmış görüntü, iki parmakla yakınlaştır/kaydır,
+// çift dokunuş 2.5× ↔ sığdır. Kaydırma görüntü kenarında durur.
+@Composable
+private fun ImageViewer(name: String, bitmap: android.graphics.Bitmap, sizeLabel: String, onShare: () -> Unit, onClose: () -> Unit) {
+    val image = remember(bitmap) { bitmap.asImageBitmap() }
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var box by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    fun clamp(o: androidx.compose.ui.geometry.Offset, sc: Float): androidx.compose.ui.geometry.Offset {
+        val mx = box.width * (sc - 1f) / 2f
+        val my = box.height * (sc - 1f) / 2f
+        return androidx.compose.ui.geometry.Offset(o.x.coerceIn(-mx, mx), o.y.coerceIn(-my, my))
+    }
+    FullScreenDialog(onDismiss = onClose) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.navigationBars))) {
+            PocketTopBar(
+                name,
+                onBack = onClose,
+                backIcon = Icons.Rounded.Close,
+                backDesc = "Kapat",
+                insetTop = false,
+                subtitle = { Text(sizeLabel, style = MaterialTheme.typography.bodySmall) },
+            ) {
+                IconAction(Icons.Rounded.Share, "Paylaş", onShare)
             }
-            if (style != null) withStyle(style) { append(line); append('\n') } else { append(line); append('\n') }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clipToBounds()
+                    .onSizeChanged { box = it }
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            val sc = (scale * zoom).coerceIn(1f, 6f)
+                            scale = sc
+                            offset = if (sc == 1f) androidx.compose.ui.geometry.Offset.Zero else clamp(offset + pan, sc)
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectTapGestures(onDoubleTap = {
+                            scale = if (scale > 1f) 1f else 2.5f
+                            offset = androidx.compose.ui.geometry.Offset.Zero
+                        })
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    image,
+                    contentDescription = name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
+                    },
+                )
+            }
         }
     }
+}
 
 // Dosya satırı: türünü söyleyen renkli ikon karosu, mono ad, boyut · zaman.
 @Composable
