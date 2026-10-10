@@ -13,8 +13,13 @@ docker compose version >/dev/null 2>&1 || {
 
 if [ ! -f .env ]; then
     echo "== Pocket Agent backend kurulumu =="
-    read -r -p "Domain (örn. api.example.com, localhost için boş bırak): " domain
-    domain=${domain:-localhost}
+    # Telefon yalnız HTTPS'e bağlanır (düz HTTP engelli). Domain yoksa genel
+    # IP'den nip.io adı önerilir: 1.2.3.4 → 1-2-3-4.nip.io (Let's Encrypt alır).
+    ip=$(curl -s -m 5 https://api.ipify.org 2>/dev/null || true)
+    suggest=localhost
+    [ -n "$ip" ] && suggest="${ip//./-}.nip.io"
+    read -r -p "Domain (örn. api.example.com; boş bırakırsan $suggest): " domain
+    domain=${domain:-$suggest}
     pass=$(openssl rand -hex 16 2>/dev/null || head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')
     cat > .env <<EOF
 POSTGRES_PASSWORD=$pass
@@ -49,9 +54,11 @@ done
 cat <<EOF
 
 Kurulum tamam. Sıradaki adımlar:
-  1) Host'ta:  pocket-agent set backend_url $url
-               pocket-agent onboard
-  2) Android'de QR'ı tara (pocket-agent pair çıktısı).
+  1) Host'ta:  pocket-agent set tenant "\$(openssl rand -hex 10)"
+               pocket-agent onboard --backend https://$domain
+  2) Uygulamada Ayarlar → Backend: adres https://$domain, tenant token =
+     host'taki tenant (pocket-agent host list).
+  3) Oturumlar → QR simgesi → kodu gir ya da QR'ı tara (pocket-agent pair).
 
 Yedekleme: ./backup.sh   Geri yükleme: ./restore.sh <dosya>   Doğrulama: ./verify-backup.sh
 EOF

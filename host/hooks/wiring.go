@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -237,17 +238,48 @@ func UninstallJSONHooks(path, source string) (bool, error) {
 	return true, os.WriteFile(path, append(out, '\n'), 0o600)
 }
 
+// TOML tablo başlığı ([a.b], [[dizi]], [x."/yol:1"]) ve üst düzey notify.
+var (
+	tomlTable  = regexp.MustCompile(`^\s*\[\[?[^\[\]]+\]\]?\s*(#.*)?$`)
+	tomlNotify = regexp.MustCompile(`^\s*notify\s*=`)
+)
+
 func UninstallClaude(path string) (bool, error) { return UninstallJSONHooks(path, "claude") }
 func UninstallGemini(path string) (bool, error) { return UninstallJSONHooks(path, "gemini") }
 func UninstallQwen(path string) (bool, error)   { return UninstallJSONHooks(path, "qwen") }
 
 // Codex: ~/.codex/config.toml — `notify` tek komut dizisi alır, tur sonunda
 // JSON argümanla çağrılır. Marker blok içinde tutulur (TOML '#' yorumu OK).
+// Blok ilk tablo başlığından önce yazılır: dosya sonuna eklenen notify son
+// tabloya ([projects."…"], [hooks.state."…"]) ait sayılır ve Codex onu
+// görmez ya da config'i reddeder. Kullanıcının kendi notify'ı varsa dokunulmaz.
 func InstallCodex(path, exe string) (bool, error) {
 	cur, _ := os.ReadFile(path)
 	block := fmt.Sprintf("# pocket-agent begin (codex)\n# managed hook — pocket-agent\nnotify = [%q, %q, %q, %q]\n# pocket-agent end (codex)",
 		exe, "emit-hook", "codex", "task_complete")
+	rest := StripMarkers(string(cur))
+	lines := strings.Split(rest, "\n")
+	first := len(lines)
+	for i, l := range lines {
+		if tomlTable.MatchString(l) {
+			first = i
+			break
+		}
+	}
+	for _, l := range lines[:first] {
+		if tomlNotify.MatchString(l) {
+			fmt.Fprintln(os.Stderr, "codex: config.toml'da notify zaten tanımlı — pocket-agent bildirimi eklenmedi")
+			return false, nil
+		}
+	}
 	merged := Merge(string(cur), block)
+	if first < len(lines) {
+		head := strings.TrimRight(strings.Join(lines[:first], "\n"), "\n")
+		if head != "" {
+			head += "\n"
+		}
+		merged = head + block + "\n\n" + strings.Join(lines[first:], "\n")
+	}
 	if merged == string(cur) {
 		return false, nil
 	}

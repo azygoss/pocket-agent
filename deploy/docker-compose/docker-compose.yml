@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: pocket
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
@@ -13,20 +14,31 @@ services:
       retries: 5
   api:
     build: ../..
-    command: ["go", "run", "./backend/cmd/server"]
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgres://pocket:${POSTGRES_PASSWORD:-change-me}@db:5432/pocket?sslmode=disable
+    # Yalnız Caddy (aynı ağ) ve host erişir; dışarıya düz HTTP açılmaz.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       db:
         condition: service_healthy
   caddy:
     image: caddy:2-alpine
+    restart: unless-stopped
+    # Caddyfile {$DOMAIN}'i konteyner ortamından okur; verilmezse yalnız
+    # localhost'a sertifika alır ve gerçek domain TLS hatası verir.
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
     ports:
       - "443:443"
       - "80:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
+      # Sertifikalar kalıcı: konteyner yeniden yaratılınca yeniden alınmaz.
+      - caddy_data:/data
+      - caddy_config:/config
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:

@@ -101,6 +101,41 @@ func TestInstallCodexNotify(t *testing.T) {
 	}
 }
 
+// Regresyon: notify dosya sonuna eklenince son tabloya ait sayılıyordu
+// (gerçek bir hostta [hooks.state."…"] altına düştü). Blok ilk tablodan
+// önce durmalı; tekrar kurulum aynı çıktıyı vermeli; kullanıcının kendi
+// notify'ı varsa dokunulmamalı.
+func TestInstallCodexNotifyStaysTopLevel(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.toml")
+	user := "model = \"gpt\"\n\n[projects.\"/root\"]\ntrust_level = \"trusted\"\n\n[hooks.state.\"/root/.codex/hooks.json:stop:0:0\"]\ntrusted_hash = \"sha256:x\"\n"
+	os.WriteFile(p, []byte(user), 0o600)
+	if changed, err := InstallCodex(p, "/usr/bin/pa"); err != nil || !changed {
+		t.Fatalf("%v %v", err, changed)
+	}
+	b, _ := os.ReadFile(p)
+	out := string(b)
+	notify := strings.Index(out, "notify = [")
+	table := strings.Index(out, "[projects.")
+	if notify < 0 || table < 0 || notify > table {
+		t.Fatalf("notify ilk tablodan önce değil:\n%s", out)
+	}
+	if !strings.HasSuffix(out, "trusted_hash = \"sha256:x\"\n") || !strings.HasPrefix(out, "model = \"gpt\"\n") {
+		t.Fatalf("kullanıcı içeriği bozuldu:\n%s", out)
+	}
+	if changed, _ := InstallCodex(p, "/usr/bin/pa"); changed {
+		t.Fatal("idempotent değil")
+	}
+	if ok, _ := UninstallCodex(p); !ok {
+		t.Fatal("uninstall değişiklik yapmadı")
+	}
+
+	own := filepath.Join(t.TempDir(), "own.toml")
+	os.WriteFile(own, []byte("notify = [\"my-notifier\"]\n[tui]\nx = 1\n"), 0o600)
+	if changed, _ := InstallCodex(own, "/usr/bin/pa"); changed {
+		t.Fatal("kullanıcının notify'ı ezildi")
+	}
+}
+
 func TestStripMarkersRepairsJSON(t *testing.T) {
 	// Eski sürümün JSON'a yazdığı marker bloğu — parse bozuyor.
 	corrupt := `{"a":1}

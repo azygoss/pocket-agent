@@ -58,7 +58,10 @@ gerekir; eski sürümlerden otomatik taşıma yok.
 
 | Belirti | Çare |
 |---|---|
-| `pair` "backend erişilemedi" | `pocket-agent set backend_url http://<host>:8080` sonra tekrar |
+| `pair` "backend erişilemedi" | `pocket-agent set backend_url https://<domain>` sonra tekrar. Telefon düz HTTP'ye bağlanmaz; domain yoksa `<ip-tireli>.nip.io` (örn. `1-2-3-4.nip.io`) kullan |
+| Uygulamada agent olayları boş | Host'taki `tenant` (`pocket-agent set tenant …`) ile Ayarlar → Backend → Tenant token aynı olmalı |
+| HTTPS sertifika hatası | `.env` içindeki `DOMAIN` Caddy'ye geçmeli (compose `environment: DOMAIN`); 80 ve 443 dışarıdan açık olmalı |
+| Codex açılmıyor / notify çalışmıyor | `~/.codex/config.toml` içindeki pocket-agent bloğu ilk `[tablo]` satırından önce olmalı; `pocket-agent hooks install` (güncel sürüm) bunu düzeltir |
 | Gateway 401 | token dosyası `~/.config/pocket-agent/gateway.token` — uygulama SFTP ile okur |
 | `doctor` sshd FAIL | `openssh-server` kurulu ve :22 dinliyor olmalı |
 | Kod elle girilemiyor | Ayarlar → Backend URL önce girilmeli |
