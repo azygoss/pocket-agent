@@ -522,21 +522,28 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
     var showTenant by remember { mutableStateOf(false) }
     var urlError by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
-    var testResult by remember { mutableStateOf<Boolean?>(null) }
+    // null = sınanmadı; "" = erişilebilir; değilse okunur neden.
+    var testResult by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val notify = rememberNotify()
     val syncStatus by app.eventSync.status.collectAsState()
     val t = Tok
 
+    // Şema yoksa https:// eklenir; uzak http:// telefonda çalışmadığı için
+    // kaydedilmez. Boş tenant, host CLI'ın varsayılanı "default" olur.
+    fun valid(): Pair<String, String>? {
+        val (u, err) = dev.pocketagent.net.normalizeBackendUrl(url)
+        url = u
+        urlError = err
+        if (err != null) return null
+        val tn = tenant.trim().ifEmpty { if (u.isEmpty()) "" else "default" }
+        tenant = tn
+        return u to tn
+    }
+
     fun save() {
-        val u = url.trim()
-        if (u.isNotEmpty() && !u.startsWith("http://") && !u.startsWith("https://")) {
-            urlError = "Adres http:// ya da https:// ile başlamalı."
-            return
-        }
-        urlError = null
-        settings.setBackend(u, tenant)
-        app.configureBackend(u, tenant.trim())
+        val (u, tn) = valid() ?: return
+        settings.setBackend(u, tn)
         testResult = null
         notify("Backend ayarları kaydedildi")
     }
@@ -549,7 +556,7 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
         }
         if (settings.backendConfigured && syncLabel(syncStatus).first == Status.Error) {
             Spacer(Modifier.height(Space.sm))
-            Text(syncStatus, style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code), color = t.danger.text)
+            Text(syncStatus.removePrefix("hata: "), style = MaterialTheme.typography.bodyMedium, color = t.danger.text)
         }
         Spacer(Modifier.height(Space.md))
         Text(
@@ -577,7 +584,7 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
                 tenant, { tenant = it },
                 label = "Tenant token",
                 mono = true,
-                helper = "Eşleme QR'ı bunu otomatik doldurur.",
+                helper = "Host'taki tenant ile aynı olmalı. Boşsa \"default\". Kodla eşleme bunu host'tan alır (CLI 0.1.2+).",
                 visualTransformation = if (showTenant) VisualTransformation.None else PasswordVisualTransformation(),
                 trailing = {
                     IconAction(
@@ -589,21 +596,32 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
             )
             Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalAlignment = Alignment.CenterVertically) {
                 PrimaryButton("Kaydet", onClick = ::save)
+                // Yazılı adresi sınar (kaydetmeden önce de çalışır).
                 OutlineButton(
                     if (testing) "Sınanıyor…" else "Bağlantıyı test et",
-                    enabled = settings.backendConfigured && !testing,
+                    enabled = url.isNotBlank() && !testing,
                     onClick = {
+                        val (u, tn) = valid() ?: return@OutlineButton
                         testing = true
+                        testResult = null
                         scope.launch(Dispatchers.IO) {
-                            testResult = app.backendClient?.health() == true
+                            testResult = dev.pocketagent.net.BackendClient(u, tn).check() ?: ""
                             testing = false
                         }
                     },
                 )
             }
             if (testing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = t.primary)
-            testResult?.let { ok ->
-                Banner(if (ok) Status.Live else Status.Error, if (ok) "Backend erişilebilir" else "Backend'e ulaşılamadı")
+            testResult?.let { reason ->
+                if (reason.isEmpty()) {
+                    Banner(
+                        Status.Live,
+                        "Backend erişilebilir",
+                        body = if (url != settings.backendUrl || tenant != settings.tenantToken) "Kullanmak için Kaydet'e bas." else null,
+                    )
+                } else {
+                    Banner(Status.Error, "Backend'e ulaşılamadı", body = reason)
+                }
             }
         }
     }

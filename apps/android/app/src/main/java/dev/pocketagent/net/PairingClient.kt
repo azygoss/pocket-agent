@@ -15,6 +15,8 @@ object PairingClient {
         val sshPort: Int,
         val sshUser: String,
         val privateKeyPem: String,
+        // Host'un olay gönderdiği tenant (CLI 0.1.2+); eski host'larda yok.
+        val tenant: String? = null,
     )
 
     sealed class Failure(val msg: String) {
@@ -62,12 +64,12 @@ object PairingClient {
                 200 -> parsePayload(conn.inputStream.readBytes().decodeToString())
                 404 -> throw FailureException(Failure.BadCode())
                 409 -> throw FailureException(Failure.AlreadyClaimed())
-                else -> throw FailureException(Failure.Network("backend: HTTP ${conn.responseCode}"))
+                else -> throw FailureException(Failure.Network("Backend HTTP ${conn.responseCode} döndü. Adres doğru mu?"))
             }
         } catch (e: FailureException) {
             throw e
         } catch (e: Exception) {
-            throw FailureException(Failure.Network("backend erişilemedi: ${e.message}"))
+            throw FailureException(Failure.Network(backendProblem(e)))
         } finally {
             conn.disconnect()
         }
@@ -82,6 +84,7 @@ object PairingClient {
                 sshPort = p.optInt("ssh_port", 22),
                 sshUser = p.getString("ssh_user"),
                 privateKeyPem = p.getString("private_key"),
+                tenant = p.optString("tenant").ifBlank { null },
             )
         } catch (e: Exception) {
             throw FailureException(Failure.BadPayload(body))

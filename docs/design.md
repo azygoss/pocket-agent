@@ -163,6 +163,10 @@ readable 640dp width. The terminal always uses the full width of its pane.
   opens its file scrolled to the matching line, highlighted.
 - The listing belongs to the active session: switching to a session on
   another host resets the path and opens that host's home.
+- Files over 10 MB are skipped with a message instead of being shared cut
+  off at 10 MB.
+- A host search with no match offers to clear the search or to add the
+  typed `user@address` as a new host.
 
 ## Forms
 
@@ -170,7 +174,28 @@ readable 640dp width. The terminal always uses the full width of its pane.
   address is already saved, chains fields with the keyboard's Next action
   and saves on Done. A stale "sına" result clears when a field changes.
 - Pairing accepts a pasted `pa1|…` QR payload as well as the 8-character
-  code.
+  code. A successful pairing fills an empty backend address, and takes the
+  host's tenant when the host sends it (CLI 0.1.2+) and the app still uses
+  the default one. A mistyped address in the pairing sheet is never saved.
+  Pairing the same host again updates its key instead of adding a second
+  entry.
+- Backend address: a missing scheme becomes `https://`, a trailing slash is
+  dropped, a blank tenant becomes `default` (the host CLI's default). Remote
+  `http://` addresses are refused under the field, because the phone blocks
+  cleartext HTTP; the message suggests `https://` or a `1-2-3-4.nip.io`
+  name. "Bağlantıyı test et" checks the typed values before saving and
+  says why it failed (no DNS, certificate, timeout, refused, HTTP status).
+
+## Agent events
+
+- The backend returns events in insertion order and the `after` cursor
+  follows that order. Event ids are hashes, so the old string comparison
+  dropped new events whose id sorted below the cursor.
+- Approval notifications fire only for approvals that are new to the inbox
+  and at most 10 minutes old, never while the app is in front (the Sessions
+  banner shows them), and they clear when the approval is read in the app.
+- When a backend is set but notifications are off, Sessions says so: the
+  first tap asks for the permission, later taps open the system settings.
 
 ## Performance and energy
 

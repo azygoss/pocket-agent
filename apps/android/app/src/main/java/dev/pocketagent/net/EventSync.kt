@@ -36,8 +36,16 @@ class EventSync(
         if (job != null) return
         job = scope.launch {
             var backoff = intervalMs
+            var last: BackendClient? = null
             while (true) {
                 val client = clientFor()
+                // Backend değişti: eski imleç yeni backend'de anlamsız, eski
+                // hatanın geri çekilmesi de yeni adresi bekletmesin.
+                if (client !== last) {
+                    last = client
+                    cursor = null
+                    backoff = intervalMs
+                }
                 if (client == null) {
                     _status.value = "backend ayarlanmadı"
                     delay(intervalMs)
@@ -55,7 +63,7 @@ class EventSync(
                     _status.value = "bağlı"
                     backoff = intervalMs
                 } catch (e: Exception) {
-                    _status.value = "hata: ${e.message ?: "bağlantı"}"
+                    _status.value = "hata: " + backendProblem(e)
                     backoff = (backoff * 2).coerceAtMost(300_000)
                 }
                 kotlinx.coroutines.selects.select<Unit> {

@@ -183,6 +183,8 @@ class UsageViewModel {
 
 enum class FilesMode { SFTP, WORKSPACE }
 
+private const val DOWNLOAD_CAP = 10L * 1024 * 1024
+
 enum class FileSort(val label: String) { Name("Ad"), Date("Değişiklik"), Size("Boyut") }
 
 // Görünen liste: gizli öğeler (nokta ile başlayan) istenirse elenir —
@@ -402,7 +404,7 @@ class FilesViewModel(
             gwPreview(f); return
         }
         when {
-            isImageName(f.name) && f.size <= 10L * 1024 * 1024 -> loadImage(f)
+            isImageName(f.name) && f.size <= DOWNLOAD_CAP -> loadImage(f)
             f.size <= 64 * 1024 -> loadPreview(f)
             else -> download(f)
         }
@@ -414,7 +416,7 @@ class FilesViewModel(
         scope.launch {
             loading = true; error = null
             try {
-                val bytes = s.readBytes(f.path, 10L * 1024 * 1024)
+                val bytes = s.readBytes(f.path, DOWNLOAD_CAP)
                 val bmp = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { decodeScaled(bytes, 2048) }
                 if (g == gen) {
                     if (bmp == null) error = "Görsel çözülemedi" else image = f to bmp
@@ -482,21 +484,27 @@ class FilesViewModel(
     // Aynı isim çakışmasında sonek eklenir.
     fun downloadAll(fs: List<dev.pocketagent.transport.RemoteFile>) {
         val s = sftp() ?: return
+        // 10 MB'ı aşan dosya kesik paylaşılmaz (bozuk arşiv/görsel olurdu): atlanır, söylenir.
+        val (fit, tooBig) = fs.filter { !it.isDir }.partition { it.size <= DOWNLOAD_CAP }
         scope.launch {
             downloading = true; error = null
             try {
                 val dir = java.io.File(cacheDir, "shared").apply { mkdirs() }
                 val used = mutableSetOf<String>()
-                val out = fs.filter { !it.isDir }.map { f ->
-                    val bytes = s.readBytes(f.path, 10 * 1024 * 1024) // P15: 10MB cap
+                val out = fit.map { f ->
+                    val bytes = s.readBytes(f.path, DOWNLOAD_CAP) // P15: 10MB cap
                     var name = f.name.ifBlank { "download" }
                     while (!used.add(name)) name = "$name.${used.size}"
                     java.io.File(dir, name).apply { writeBytes(bytes) }
                 }
-                if (out.isEmpty()) {
-                    error = "seçimde indirilecek dosya yok"
-                } else {
+                if (tooBig.isNotEmpty()) {
+                    error = (if (tooBig.size == 1) tooBig[0].name else "${tooBig.size} dosya") +
+                        " 10 MB sınırını aştığı için indirilmedi. Terminalden scp/rsync kullan."
+                }
+                if (out.isNotEmpty()) {
                     downloaded = out
+                } else if (tooBig.isEmpty()) {
+                    error = "seçimde indirilecek dosya yok"
                 }
             } catch (e: Exception) {
                 error = e.message ?: "İndirilemedi"

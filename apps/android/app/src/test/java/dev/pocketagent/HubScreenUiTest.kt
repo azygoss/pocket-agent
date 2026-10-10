@@ -2,6 +2,8 @@
 package dev.pocketagent
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
@@ -10,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.room.Room
@@ -235,5 +238,25 @@ class HubScreenUiTest {
         rule.onNodeWithContentDescription("Kapat").performClick()
         rule.waitForIdle()
         org.junit.Assert.assertTrue(dismissed)
+    }
+
+    // Aramada eşleşme yoksa çıkmaz sokak olmasın: yazılan kullanıcı@adres
+    // tek dokunuşla yeni host formuna dolar.
+    @Test fun noMatchSearchOffersToAddHost() {
+        val r = repo()
+        // Arama alanı altıdan fazla host'ta görünür.
+        kotlinx.coroutines.runBlocking {
+            repeat(6) { r.upsert(SavedConnection("prod-$it", "10.0.0.$it", 22, "root", "ram:password"), Secret.Password("pw")) }
+        }
+        rule.setContent { HubScreen(manager(), r, profiles(), onOpenSession = {}) }
+        rule.waitForIdle()
+        rule.onNodeWithText("Ad, host ya da kullanıcı ara").performScrollTo().performTextInput("berk@192.168.1.40")
+        rule.waitForIdle()
+        rule.onNodeWithText("Host olarak ekle").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Yeni host").assertIsDisplayed()
+        // Ad ve Host alanları adresle, Kullanıcı alanı "berk" ile dolar.
+        rule.onAllNodesWithText("192.168.1.40").assertCountEquals(2)
+        rule.onNodeWithText("berk").assertExists()
     }
 }

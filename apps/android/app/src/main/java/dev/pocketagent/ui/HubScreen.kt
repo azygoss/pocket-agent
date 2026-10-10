@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.PanTool
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QrCodeScanner
@@ -195,9 +196,21 @@ fun HubScreen(
         }.onFailure { notify("Dosya okunamadı: ${it.message}") }
     }
 
+    // Eşleşme başarılı olunca backend ayarı boşsa host'unkiyle doldurulur;
+    // aynı backend'de tenant elle değiştirilmemişse host'un tenant'ı alınır.
+    // Başka bir backend ayarlıysa dokunulmaz (kullanıcının bilinçli seçimi).
+    fun adoptBackend(url: String, tenant: String?) {
+        val s = settings ?: return
+        val cur = s.backendUrl.trimEnd('/')
+        when {
+            cur.isEmpty() -> s.setBackend(url, tenant ?: s.tenantToken.ifBlank { "default" })
+            cur == url.trimEnd('/') && tenant != null && s.tenantToken in setOf("", "default") -> s.setBackend(url, tenant)
+        }
+    }
     val startPair: (String, String) -> Unit = { backend, code ->
         pairClaim(backend, code, app, repo, sessions, scope, onConnected = { showPair = false; onOpenSession() },
-            onBusy = { pairBusy = it }, onError = { pairError = it; showPair = true })
+            onBusy = { pairBusy = it }, onError = { pairError = it; showPair = true },
+            onPaired = ::adoptBackend)
     }
     val qrLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         com.journeyapps.barcodescanner.ScanContract(),
@@ -229,6 +242,41 @@ fun HubScreen(
         }
     }
     val openPair = { pairError = null; showPair = true }
+
+    // Onay bildirimleri kapalıysa (izin reddedildi ya da sistemden kapatıldı)
+    // Oturumlar söyler. İlk dokunuş izni sorar; reddedildiyse ayarları açar.
+    // Uygulamaya dönünce yeniden bakılır.
+    fun notificationsOn() = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+    var notifOn by remember { mutableStateOf(notificationsOn()) }
+    var notifAsked by rememberSaveable { mutableStateOf(false) }
+    var notifHidden by rememberSaveable { mutableStateOf(false) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, ev ->
+            if (ev == androidx.lifecycle.Lifecycle.Event.ON_RESUME) notifOn = notificationsOn()
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
+    val notifPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { notifAsked = true; notifOn = notificationsOn() }
+    fun enableNotifications() {
+        val canAsk = android.os.Build.VERSION.SDK_INT >= 33 && !notifAsked &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (canAsk) {
+            notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            runCatching {
+                context.startActivity(
+                    android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
+    }
     val openImport = { sshConfigPicker.launch(arrayOf("*/*")) }
 
     // Bağlan: açık oturum varsa ona geç, secret yoksa düzenleyici sorar.
@@ -342,12 +390,28 @@ fun HubScreen(
                 return@LazyColumn
             }
 
+            if (settings?.backendConfigured == true && !notifOn && !notifHidden) {
+                item(key = "notif") {
+                    Banner(
+                        Status.Idle,
+                        "Onay bildirimleri kapalı",
+                        body = "Agent onay beklerken telefon haber veremez.",
+                        icon = Icons.Rounded.NotificationsOff,
+                        modifier = Modifier.padding(top = Space.sm),
+                        actions = {
+                            GhostButton("Şimdi değil", color = t.text2, onClick = { notifHidden = true })
+                            TonalButton(if (notifAsked) "Ayarları aç" else "Bildirimleri aç", onClick = ::enableNotifications)
+                        },
+                    )
+                }
+            }
+
             if (backendTrouble) {
                 item(key = "backend") {
                     Banner(
                         Status.Warn,
                         "Backend'e ulaşılamıyor",
-                        body = "Agent olayları güncellenmiyor. ${syncStatus.orEmpty()}",
+                        body = "Agent olayları güncellenmiyor. " + syncStatus.orEmpty().removePrefix("hata: "),
                         modifier = Modifier.padding(top = Space.sm),
                         actions = { GhostButton("Ayarlar", onClick = onOpenSettings) },
                     )
@@ -367,9 +431,16 @@ fun HubScreen(
                         icon = Icons.Rounded.PanTool,
                         modifier = Modifier.padding(top = Space.sm),
                         actions = {
-                            GhostButton("Okundu", color = t.text2, onClick = { pendingApprovals.forEach { inbox?.markRead(it.eventId) } })
+                            GhostButton("Okundu", color = t.text2, onClick = {
+                                pendingApprovals.forEach { inbox?.markRead(it.eventId) }
+                                app?.clearApprovalNotification()
+                            })
                             if (go != null) {
-                                TonalButton("Terminale git", onClick = { inbox?.markRead(first.eventId); go() })
+                                TonalButton("Terminale git", onClick = {
+                                    inbox?.markRead(first.eventId)
+                                    app?.clearApprovalNotification()
+                                    go()
+                                })
                             }
                         },
                     )
@@ -536,12 +607,21 @@ fun HubScreen(
             }
             if (hosts.isEmpty() && query.isNotBlank()) {
                 item(key = "no-match") {
-                    Text(
-                        "\"$query\" ile eşleşen host yok.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = t.text2,
-                        modifier = Modifier.padding(vertical = Space.md, horizontal = 4.dp),
-                    )
+                    // Çıkmaz sokak olmasın: aramayı temizle ya da yazılanı
+                    // (kullanıcı@adres de olur) yeni host olarak ekle.
+                    val q = query.trim()
+                    Column(Modifier.padding(vertical = Space.sm, horizontal = 4.dp)) {
+                        Text("\"$q\" ile eşleşen host yok.", style = MaterialTheme.typography.bodyMedium, color = t.text2)
+                        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                            GhostButton("Aramayı temizle", onClick = { query = "" }, color = t.text2)
+                            GhostButton("Host olarak ekle", icon = Icons.Rounded.Add, onClick = {
+                                val user = q.substringBefore('@', "")
+                                val addr = q.substringAfter('@')
+                                editor = NewHost.copy(name = addr, host = addr, user = user)
+                                query = ""
+                            })
+                        }
+                    }
                 }
             }
             item(key = "more") {
@@ -637,11 +717,17 @@ fun HubScreen(
         )
     }
     deletingHost?.let { c ->
+        // Bu host'ta açık oturumlar ayrılır (host'taki tmux sürer): silinen
+        // kaydın oturumu geri yüklenemez, "yeni oturum" da boşa düşerdi.
+        val open = sessionList.filter { it.conn.id == c.id }
         ConfirmDialog(
             title = "${c.name} silinsin mi?",
-            message = "Kayıtlı parola veya anahtar da bu cihazdan silinir. Host'taki oturumlara dokunulmaz.",
+            message = "Kayıtlı parola veya anahtar da bu cihazdan silinir. " +
+                (if (open.isEmpty()) "" else "Bu cihazdaki ${open.size} oturumu kapanır; ") +
+                "host'taki tmux oturumlarına dokunulmaz.",
             confirmLabel = "Sil",
             onConfirm = {
+                open.forEach { sessions.close(it.id, kill = false) }
                 scope.launch { repo.delete(c.id) }
                 deletingHost = null
                 notify("${c.name} silindi")
@@ -706,16 +792,18 @@ fun HubScreen(
             error = pairError,
             onDismiss = { showPair = false },
             onScan = { camPermission.launch(android.Manifest.permission.CAMERA) },
-            onCode = { backend, code ->
-                if (settings != null && backend.isNotBlank() && backend != settings.backendUrl) {
-                    settings.setBackend(backend, settings.tenantToken.ifBlank { "default" })
-                }
-                val parsed = dev.pocketagent.net.PairingClient.parseQr(code, backend)
-                if (parsed == null) {
-                    pairError = if (backend.isBlank()) "Kodla eşlemek için backend adresi gerekli." else "Kod 8 karakter olmalı (XXXX-XXXX)."
-                } else {
-                    pairError = null
-                    startPair(parsed.first, parsed.second)
+            onCode = { raw, code ->
+                // Adres eşleşme başarılı olunca kaydedilir (adoptBackend);
+                // yanlış yazılmış adres ayarları bozmaz.
+                val (backend, urlError) = dev.pocketagent.net.normalizeBackendUrl(raw)
+                val parsed = if (urlError == null) dev.pocketagent.net.PairingClient.parseQr(code, backend) else null
+                when {
+                    urlError != null -> pairError = urlError
+                    parsed == null -> pairError = if (backend.isBlank()) "Kodla eşlemek için backend adresi gerekli." else "Kod 8 karakter olmalı (XXXX-XXXX)."
+                    else -> {
+                        pairError = null
+                        startPair(parsed.first, parsed.second)
+                    }
                 }
             },
         )

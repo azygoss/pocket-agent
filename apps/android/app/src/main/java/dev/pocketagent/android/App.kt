@@ -21,6 +21,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
+private const val APPROVAL_NOTIFICATION = 1001
+
+// Bildirilecek onaylar: inbox'ta henüz olmayan (uygulama yeniden açılınca
+// 24 saatlik geçmiş tekrar bildirilmesin) ve son 10 dakikada oluşanlar.
+internal fun approvalsToNotify(
+    events: List<dev.pocketagent.net.BackendEvent>,
+    known: Set<String>,
+    nowMs: Long,
+): List<dev.pocketagent.net.BackendEvent> = events.filter { e ->
+    e.eventId !in known && e.category.contains("APPROVAL", ignoreCase = true) &&
+        runCatching { java.time.Instant.parse(e.createdAt).toEpochMilli() }.getOrDefault(0L) >= nowMs - 10 * 60_000
+}
+
 // Uygulama genelinde tek örnekler. Hepsi lazy: Robolectric altında ve
 // process ölümü sonrası yeniden yaratımda güvenli.
 class App : Application() {
@@ -70,17 +83,21 @@ class App : Application() {
             appScope,
             { backendClient },
             onEvents = { events ->
+                val known = inbox.rows.mapTo(HashSet()) { it.eventId }
                 inbox.mergeRemote(events)
-                notifyApprovals(events)
+                notifyApprovals(approvalsToNotify(events, known, System.currentTimeMillis()))
             },
             onUsages = { arr -> usage.updateFrom(arr) },
         )
     }
 
-    // Yeni onay isteği geldiğinde (uygulama arka plandayken) bildirim düşür.
-    private fun notifyApprovals(events: List<dev.pocketagent.net.BackendEvent>) {
-        val approvals = events.filter { it.category.contains("APPROVAL", ignoreCase = true) }
+    // Yeni onay isteği geldiğinde bildirim düşür; uygulama önündeyken Oturumlar
+    // zaten onay bandını gösterir.
+    private fun notifyApprovals(approvals: List<dev.pocketagent.net.BackendEvent>) {
         if (approvals.isEmpty()) return
+        val proc = android.app.ActivityManager.RunningAppProcessInfo()
+        android.app.ActivityManager.getMyMemoryState(proc)
+        if (proc.importance <= android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) return
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
             android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -95,18 +112,26 @@ class App : Application() {
             this, 0, packageManager.getLaunchIntentForPackage(packageName),
             android.app.PendingIntent.FLAG_IMMUTABLE,
         )
+        val last = approvals.last()
         val n = android.app.Notification.Builder(this, "agents")
-            .setContentTitle("Agent onayı bekliyor")
-            .setContentText(approvals.last().message.ifBlank { approvals.last().category })
+            .setContentTitle(if (approvals.size == 1) "Agent onayı bekliyor" else "${approvals.size} agent onayı bekliyor")
+            .setContentText(last.source.ifBlank { "agent" } + ": " + last.message.ifBlank { last.category })
             .setSmallIcon(dev.pocketagent.android.R.drawable.ic_stat_pocket)
             .setContentIntent(openApp)
             .setAutoCancel(true)
             .build()
-        nm.notify(1001, n)
+        nm.notify(APPROVAL_NOTIFICATION, n)
+    }
+
+    // Onay uygulamada okununca bildirim gölgede kalmasın.
+    fun clearApprovalNotification() {
+        (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager).cancel(APPROVAL_NOTIFICATION)
     }
 
     fun configureBackend(url: String, tenant: String) {
         backendClient = if (url.isNotBlank() && tenant.isNotBlank()) BackendClient(url, tenant) else null
+        // Ayar düzelince beklemeden dene (önceki hatanın 5dk geri çekilmesini kes).
+        eventSync.syncNow()
     }
 
     // Bildirimdeki "Tümünü kapat" aksiyonu burada biter.

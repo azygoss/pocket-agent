@@ -26,6 +26,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollToKey
 import androidx.room.Room
 import dev.pocketagent.data.AppDatabase
@@ -331,6 +332,30 @@ class DesignShotsTest {
             rule.onNode(hasContentDescription("Geri")).performClick()
             rule.waitForIdle()
         }
+    }
+
+    // Uzak http:// adres kaydedilmez; alanın altında neden ve çözüm görünür.
+    @Test fun settingsBackendCleartextError() {
+        val app = RuntimeEnvironment.getApplication() as dev.pocketagent.android.App
+        val hk = TofuHostKeyStore(File.createTempFile("hostkeys", ".db"))
+        rule.setContent { Shell(PocketConsoleTheme) { SettingsScreen(SettingsViewModel(), UsageViewModel(), hk, app) } }
+        rule.onNodeWithText("Backend").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onAllNodes(androidx.compose.ui.test.hasSetTextAction())[0].performTextInput("http://128.140.70.117:8080")
+        rule.onNodeWithText("Kaydet").performScrollTo().performClick()
+        shot("settings-backend-error-dark")
+    }
+
+    // Backend ayarlı, bildirim izni yok: Oturumlar bunu söyler.
+    @Test fun hubNotificationsOff() {
+        val nm = RuntimeEnvironment.getApplication().getSystemService(android.app.NotificationManager::class.java)
+        org.robolectric.Shadows.shadowOf(nm).setNotificationsEnabled(false)
+        val m = manager()
+        val d = db()
+        val vm = SettingsViewModel().apply { setBackend("https://128-140-70-117.nip.io", "default") }
+        rule.setContent { Shell(PocketConsoleTheme) { HubScreen(m, seeded(d), profiles(d), settings = vm, syncStatus = "bağlı", onOpenSession = {}) } }
+        Thread.sleep(400)
+        shot("hub-notifications-off-dark")
     }
 
     @Test fun chat() {

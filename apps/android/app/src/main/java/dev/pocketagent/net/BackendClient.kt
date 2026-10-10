@@ -24,6 +24,48 @@ data class BackendEvent(
     val expiresAt: String,
 )
 
+// Telefonun şifresiz HTTP'ye izin verdiği adresler (network_security_config).
+private val CLEARTEXT_OK = setOf("localhost", "127.0.0.1", "10.0.2.2")
+
+// Yazılan backend adresini düzeltir: şema yoksa https:// eklenir, sondaki /
+// atılır. İkinci değer kullanıcıya gösterilecek hata (null = geçerli).
+fun normalizeBackendUrl(raw: String): Pair<String, String?> {
+    var u = raw.trim().trimEnd('/')
+    if (u.isEmpty()) return "" to null
+    if (!u.contains("://")) u = "https://$u"
+    val uri = runCatching { java.net.URI(u) }.getOrNull()
+    val host = uri?.host
+    return u to when {
+        uri == null || host.isNullOrBlank() || uri.scheme !in setOf("http", "https") ->
+            "Geçerli bir adres değil (örn. https://agent.ornek.com)."
+        uri.scheme == "http" && host !in CLEARTEXT_OK ->
+            "Telefon şifresiz HTTP'ye bağlanmaz. Adresi https:// ile yaz; domain yoksa 1-2-3-4.nip.io biçimi çalışır."
+        else -> null
+    }
+}
+
+// Ağ hatasını, kullanıcıya ne yapacağını söyleyen kısa metne çevirir.
+fun backendProblem(e: Throwable): String {
+    val chain = generateSequence(e) { it.cause }.take(8).toList()
+    val text = chain.joinToString(" ") { it.message.orEmpty() }
+    // BackendClient.events'in require mesajı ("events 404") ya da "HTTP 502".
+    val http = Regex("(?:events|HTTP) ([45]\\d\\d)").find(text)?.groupValues?.get(1)
+    return when {
+        text.contains("Cleartext", ignoreCase = true) ->
+            "Telefon şifresiz HTTP'ye bağlanmaz; adresi https:// ile yaz."
+        chain.any { it is java.net.UnknownHostException } ->
+            "Adres bulunamadı. Yazımı ve internet bağlantını kontrol et."
+        chain.any { it is javax.net.ssl.SSLException || it is java.security.cert.CertificateException } ->
+            "HTTPS sertifikası doğrulanamadı. Sunucuda geçerli bir sertifika olmalı (Caddy, DOMAIN)."
+        chain.any { it is java.net.SocketTimeoutException } ->
+            "Backend zamanında yanıt vermedi. Sunucu açık mı, 443 portu dışarıya açık mı?"
+        chain.any { it is java.net.ConnectException } ->
+            "Backend bağlantıyı reddetti. Sunucu çalışıyor mu?"
+        http != null -> "Backend HTTP $http döndü. Adres doğru mu?"
+        else -> e.message ?: e.javaClass.simpleName
+    }
+}
+
 class BackendClient(
     private val baseUrl: String,
     private val tenant: String,
@@ -39,9 +81,15 @@ class BackendClient(
         return c
     }
 
-    fun health(): Boolean = runCatching {
-        conn("/v1/healthz").responseCode == 200
-    }.getOrDefault(false)
+    fun health(): Boolean = check() == null
+
+    // null = erişilebilir; değilse okunur neden.
+    fun check(): String? = try {
+        val code = conn("/v1/healthz").responseCode
+        if (code == 200) null else "Backend HTTP $code döndü. Adres doğru mu?"
+    } catch (e: Exception) {
+        backendProblem(e)
+    }
 
     fun events(after: String? = null): List<BackendEvent> {
         val path = if (after.isNullOrEmpty()) "/v1/events" else "/v1/events?after=$after"

@@ -461,23 +461,32 @@ internal fun pairClaim(
     onConnected: () -> Unit,
     onBusy: (Boolean) -> Unit,
     onError: (String) -> Unit,
+    onPaired: (backend: String, tenant: String?) -> Unit = { _, _ -> },
 ) {
     val deviceId = app?.deviceId ?: "device:unknown"
     scope.launch(kotlinx.coroutines.Dispatchers.IO) {
         onBusy(true)
         try {
             val r = dev.pocketagent.net.PairingClient.claim(backend, code, deviceId)
-            val conn = SavedConnection(
+            // Aynı host'u yeniden eşlemek ikinci kayıt açmaz: yeni anahtar
+            // mevcut kayda yazılır (ad ve geçmiş korunur).
+            val existing = repo.items.value.firstOrNull {
+                it.host.equals(r.sshHost, ignoreCase = true) && it.port == r.sshPort && it.user == r.sshUser
+            }
+            val conn = (existing ?: SavedConnection(
                 name = "${r.sshUser}@${r.sshHost}",
                 host = r.sshHost,
                 port = r.sshPort,
                 user = r.sshUser,
                 credentialRef = "keystore",
-            )
+            )).copy(credentialRef = "keystore")
             val secret = Secret.PemKey(r.privateKeyPem)
             val id = repo.upsert(conn, secret, remember = true)
             sessions.open(conn.copy(id = id), secret)
-            launch(kotlinx.coroutines.Dispatchers.Main) { onConnected() }
+            launch(kotlinx.coroutines.Dispatchers.Main) {
+                onPaired(backend, r.tenant)
+                onConnected()
+            }
         } catch (e: dev.pocketagent.net.PairingClient.FailureException) {
             onError(e.failure.msg)
         } catch (e: Exception) {

@@ -189,6 +189,23 @@ class PanelsTest {
         mgr.closeAll()
     }
 
+    // 10 MB'ı aşan dosya kesik paylaşılmaz: atlanır, kullanıcıya söylenir;
+    // sınır içindekiler yine paylaşılır.
+    @Test fun oversizedDownloadsAreSkippedNotTruncated() = kotlinx.coroutines.runBlocking {
+        val transport = SftpFakeTransport()
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        val mgr = sftpManager(transport, scope)
+        val vm = activeVm(mgr, scope, java.io.File.createTempFile("cache", "d").apply { delete(); mkdirs() })
+        val small = dev.pocketagent.transport.RemoteFile("a.txt", "/home/u/a.txt", false, 3, 0)
+        val big = dev.pocketagent.transport.RemoteFile("dump.tar", "/home/u/dump.tar", false, 11L * 1024 * 1024, 0)
+        transport.files[small.path] = byteArrayOf(1, 2, 3)
+        vm.downloadAll(listOf(small, big))
+        kotlinx.coroutines.withTimeout(5_000) { while (vm.downloaded == null) kotlinx.coroutines.delay(10) }
+        assertEquals(listOf("a.txt"), vm.downloaded!!.map { it.name })
+        assertTrue(vm.error!!.startsWith("dump.tar 10 MB"))
+        mgr.closeAll()
+    }
+
     @Test fun filesBulkAndGrep() = kotlinx.coroutines.runBlocking {
         // Çoklu seçim: toplu indir (cache'e yazar) + toplu sil.
         // İçerik arama: exec grep → parse → reveal (üst dizin + önizleme).

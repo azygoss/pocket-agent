@@ -4,6 +4,7 @@ package dev.pocketagent
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -78,6 +79,27 @@ class SettingsScreenUiTest {
         org.junit.Assert.assertFalse(vm.keyHaptics)
         rule.onNodeWithText("Terminalde ekranı açık tut").performScrollTo().performClick()
         org.junit.Assert.assertTrue(vm.keepScreenOn)
+    }
+
+    // Şemasız adres https:// ile kaydedilir, boş tenant "default" olur; uzak
+    // http:// adres (telefonda çalışmaz) kaydedilmez, alanın altında söylenir.
+    @Test fun backendAddressIsNormalizedAndCleartextRefused() {
+        val vm = SettingsViewModel()
+        setContent(vm)
+        rule.onNodeWithText("Backend").performClick()
+        rule.waitForIdle()
+        val url = rule.onAllNodes(hasSetTextAction())[0]
+        url.performTextInput("http://128.140.70.117:8080")
+        rule.onNodeWithText("Kaydet").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Telefon şifresiz HTTP'ye bağlanmaz", substring = true).assertExists()
+        org.junit.Assert.assertEquals("", vm.backendUrl)
+        url.performTextClearance()
+        url.performTextInput("agent.example.com/")
+        rule.onNodeWithText("Kaydet").performScrollTo().performClick()
+        rule.waitForIdle()
+        org.junit.Assert.assertEquals("https://agent.example.com", vm.backendUrl)
+        org.junit.Assert.assertEquals("default", vm.tenantToken)
     }
 
     @Test fun autoReconnectOnDropDefaultsOn() {
