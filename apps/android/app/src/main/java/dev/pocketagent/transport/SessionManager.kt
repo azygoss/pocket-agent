@@ -186,9 +186,11 @@ class SessionManager(
 
     // Kullanıcı kapattı: bu cihazın açtığı oturumda uzak tmux öldürülür;
     // paylaşılan (başka cihazın) oturumda yalnızca detach edilir.
-    fun close(id: String) {
+    // kill=false: "ayır" — bağlantı kapanır, tmux host'ta çalışmaya devam
+    // eder (registry kalır; keşifte uzak oturum olarak geri gelir).
+    fun close(id: String, kill: Boolean = true) {
         val h = _sessions.value.firstOrNull { it.id == id } ?: return
-        h.controller.disconnect(killRemote = id !in _sharedIds.value)
+        h.controller.disconnect(killRemote = kill && id !in _sharedIds.value)
         _sessions.value = _sessions.value - h
         _customNames.value = _customNames.value - id
         _tmuxNames.value = _tmuxNames.value - id
@@ -196,6 +198,9 @@ class SessionManager(
         if (_activeId.value == id) _activeId.value = _sessions.value.lastOrNull()?.id
         refreshAnyActive()
     }
+
+    // Başka cihazın açtığı oturum mu (kapatma yalnız ayırır)?
+    fun isShared(id: String): Boolean = id in _sharedIds.value
 
     fun setActive(id: String) {
         if (_sessions.value.any { it.id == id }) _activeId.value = id

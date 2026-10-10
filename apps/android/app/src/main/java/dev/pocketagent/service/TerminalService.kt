@@ -56,7 +56,7 @@ class TerminalService : Service() {
         return Notification.Builder(this, "terminal")
             .setContentTitle("Pocket Agent")
             .setContentText(if (count == 1) "1 aktif oturum" else "$count aktif oturum")
-            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+            .setSmallIcon(dev.pocketagent.android.R.drawable.ic_stat_pocket)
             .setContentIntent(openApp)
             .addAction(
                 Notification.Action.Builder(null, "Tümünü kapat", closeAll).build(),

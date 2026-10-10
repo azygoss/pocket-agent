@@ -24,9 +24,11 @@ terminal output, file contents, diffs, and chat never reach it.
   tunneled over SSH loopback (jailed, token-authenticated)
 - **Agent hooks** — Claude/Codex event stream: notifications, approval
   requests, chat-style output, 24h-TTL summary inbox
-- **Android UX** — a pixel-signal design language ([docs/design.md](docs/design.md)):
-  ink-on-graphite/paper sheets, per-host sigils, 19 themes, terminal fonts,
-  pinch-zoom, OSC52 clipboard, OSC8 hyperlinks, key bar, multiple terminal tabs
+- **Android UX** — one sessions-first screen with live previews, a terminal
+  that slides up as a layer, an agent-prompt key panel (Enter, arrows,
+  Shift+Tab, snippets), explicit close-or-detach, per-host avatars, 19
+  contrast-checked themes, terminal fonts, pinch-zoom, OSC52 clipboard,
+  OSC8 hyperlinks, two-pane layout on tablets ([docs/design.md](docs/design.md))
 - **Mosh bootstrap** — `mosh-server` is packaged for the host; the roaming
   client side is experimental (see Status and limits)
 
@@ -94,12 +96,14 @@ Full list: `pocket-agent help`.
   scrollback, pinch-zoom, selection + OSC52 copy
 - **Connection**: SSH keepalive, automatic reconnect, hard-stop warning on
   TOFU pin change, experimental Mosh roaming
-- **Sessions**: named tmux sessions, session cards, processes that keep
-  running on the host even when the link drops
+- **Sessions**: named tmux sessions, live session cards, attach to tmux
+  sessions started on another device, close or detach (keep running on
+  the host)
 - **Files**: SFTP browser, upload/download/share, workspace + git diff
   view, HTTP preview
-- **App**: Material 3 theming, font/size settings, key bar, agent
-  notifications and approval dialogs
+- **App**: IBM Plex Sans/Mono interface, theme and terminal font settings,
+  key panel snippets, agent activity feed, notifications and approval
+  dialogs
 
 ## Build from source
 

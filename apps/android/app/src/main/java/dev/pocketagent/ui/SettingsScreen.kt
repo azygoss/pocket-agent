@@ -2,47 +2,69 @@
 package dev.pocketagent.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Backup
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Backup
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.RadioButtonChecked
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,30 +72,31 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.pocketagent.android.App
 import dev.pocketagent.transport.TofuHostKeyStore
-import dev.pocketagent.ui.theme.ConsoleFont
+import dev.pocketagent.ui.theme.Code
 import dev.pocketagent.ui.theme.ConsoleFonts
 import dev.pocketagent.ui.theme.ConsoleTheme
 import dev.pocketagent.ui.theme.ConsoleThemes
+import dev.pocketagent.ui.theme.Motion
 import dev.pocketagent.ui.theme.Space
-import dev.pocketagent.ui.theme.Readout
-import androidx.compose.foundation.layout.defaultMinSize
+import dev.pocketagent.ui.theme.Tone
 import dev.pocketagent.ui.theme.consoleFont
 import dev.pocketagent.ui.theme.consoleTheme
+import dev.pocketagent.ui.theme.rememberReducedMotion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-// Ayarlar: hub-and-spoke. Index, her bölümü mevcut değeriyle gösteren
-// gruplu satırlardan oluşur; detay sayfalar tek konuya odaklanır.
+// Ayarlar: dizin + odaklı detay sayfaları. Dizin her bölümün mevcut değerini
+// gösterir; kullanıcı içeri girmeden durumu görür.
 private enum class SettingsPage(val title: String) {
     Appearance("Görünüm"),
     Session("Terminal ve oturum"),
@@ -84,42 +107,49 @@ private enum class SettingsPage(val title: String) {
 }
 
 @Composable
-fun SettingsScreen(settings: SettingsViewModel, usage: UsageViewModel, hostKeys: TofuHostKeyStore, app: App) {
-    var page by remember { mutableStateOf<SettingsPage?>(null) }
+fun SettingsScreen(
+    settings: SettingsViewModel,
+    usage: UsageViewModel,
+    hostKeys: TofuHostKeyStore,
+    app: App,
+    onBack: (() -> Unit)? = null,
+) {
+    var page by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
     BackHandler(enabled = page != null) { page = null }
-    val back = { page = null }
-    // Detaya giriş: içerik 24dp sağdan kayarak + solarak gelir; dönüş tersi.
-    val reduced = dev.pocketagent.ui.theme.rememberReducedMotion()
-    androidx.compose.animation.AnimatedContent(
+    val reduced = rememberReducedMotion()
+    AnimatedContent(
         targetState = page,
         transitionSpec = {
             val forward = targetState != null
             if (reduced) {
-                androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
+                EnterTransition.None togetherWith ExitTransition.None
             } else {
-                (
-                    androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)) +
-                        androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(220)) { w -> if (forward) w / 16 else -w / 16 }
-                    ) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(90))
+                (fadeIn(tween(Motion.Standard, easing = Motion.Enter)) +
+                    slideInHorizontally(tween(Motion.Emphasized, easing = Motion.Enter)) { w -> if (forward) w / 10 else -w / 10 }) togetherWith
+                    (fadeOut(tween(Motion.Fast, easing = Motion.Exit)) +
+                        slideOutHorizontally(tween(Motion.Fast, easing = Motion.Exit)) { w -> if (forward) -w / 20 else w / 20 })
             }
         },
         label = "settings-page",
+        modifier = Modifier.fillMaxSize().background(Tok.bg),
     ) { current ->
         when (current) {
-            null -> SettingsIndex(settings, usage, hostKeys, app) { page = it }
-            SettingsPage.Appearance -> SettingsDetailPage(SettingsPage.Appearance.title, back) { AppearanceContent(settings) }
-            SettingsPage.Session -> SettingsDetailPage(SettingsPage.Session.title, back) { SessionContent(settings) }
-            SettingsPage.Backend -> SettingsDetailPage(SettingsPage.Backend.title, back) { BackendContent(settings, app) }
-            SettingsPage.Security -> SettingsDetailPage(SettingsPage.Security.title, back) { SecurityContent(hostKeys) }
-            SettingsPage.Data -> SettingsDetailPage(SettingsPage.Data.title, back) { DataContent(settings, usage, app) }
-            SettingsPage.About -> SettingsDetailPage(SettingsPage.About.title, back) { AboutContent(app) }
+            null -> SettingsIndex(settings, usage, hostKeys, app, onBack) { page = it }
+            else -> DetailPage(current.title, onBack = { page = null }) {
+                when (current) {
+                    SettingsPage.Appearance -> AppearanceContent(settings)
+                    SettingsPage.Session -> SessionContent(settings)
+                    SettingsPage.Backend -> BackendContent(settings, app)
+                    SettingsPage.Security -> SecurityContent(hostKeys)
+                    SettingsPage.Data -> DataContent(settings, usage, app)
+                    SettingsPage.About -> AboutContent(app)
+                }
+            }
         }
     }
 }
 
-// ── Index ────────────────────────────────────────────────────────────────────
-// Gruplu nav satırları: ikon karosu + başlık + canlı değer özeti + chevron.
-// Kullanıcı detaya girmeden ayarın mevcut durumunu görür.
+// ── Dizin ───────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SettingsIndex(
@@ -127,81 +157,65 @@ private fun SettingsIndex(
     usage: UsageViewModel,
     hostKeys: TofuHostKeyStore,
     app: App,
+    onBack: (() -> Unit)?,
     onOpen: (SettingsPage) -> Unit,
 ) {
+    val t = Tok
     val theme = consoleTheme(settings.theme.themeId)
     val font = consoleFont(settings.theme.fontId)
     val syncStatus by app.eventSync.status.collectAsState()
-    val pinned = hostKeys.all()
-    val pkg = LocalContext.current.packageManager
-    val version = remember {
-        runCatching { pkg.getPackageInfo(app.packageName, 0).versionName }.getOrNull() ?: "dev"
-    }
+    val pinned = remember { hostKeys.all() }
+    val version = rememberVersion(app)
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.lg),
-    ) {
-        Spacer(Modifier.height(Space.lg))
-        ScreenHeader("Ayarlar", meta = "v$version")
-        Spacer(Modifier.height(Space.xl))
-
-        SettingsGroup("Kişiselleştirme") {
-            SettingsNavRow(
-                icon = Icons.Filled.Palette,
-                title = "Görünüm",
-                subtitle = "${theme.name} · ${font.name} · %.1fx".format(settings.theme.fontScale),
-            ) { onOpen(SettingsPage.Appearance) }
-            InsetDivider()
-            SettingsNavRow(
-                icon = Icons.Filled.Terminal,
-                title = "Terminal ve oturum",
-                subtitle = sessionSubtitle(settings),
-            ) { onOpen(SettingsPage.Session) }
+    Column(Modifier.fillMaxSize()) {
+        PocketTopBar("Ayarlar", onBack = onBack)
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Space.lg)
+                .windowInsetsPadding(WindowInsets.navigationBars),
+        ) {
+            Column(Modifier.widthIn(max = 640.dp).align(Alignment.CenterHorizontally)) {
+                SettingsGroup("Kişiselleştirme") {
+                    NavRow(Icons.Rounded.Palette, t.accent, "Görünüm", "${theme.name} · ${font.name} · %.1f×".format(settings.theme.fontScale)) {
+                        onOpen(SettingsPage.Appearance)
+                    }
+                    InsetDivider(Space.lg + 40.dp + Space.md)
+                    NavRow(Icons.Rounded.Terminal, t.busy, "Terminal ve oturum", sessionSubtitle(settings)) { onOpen(SettingsPage.Session) }
+                }
+                SettingsGroup("Bağlantı") {
+                    NavRow(
+                        Icons.Rounded.Dns, t.live, "Backend", backendSubtitle(settings.backendUrl),
+                        trailing = if (settings.backendConfigured) {
+                            { val (s, l) = syncLabel(syncStatus); StatusChip(s, l) }
+                        } else null,
+                    ) { onOpen(SettingsPage.Backend) }
+                    InsetDivider(Space.lg + 40.dp + Space.md)
+                    NavRow(
+                        Icons.Rounded.Key, t.warn, "Bilinen host anahtarları",
+                        if (pinned.isEmpty()) "Henüz pinlenmiş anahtar yok" else "${pinned.size} anahtar pinli",
+                    ) { onOpen(SettingsPage.Security) }
+                }
+                SettingsGroup("Uygulama") {
+                    NavRow(
+                        Icons.Rounded.Backup, t.neutral, "Yedekleme ve kullanım",
+                        if (usage.rows.isEmpty()) "JSON yedek · agent kotaları" else "${usage.rows.size} agent izleniyor",
+                    ) { onOpen(SettingsPage.Data) }
+                    InsetDivider(Space.lg + 40.dp + Space.md)
+                    NavRow(Icons.Rounded.Info, t.neutral, "Hakkında", "Sürüm $version · güncelleme · lisanslar") { onOpen(SettingsPage.About) }
+                }
+                Spacer(Modifier.height(Space.x3))
+            }
         }
-        Spacer(Modifier.height(Space.xl))
-
-        SettingsGroup("Bağlantı") {
-            SettingsNavRow(
-                icon = Icons.Filled.Dns,
-                title = "Backend",
-                subtitle = backendSubtitle(settings.backendUrl),
-                trailing = if (settings.backendConfigured) {
-                    { TagPill(syncStatus, active = syncStatus == "bağlı", tone = if (syncStatus == "bağlı") Tok.accent else null) }
-                } else {
-                    null
-                },
-            ) { onOpen(SettingsPage.Backend) }
-            InsetDivider()
-            SettingsNavRow(
-                icon = Icons.Filled.Key,
-                title = "Bilinen host anahtarları",
-                subtitle = if (pinned.isEmpty()) "Henüz pinli anahtar yok" else "${pinned.size} anahtar pinlendi",
-            ) { onOpen(SettingsPage.Security) }
-        }
-        Spacer(Modifier.height(Space.xl))
-
-        SettingsGroup("Uygulama") {
-            SettingsNavRow(
-                icon = Icons.Filled.Backup,
-                title = "Yedekleme ve kullanım",
-                subtitle = if (usage.rows.isEmpty()) "JSON dışa aktarım · kota özetleri" else "${usage.rows.size} agent izleniyor",
-            ) { onOpen(SettingsPage.Data) }
-            InsetDivider()
-            SettingsNavRow(
-                icon = Icons.Filled.Info,
-                title = "Hakkında",
-                subtitle = "v$version · güncelleme · lisanslar",
-            ) { onOpen(SettingsPage.About) }
-        }
-        Spacer(Modifier.height(Space.xxl))
     }
 }
 
 private fun sessionSubtitle(s: SettingsViewModel): String {
     val n = s.snippetList().size
-    val snip = if (n == 0) "snippet yok" else "$n snippet"
-    val rec = if (s.autoReconnectOnDrop) "yeniden bağlan açık" else "yeniden bağlan kapalı"
-    return "$snip · $rec"
+    val snip = if (n == 0) "kısayol yok" else "$n kısayol"
+    val rec = if (s.autoReconnectOnDrop) "otomatik yeniden bağlanır" else "yeniden bağlanma kapalı"
+    return "$rec · $snip"
 }
 
 private fun backendSubtitle(url: String): String {
@@ -209,23 +223,29 @@ private fun backendSubtitle(url: String): String {
     return url.removePrefix("https://").removePrefix("http://").substringBefore('/').ifBlank { "Ayarlanmadı" }
 }
 
-// Bölüm: küçük etiket + tek kartta toplanan satırlar (iOS grouped list dili).
+private fun syncLabel(status: String): Pair<Status, String> = when {
+    status == "bağlı" -> Status.Live to "Bağlı"
+    status == "kapalı" || status == "backend ayarlanmadı" -> Status.Idle to "Kapalı"
+    else -> Status.Error to "Hata"
+}
+
+@Composable
+private fun rememberVersion(app: App): String {
+    val pkg = LocalContext.current.packageManager
+    return remember { runCatching { pkg.getPackageInfo(app.packageName, 0).versionName }.getOrNull() ?: "dev" }
+}
+
 @Composable
 private fun SettingsGroup(label: String, content: @Composable ColumnScope.() -> Unit) {
-    SectionLabel(label, Modifier.padding(start = 2.dp))
+    SectionHeader(label, modifier = Modifier.padding(top = Space.md, start = 4.dp))
+    PocketCard(contentPadding = PaddingValues(vertical = 4.dp), content = content)
     Spacer(Modifier.height(Space.sm))
-    ConsoleCard(padding = 0.dp, content = content)
-}
-
-// Ayırıcıyı metin hizasına içeri al (ikon karosu genişliği kadar girinti).
-@Composable
-private fun InsetDivider() {
-    SoftDivider(Modifier.padding(start = Space.lg + 36.dp + Space.md))
 }
 
 @Composable
-private fun SettingsNavRow(
+private fun NavRow(
     icon: ImageVector,
+    tone: Tone,
     title: String,
     subtitle: String,
     trailing: (@Composable () -> Unit)? = null,
@@ -235,312 +255,401 @@ private fun SettingsNavRow(
         title = title,
         subtitle = subtitle,
         onClick = onClick,
-        leading = { IconTile(icon) },
+        leading = { IconTile(icon, tone = tone) },
         trailing = {
-            trailing?.invoke()
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = Tok.muted,
-                modifier = Modifier.size(18.dp),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                trailing?.invoke()
+                Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = Tok.text3, modifier = Modifier.size(20.dp))
+            }
         },
     )
 }
 
-// ── Detay sayfası iskeleti ───────────────────────────────────────────────────
-// Üstte 48dp geri hedefi + başlık; içerik kartları aşağıda.
+// ── Detay sayfası iskeleti ──────────────────────────────────────────────────
 
 @Composable
-private fun SettingsDetailPage(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+private fun DetailPage(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 6.dp, top = Space.sm, end = Space.lg),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .semantics { contentDescription = "Geri" }
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = null,
-                    tint = Tok.muted,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Text(
-                title,
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-            )
-        }
+        PocketTopBar(title, onBack = onBack)
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.lg),
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Space.lg)
+                .windowInsetsPadding(WindowInsets.navigationBars),
         ) {
-            Spacer(Modifier.height(Space.md))
-            content()
-            Spacer(Modifier.height(Space.xxl))
+            Column(Modifier.widthIn(max = 640.dp).align(Alignment.CenterHorizontally)) {
+                Spacer(Modifier.height(Space.sm))
+                content()
+                Spacer(Modifier.height(Space.x3))
+            }
         }
     }
+}
+
+@Composable
+private fun CardTitle(text: String, body: String? = null) {
+    Text(text, style = MaterialTheme.typography.titleMedium, color = Tok.text)
+    if (body != null) {
+        Spacer(Modifier.height(4.dp))
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = Tok.text2)
+    }
+    Spacer(Modifier.height(Space.lg))
 }
 
 // ── Görünüm ─────────────────────────────────────────────────────────────────
 
 @Composable
 private fun AppearanceContent(settings: SettingsViewModel) {
-    ConsoleCard {
-        SectionLabel("Tema")
-        Spacer(Modifier.height(Space.sm))
-        ConsoleThemes.chunked(3).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                row.forEach { t ->
-                    ThemeCell(
-                        t,
-                        settings.theme.themeId == t.id,
-                        Modifier.weight(1f),
-                    ) { settings.setThemeId(t.id) }
+    val house = ConsoleThemes.filter { it.id.startsWith("pocket") }
+    val others = ConsoleThemes.filter { !it.id.startsWith("pocket") }
+    SectionHeader("Pocket temaları", modifier = Modifier.padding(start = 4.dp))
+    ThemeGrid(house, settings)
+    SectionHeader("Terminal temaları", modifier = Modifier.padding(top = Space.md, start = 4.dp))
+    ThemeGrid(others, settings)
+
+    SectionHeader("Terminal yazı tipi", modifier = Modifier.padding(top = Space.md, start = 4.dp))
+    PocketCard(contentPadding = PaddingValues(vertical = 4.dp)) {
+        ConsoleFonts.forEachIndexed { i, f ->
+            if (i > 0) InsetDivider(Space.lg + 24.dp + Space.md)
+            val selected = settings.theme.fontId == f.id
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .selectable(selected = selected, role = Role.RadioButton, onClick = { settings.setFontId(f.id) })
+                    .padding(horizontal = Space.lg, vertical = Space.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    if (selected) Icons.Rounded.RadioButtonChecked else Icons.Rounded.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (selected) Tok.primary else Tok.text3,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(Modifier.width(Space.md))
+                Column(Modifier.weight(1f)) {
+                    Text(f.name, style = MaterialTheme.typography.bodyLarge, color = Tok.text)
+                    Text("~/src $ git status -sb", fontFamily = f.family, fontSize = 13.sp, color = Tok.text2, maxLines = 1)
                 }
-                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
-            Spacer(Modifier.height(Space.sm))
         }
     }
-    Spacer(Modifier.height(Space.lg))
-    ConsoleCard {
-        SectionLabel("Terminal yazı tipi")
-        Spacer(Modifier.height(2.dp))
+
+    SectionHeader("Yazı ölçeği", modifier = Modifier.padding(top = Space.md, start = 4.dp), count = "%.1f×".format(settings.theme.fontScale))
+    PocketCard {
         Text(
-            "Arayüz okumaları her zaman IBM Plex Mono ile basılır; bu seçim terminali etkiler.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Tok.muted,
+            "user@host:~$ ls -la",
+            fontFamily = consoleFont(settings.theme.fontId).family,
+            fontSize = (13 * settings.theme.fontScale).sp,
+            color = Tok.text,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
         )
-        Spacer(Modifier.height(Space.sm))
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(Space.sm),
-        ) {
-            ConsoleFonts.forEach { f ->
-                FontChip(f, settings.theme.fontId == f.id) { settings.setFontId(f.id) }
-            }
-        }
-        SoftDivider(Modifier.padding(vertical = Space.md))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Yazı ölçeği", style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.weight(1f))
-            Text(
-                "%.1fx".format(settings.theme.fontScale),
-                style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout),
-                color = Tok.text2,
-            )
-        }
         Slider(
             value = settings.theme.fontScale,
             onValueChange = { settings.setFontScale(it) },
             valueRange = 0.8f..2.0f,
+            colors = SliderDefaults.colors(thumbColor = Tok.primary, activeTrackColor = Tok.primary, inactiveTrackColor = Tok.raised),
+        )
+        Text("Terminalde iki parmakla yakınlaştırarak da değiştirebilirsin.", style = MaterialTheme.typography.bodySmall, color = Tok.text2)
+    }
+}
+
+@Composable
+private fun ThemeGrid(themes: List<ConsoleTheme>, settings: SettingsViewModel) {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+        themes.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                row.forEach { th ->
+                    ThemeCard(th, settings.theme.themeId == th.id, Modifier.weight(1f)) { settings.setThemeId(th.id) }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+// Tema kartı: temanın kendi renkleriyle küçük bir terminal — istem, iki
+// çıktı satırı, durum renkleri. Seçili kart birincil çerçeve + tik taşır.
+@Composable
+private fun ThemeCard(th: ConsoleTheme, selected: Boolean, modifier: Modifier = Modifier, onTap: () -> Unit) {
+    val t = Tok
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier
+            .clip(shape)
+            .background(Color(th.term.background))
+            .border(if (selected) 2.dp else 1.dp, if (selected) t.primary else t.line, shape)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onTap)
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            listOf(th.accent, th.warning, th.error).forEach { c ->
+                Box(Modifier.padding(end = 4.dp).size(7.dp).clip(RoundedCornerShape(4.dp)).background(Color(c)))
+            }
+            Spacer(Modifier.weight(1f))
+            Box(Modifier.size(18.dp)) {
+                if (selected) Icon(Icons.Rounded.CheckCircle, contentDescription = "Seçili", tint = t.primary, modifier = Modifier.size(18.dp))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("❯ make test", color = Color(th.accent), fontFamily = Code, fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1)
+        Text("ok  host/ssh  0.4s", color = Color(th.term.ansi[2]), fontFamily = Code, fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1)
+        Text("~/src/pocket", color = Color(th.term.foreground).copy(alpha = 0.7f), fontFamily = Code, fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            th.name,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium),
+            color = Color(th.term.foreground),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
-// ── Terminal ve oturum ───────────────────────────────────────────────────────
+// ── Terminal ve oturum ──────────────────────────────────────────────────────
 
 @Composable
 private fun SessionContent(settings: SettingsViewModel) {
-    ConsoleCard {
-        SettingRow(
+    PocketCard(contentPadding = PaddingValues(vertical = 4.dp)) {
+        SwitchRow(
             "Açılışta son oturuma bağlan",
-            subtitle = "Secret Keystore'da saklıysa uygulama açılır açılmaz bağlanır",
-        ) {
-            Switch(checked = settings.autoReconnect, onCheckedChange = { settings.toggleAutoReconnect() })
-        }
-        SoftDivider()
-        SettingRow(
+            checked = settings.autoReconnect,
+            onToggle = { settings.toggleAutoReconnect() },
+            subtitle = "Parola ya da anahtar bu cihazda saklıysa uygulama açılır açılmaz bağlanır.",
+        )
+        InsetDivider(Space.lg)
+        SwitchRow(
             "Kopunca otomatik yeniden bağlan",
-            subtitle = "5 denemeye kadar üstel geri çekilme; kimlik/host-key hatasında durur",
-        ) {
-            Switch(checked = settings.autoReconnectOnDrop, onCheckedChange = { settings.toggleAutoReconnectOnDrop() })
-        }
+            checked = settings.autoReconnectOnDrop,
+            onToggle = { settings.toggleAutoReconnectOnDrop() },
+            subtitle = "5 denemeye kadar artan aralıklarla. Kimlik ya da host anahtarı hatasında durur.",
+        )
     }
-    Spacer(Modifier.height(Space.lg))
-    ConsoleCard {
-        SectionLabel("Tuş şeridi snippet'ları")
-        Spacer(Modifier.height(Space.xs))
-        Text(
-            "Sık komutlar terminalin alt şeridine tuş olarak eklenir. Her satır: etiket=komut.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Tok.muted,
-        )
-        Spacer(Modifier.height(Space.sm))
-        var snip by remember { mutableStateOf(settings.snippets) }
-        OutlinedTextField(
-            value = snip,
-            onValueChange = { snip = it },
-            placeholder = { Text("gs=git status\nht=htop\nta=tmux attach", fontFamily = Readout) },
-            minLines = 3, maxLines = 6,
-            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        if (snip != settings.snippets) {
-            ConsoleButton(
-                onClick = { settings.updateSnippets(snip) },
-                modifier = Modifier.padding(top = Space.sm),
-            ) { Text("Kaydet") }
+
+    SectionHeader("Tuş paneli kısayolları", modifier = Modifier.padding(top = Space.lg, start = 4.dp))
+    Text(
+        "Sık komutlar terminalin tuş paneline eklenir. Dokununca komut yazılır; Enter'a sen basarsın.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = Tok.text2,
+        modifier = Modifier.padding(start = 4.dp, bottom = Space.md),
+    )
+    val snippets = settings.snippetList()
+    var adding by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf<Pair<String, String>?>(null) }
+    if (snippets.isNotEmpty()) {
+        PocketCard(contentPadding = PaddingValues(vertical = 4.dp)) {
+            snippets.forEachIndexed { i, (label, cmd) ->
+                if (i > 0) InsetDivider(Space.lg)
+                ListRow(
+                    title = label,
+                    subtitle = cmd,
+                    subtitleMono = true,
+                    contentPadding = PaddingValues(start = Space.lg, end = 4.dp, top = Space.sm, bottom = Space.sm),
+                    trailing = { IconAction(Icons.Rounded.Delete, "$label kısayolunu sil", { removing = label to cmd }) },
+                )
+            }
         }
+        Spacer(Modifier.height(Space.md))
+    }
+    TonalButton("Kısayol ekle", onClick = { adding = true }, icon = Icons.Rounded.Add)
+
+    fun save(list: List<Pair<String, String>>) = settings.updateSnippets(list.joinToString("\n") { "${it.first}=${it.second}" })
+
+    if (adding) {
+        var label by remember { mutableStateOf("") }
+        var cmd by remember { mutableStateOf("") }
+        val labelOk = label.isNotBlank() && !label.contains('=') && snippets.none { it.first == label.trim() }
+        PocketDialog(
+            onDismiss = { adding = false },
+            title = "Yeni kısayol",
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(Space.lg)) {
+                    PocketTextField(
+                        label, { label = it.replace("\n", "") },
+                        label = "Etiket", placeholder = "gs",
+                        helper = "Panelde görünen kısa ad.",
+                        error = if (label.contains('=')) "Etikette = kullanılamaz." else if (snippets.any { it.first == label.trim() }) "Bu etiket zaten var." else null,
+                    )
+                    PocketTextField(
+                        cmd, { cmd = it.replace("\n", "") },
+                        label = "Komut", placeholder = "git status", mono = true,
+                    )
+                }
+            },
+            confirm = {
+                GhostButton("Ekle", enabled = labelOk && cmd.isNotBlank(), onClick = {
+                    save(snippets + (label.trim() to cmd))
+                    adding = false
+                })
+            },
+            dismiss = { GhostButton("Vazgeç", onClick = { adding = false }, color = Tok.text2) },
+        )
+    }
+    removing?.let { s ->
+        ConfirmDialog(
+            title = "${s.first} silinsin mi?",
+            message = "Kısayol tuş panelinden kaldırılır.",
+            confirmLabel = "Sil",
+            onConfirm = { save(snippets - s); removing = null },
+            onDismiss = { removing = null },
+        )
     }
 }
 
-// ── Backend ──────────────────────────────────────────────────────────────────
+// ── Backend ─────────────────────────────────────────────────────────────────
 
 @Composable
 private fun BackendContent(settings: SettingsViewModel, app: App) {
     var url by remember { mutableStateOf(settings.backendUrl) }
     var tenant by remember { mutableStateOf(settings.tenantToken) }
+    var showTenant by remember { mutableStateOf(false) }
     var urlError by remember { mutableStateOf<String?>(null) }
-    var testResult by remember { mutableStateOf<String?>(null) }
-    var saved by remember { mutableStateOf(false) }
+    var testing by remember { mutableStateOf(false) }
+    var testResult by remember { mutableStateOf<Boolean?>(null) }
     val scope = rememberCoroutineScope()
+    val notify = rememberNotify()
     val syncStatus by app.eventSync.status.collectAsState()
+    val t = Tok
 
     fun save() {
         val u = url.trim()
         if (u.isNotEmpty() && !u.startsWith("http://") && !u.startsWith("https://")) {
-            urlError = "http:// veya https:// ile başlamalı"
+            urlError = "Adres http:// ya da https:// ile başlamalı."
             return
         }
         urlError = null
         settings.setBackend(u, tenant)
         app.configureBackend(u, tenant.trim())
-        saved = true
         testResult = null
+        notify("Backend ayarları kaydedildi")
     }
 
-    ConsoleCard {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Durum", style = MaterialTheme.typography.bodyLarge, color = Tok.text)
-            Spacer(Modifier.weight(1f))
-            TagPill(
-                if (settings.backendConfigured) syncStatus else "ayarlanmadı",
-                active = syncStatus == "bağlı",
-                tone = if (syncStatus == "bağlı") Tok.accent else null,
-            )
-        }
-        SoftDivider(Modifier.padding(vertical = Space.sm))
+    PocketCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Backend yalnız kısa olay özetleri tutar (≤256 karakter, 24s TTL); terminal ve dosya içerikleri hiç gitmez.",
-                style = MaterialTheme.typography.bodySmall,
-                color = Tok.muted,
-                modifier = Modifier.weight(1f),
-            )
+            Text("Durum", style = MaterialTheme.typography.titleMedium, color = t.text, modifier = Modifier.weight(1f))
+            val (s, l) = if (settings.backendConfigured) syncLabel(syncStatus) else Status.Idle to "Ayarlanmadı"
+            StatusChip(s, l)
+        }
+        if (settings.backendConfigured && syncLabel(syncStatus).first == Status.Error) {
+            Spacer(Modifier.height(Space.sm))
+            Text(syncStatus, style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code), color = t.danger.text)
+        }
+        Spacer(Modifier.height(Space.md))
+        Text(
+            "Backend yalnız kısa agent olay özetleri ve onay kayıtları tutar (≤256 karakter, 24 saat). Terminal, dosya ve diff içerikleri hiç gitmez.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = t.text2,
+        )
+        if (settings.backendConfigured) {
+            Spacer(Modifier.height(Space.sm))
+            GhostButton("Şimdi senkronla", onClick = { app.eventSync.syncNow() }, icon = Icons.Rounded.Sync)
         }
     }
     Spacer(Modifier.height(Space.lg))
-    ConsoleCard {
-        OutlinedTextField(
-            value = url,
-            onValueChange = { url = it; urlError = null; saved = false },
-            label = { Text("Backend URL") },
-            placeholder = { Text("https://agent.example.com", fontFamily = Readout) },
-            mono = true,
-            supportingText = { urlError?.let { Text(it, color = MaterialTheme.colorScheme.error) } },
-            isError = urlError != null,
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(Space.sm))
-        OutlinedTextField(
-            value = tenant,
-            onValueChange = { tenant = it; saved = false },
-            label = { Text("Tenant token") },
-            mono = true,
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(Space.md))
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalAlignment = Alignment.CenterVertically) {
-            ConsoleButton(onClick = ::save) { Text("Kaydet") }
-            ConsoleOutlinedButton(
-                onClick = {
-                    scope.launch(Dispatchers.IO) {
-                        val ok = app.backendClient?.health() == true
-                        testResult = if (ok) "Backend erişilebilir" else "Ulaşılamadı"
-                    }
-                },
-                enabled = settings.backendConfigured,
-            ) { Text("Test et") }
-            if (saved) {
-                Text("Kaydedildi", style = MaterialTheme.typography.bodySmall, color = Tok.success)
-            } else {
-                testResult?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (it == "Backend erişilebilir") Tok.success else Tok.danger,
+    PocketCard {
+        Column(verticalArrangement = Arrangement.spacedBy(Space.lg)) {
+            PocketTextField(
+                url, { url = it; urlError = null },
+                label = "Backend adresi",
+                placeholder = "https://agent.ornek.com",
+                mono = true,
+                error = urlError,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
+            )
+            PocketTextField(
+                tenant, { tenant = it },
+                label = "Tenant token",
+                mono = true,
+                helper = "Eşleme QR'ı bunu otomatik doldurur.",
+                visualTransformation = if (showTenant) VisualTransformation.None else PasswordVisualTransformation(),
+                trailing = {
+                    IconAction(
+                        if (showTenant) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                        if (showTenant) "Token'ı gizle" else "Token'ı göster",
+                        { showTenant = !showTenant },
                     )
-                }
+                },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalAlignment = Alignment.CenterVertically) {
+                PrimaryButton("Kaydet", onClick = ::save)
+                OutlineButton(
+                    if (testing) "Sınanıyor…" else "Bağlantıyı test et",
+                    enabled = settings.backendConfigured && !testing,
+                    onClick = {
+                        testing = true
+                        scope.launch(Dispatchers.IO) {
+                            testResult = app.backendClient?.health() == true
+                            testing = false
+                        }
+                    },
+                )
+            }
+            if (testing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = t.primary)
+            testResult?.let { ok ->
+                Banner(if (ok) Status.Live else Status.Error, if (ok) "Backend erişilebilir" else "Backend'e ulaşılamadı")
             }
         }
     }
 }
 
-// ── Bilinen host anahtarları ─────────────────────────────────────────────────
+// ── Bilinen host anahtarları ────────────────────────────────────────────────
 
 @Composable
 private fun SecurityContent(hostKeys: TofuHostKeyStore) {
     var pinnedKeys by remember { mutableStateOf(hostKeys.all()) }
+    var forgetting by remember { mutableStateOf<dev.pocketagent.transport.PresentedKey?>(null) }
+    val t = Tok
+    Text(
+        "İlk bağlantıda onayladığın parmak izleri. Pinli anahtar değişirse bağlantı durur — araya girme saldırısına karşı koruma.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = t.text2,
+        modifier = Modifier.padding(start = 4.dp, bottom = Space.lg),
+    )
     if (pinnedKeys.isEmpty()) {
-        ConsoleCard {
-            Text(
-                "Henüz pinlenen anahtar yok. İlk bağlantıda parmak izi sorulur.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Tok.muted,
-            )
+        PocketCard {
+            Text("Henüz pinlenmiş anahtar yok. İlk bağlantıda parmak izi sorulur.", style = MaterialTheme.typography.bodyMedium, color = t.text2)
         }
     } else {
-        ConsoleCard(padding = 0.dp) {
+        PocketCard(contentPadding = PaddingValues(vertical = 4.dp)) {
             pinnedKeys.forEachIndexed { i, k ->
-                if (i > 0) SoftDivider()
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = Space.lg, vertical = Space.sm),
-                ) {
+                if (i > 0) InsetDivider(Space.lg)
+                Row(Modifier.padding(start = Space.lg, end = 4.dp, top = Space.md, bottom = Space.md), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("${k.host}:${k.port}", style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout), color = Tok.text)
-                        Text(
-                            k.fingerprint,
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
-                            color = Tok.muted,
-                        )
+                        Text("${k.host}:${k.port}", style = MaterialTheme.typography.bodyLarge.copy(fontFamily = Code, fontSize = 15.sp), color = t.text)
+                        Spacer(Modifier.height(2.dp))
+                        Text(k.algorithm, style = MaterialTheme.typography.labelMedium, color = t.text2)
+                        Text(k.fingerprint, style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code), color = t.text2)
                     }
-                    ConsoleTextButton(onClick = { hostKeys.forget(k.host, k.port); pinnedKeys = hostKeys.all() }) {
-                        Text("Unut", color = Tok.danger)
-                    }
+                    GhostButton("Unut", onClick = { forgetting = k }, color = t.danger.text)
                 }
             }
         }
     }
-    Spacer(Modifier.height(Space.sm))
-    Text(
-        "Pinlenen anahtar değişirse bağlantı durur (MITM koruması).",
-        style = MaterialTheme.typography.bodySmall,
-        color = Tok.muted,
-    )
+    forgetting?.let { k ->
+        ConfirmDialog(
+            title = "Anahtar unutulsun mu?",
+            message = "${k.host}:${k.port} için pin kaldırılır. Sonraki bağlantıda parmak izi yeniden sorulur.",
+            confirmLabel = "Unut",
+            onConfirm = {
+                hostKeys.forget(k.host, k.port)
+                pinnedKeys = hostKeys.all()
+                forgetting = null
+            },
+            onDismiss = { forgetting = null },
+        )
+    }
 }
 
-// ── Yedekleme ve kullanım ────────────────────────────────────────────────────
+// ── Yedekleme ve kullanım ───────────────────────────────────────────────────
 
 @Composable
 private fun DataContent(settings: SettingsViewModel, usage: UsageViewModel, app: App) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var msg by remember { mutableStateOf<String?>(null) }
+    var msg by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     val conns by app.connections.items.collectAsState()
+    val t = Tok
 
     val exporter = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json"),
@@ -561,8 +670,8 @@ private fun DataContent(settings: SettingsViewModel, usage: UsageViewModel, app:
                     ),
                 )
                 context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
-            }.onSuccess { msg = "Yedek yazıldı (${conns.size} bağlantı)" }
-                .onFailure { msg = "Yedek yazılamadı: ${it.message}" }
+            }.onSuccess { msg = true to "Yedek yazıldı (${conns.size} bağlantı)." }
+                .onFailure { msg = false to "Yedek yazılamadı: ${it.message}" }
         }
     }
     val importer = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -576,139 +685,96 @@ private fun DataContent(settings: SettingsViewModel, usage: UsageViewModel, app:
                 r.connections.forEach { app.connections.upsert(it, null) }
                 r.settings?.let { settings.applyAll(it) }
                 r
-            }.onSuccess { msg = "${it.connections.size} bağlantı içe aktarıldı" + (if (it.skipped > 0) " (${it.skipped} atlandı)" else "") }
-                .onFailure { msg = "İçe aktarım başarısız: ${it.message}" }
+            }.onSuccess { msg = true to "${it.connections.size} bağlantı içe aktarıldı" + (if (it.skipped > 0) " (${it.skipped} atlandı)." else ".") }
+                .onFailure { msg = false to "İçe aktarma başarısız: ${it.message}" }
         }
     }
 
-    ConsoleCard {
-        CardHeader("Yedekleme")
-        Spacer(Modifier.height(Space.xs))
-        Text(
-            "Bağlantılar ve ayarlar JSON olarak dışa aktarılır. Parolalar ve anahtarlar hiçbir zaman yedeğe girmez.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Tok.muted,
-        )
-        Spacer(Modifier.height(Space.md))
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalAlignment = Alignment.CenterVertically) {
-            ConsoleButton(onClick = { exporter.launch("pocket-agent-backup.json") }) { Text("Dışa aktar") }
-            ConsoleOutlinedButton(onClick = { importer.launch(arrayOf("application/json", "text/*", "*/*")) }) { Text("İçe aktar") }
+    PocketCard {
+        CardTitle("Yedekleme", "Bağlantılar ve ayarlar JSON olarak dışa aktarılır. Parolalar ve anahtarlar hiçbir zaman yedeğe girmez.")
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+            PrimaryButton("Dışa aktar", onClick = { exporter.launch("pocket-agent-backup.json") })
+            OutlineButton("İçe aktar", onClick = { importer.launch(arrayOf("application/json", "text/*", "*/*")) })
         }
-        msg?.let {
-            Spacer(Modifier.height(Space.sm))
-            Text(it, style = MaterialTheme.typography.labelSmall, color = Tok.muted)
+        msg?.let { (ok, m) ->
+            Spacer(Modifier.height(Space.md))
+            Banner(if (ok) Status.Live else Status.Error, m)
         }
     }
     Spacer(Modifier.height(Space.lg))
-
-    ConsoleCard {
-        CardHeader("Kullanım")
-        Spacer(Modifier.height(Space.sm))
+    PocketCard {
+        CardTitle("Kullanım")
         if (usage.rows.isEmpty()) {
             Text(
-                "Henüz kullanım verisi yok — host raporlama bağlanınca burada görünür. Backend ayarlıysa her senkron turunda güncellenir.",
+                "Henüz kullanım verisi yok. Host raporlaması bağlandığında agent kotaları burada görünür; backend ayarlıysa her senkronda güncellenir.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Tok.muted,
+                color = t.text2,
             )
         } else {
             usage.rows.forEachIndexed { i, u ->
-                if (i > 0) SoftDivider(Modifier.padding(vertical = Space.sm)) else Spacer(Modifier.height(Space.xs))
+                if (i > 0) Spacer(Modifier.height(Space.lg))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(u.agent, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout), color = Tok.text)
+                    Text(u.agent, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = t.text)
                     Text(
-                        "%${u.percent} · ${u.resetIn}",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
-                        color = Tok.muted,
+                        "%${u.percent}" + if (u.resetIn.isNotBlank()) " · ${u.resetIn} sonra sıfırlanır" else "",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (u.percent >= 85) t.warn.text else t.text2,
                     )
                 }
                 Spacer(Modifier.height(Space.sm))
-                CellMeter(u.percent / 100f)
+                Meter(u.percent / 100f)
             }
         }
+        Spacer(Modifier.height(Space.md))
+        Text("Özetler 24 saat saklanır; backend tam transcript görmez.", style = MaterialTheme.typography.bodySmall, color = t.text2)
     }
-    Spacer(Modifier.height(Space.sm))
-    Text(
-        "Snapshot'lar 24 saat saklanır; backend tam transcript görmez.",
-        style = MaterialTheme.typography.bodySmall,
-        color = Tok.muted,
-    )
 }
 
-// ── Hakkında ─────────────────────────────────────────────────────────────────
+// ── Hakkında ────────────────────────────────────────────────────────────────
 
 @Composable
 private fun AboutContent(app: App) {
-    val pkg = LocalContext.current.packageManager
-    val version = remember {
-        runCatching { pkg.getPackageInfo(app.packageName, 0).versionName }.getOrNull() ?: "dev"
-    }
-    AboutHero(version)
-    UpdateCard()
-    Spacer(Modifier.height(Space.xl))
-    // Künye: anahtar/değer satırları — paragraf duvarı yerine taranabilir.
-    SectionLabel("Künye", Modifier.padding(start = 2.dp))
-    Spacer(Modifier.height(Space.sm))
-    ConsoleCard(padding = 0.dp) {
-        AboutRow("Lisans", "GPL-3.0-or-later")
-        AboutRow("Fontlar", "JetBrains Mono · IBM Plex Mono · Space Mono (OFL-1.1)")
-        AboutRow("Gizlilik", "Terminal, diff ve dosyalar backend'e gitmez; yalnız ≤256 karakter özet, 24s TTL")
-        AboutRow("Dikte", "cihaz-içi varsayılan · BYOK opt-in")
-        AboutRow("Deep link", "pocketagent://tmux|herdr", last = true)
-    }
-}
-
-// Hakkında hero'su: büyük piksel işareti + ad + sürüm okuması.
-@Composable
-private fun AboutHero(version: String) {
-    Column(
-        Modifier.fillMaxWidth().padding(vertical = Space.xl),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            Modifier
-                .size(88.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .background(Tok.chrome)
-                .border(1.dp, Tok.border, RoundedCornerShape(22.dp)),
-            contentAlignment = Alignment.Center,
-        ) { PocketMark(size = 44.dp) }
+    val version = rememberVersion(app)
+    Column(Modifier.fillMaxWidth().padding(vertical = Space.xl), horizontalAlignment = Alignment.CenterHorizontally) {
+        BrandMark(size = 72.dp)
         Spacer(Modifier.height(Space.lg))
         Text("Pocket Agent", style = MaterialTheme.typography.headlineSmall, color = Tok.text)
-        Spacer(Modifier.height(2.dp))
-        Text(
-            "v$version · cepten self-hosted terminal",
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
-            color = Tok.muted,
-        )
+        Spacer(Modifier.height(4.dp))
+        Text("Sürüm $version · kendi sunucun için cep terminali", style = MaterialTheme.typography.bodyMedium, color = Tok.text2)
+    }
+    UpdateCard(version)
+    SectionHeader("Künye", modifier = Modifier.padding(top = Space.lg, start = 4.dp))
+    PocketCard(contentPadding = PaddingValues(vertical = 4.dp)) {
+        AboutRow("Lisans", "GPL-3.0-or-later")
+        AboutRow("Yazı tipleri", "IBM Plex Sans · IBM Plex Mono · JetBrains Mono · Space Mono (OFL-1.1)")
+        AboutRow("Gizlilik", "Terminal, diff ve dosyalar backend'e gitmez; yalnız ≤256 karakter özet, 24 saat")
+        AboutRow("Dikte", "Cihaz içi varsayılan · kendi anahtarınla isteğe bağlı")
+        AboutRow("Deep link", "pocketagent://tmux · pocketagent://add", last = true)
     }
 }
 
 @Composable
 private fun AboutRow(key: String, value: String, last: Boolean = false) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = Space.lg, vertical = 12.dp), verticalAlignment = Alignment.Top) {
-        Text(key, style = MaterialTheme.typography.bodyMedium, color = Tok.muted, modifier = Modifier.width(92.dp))
-        Text(value, style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout), color = Tok.text, modifier = Modifier.weight(1f))
+    Row(Modifier.fillMaxWidth().padding(horizontal = Space.lg, vertical = Space.md), verticalAlignment = Alignment.Top) {
+        Text(key, style = MaterialTheme.typography.bodyMedium, color = Tok.text2, modifier = Modifier.width(104.dp))
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = Tok.text, modifier = Modifier.weight(1f))
     }
-    if (!last) SoftDivider(Modifier.padding(start = Space.lg))
+    if (!last) InsetDivider(Space.lg)
 }
 
-// Güncelleme kartı: mevcut sürüm + kontrol butonu; güncelleme varsa
-// sürüm + boyut + "İndir ve kur" → ilerleme → paket kurucu.
+// Güncelleme kartı: mevcut sürüm + kontrol; güncelleme varsa sürüm + boyut
+// + "İndir ve kur" → ilerleme → paket kurucu.
 private enum class UpdPhase { Idle, Checking, Current, Available, Downloading, Ready, Failed }
 
 @Composable
-private fun UpdateCard() {
+private fun UpdateCard(version: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val version = remember {
-        runCatching {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName
-        }.getOrNull() ?: "dev"
-    }
     var phase by remember { mutableStateOf(UpdPhase.Idle) }
     var rel by remember { mutableStateOf<dev.pocketagent.net.ReleaseInfo?>(null) }
-    var progress by remember { mutableStateOf(0f) }
+    var progress by remember { mutableFloatStateOf(0f) }
     var err by remember { mutableStateOf<String?>(null) }
+    val t = Tok
 
     fun check() {
         phase = UpdPhase.Checking
@@ -743,128 +809,38 @@ private fun UpdateCard() {
         }
     }
 
-    ConsoleCard {
-        CardHeader("Güncelleme")
-        Spacer(Modifier.height(Space.sm))
+    PocketCard {
+        Text("Güncelleme", style = MaterialTheme.typography.titleMedium, color = t.text)
+        Spacer(Modifier.height(Space.md))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Sürüm $version", style = MaterialTheme.typography.bodyLarge, color = Tok.text)
-                Text(
-                    when (phase) {
-                        UpdPhase.Idle -> "GitHub Releases"
-                        UpdPhase.Checking -> "Kontrol ediliyor…"
-                        UpdPhase.Current -> "Güncel"
-                        UpdPhase.Available -> rel?.let { "v${it.version} · %.0f MB".format(it.sizeBytes / 1e6f) } ?: ""
-                        UpdPhase.Downloading -> "İndiriliyor %${(progress * 100).toInt()}"
-                        UpdPhase.Ready -> rel?.let { "v${it.version} indirildi" } ?: ""
-                        UpdPhase.Failed -> err ?: "Hata"
-                    },
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
-                    color = when (phase) {
-                        UpdPhase.Current -> Tok.success
-                        UpdPhase.Failed -> Tok.danger
-                        UpdPhase.Available, UpdPhase.Ready -> Tok.accent
-                        else -> Tok.muted
-                    },
-                )
+                Text("Yüklü: $version", style = MaterialTheme.typography.bodyLarge, color = t.text)
+                val (line, color) = when (phase) {
+                    UpdPhase.Idle -> "GitHub Releases üzerinden" to t.text2
+                    UpdPhase.Checking -> "Kontrol ediliyor…" to t.text2
+                    UpdPhase.Current -> "Güncel" to t.live.text
+                    UpdPhase.Available -> (rel?.let { "Yeni: ${it.version} · %.0f MB".format(it.sizeBytes / 1e6f) } ?: "") to t.accent.text
+                    UpdPhase.Downloading -> "İndiriliyor %${(progress * 100).toInt()}" to t.text2
+                    UpdPhase.Ready -> (rel?.let { "${it.version} indirildi, kurulum açılıyor" } ?: "") to t.accent.text
+                    UpdPhase.Failed -> (err ?: "Hata") to t.danger.text
+                }
+                Text(line, style = MaterialTheme.typography.bodyMedium, color = color)
             }
             when (phase) {
                 UpdPhase.Checking, UpdPhase.Downloading ->
-                    BusyPixel(modifier = Modifier.padding(end = 8.dp))
+                    CircularProgressIndicator(Modifier.padding(end = Space.sm).size(22.dp), strokeWidth = 2.dp, color = t.primary)
                 UpdPhase.Available, UpdPhase.Ready ->
-                    ConsoleButton(onClick = { rel?.let(::downloadAndInstall) }) { Text("İndir ve kur") }
-                else ->
-                    ConsoleOutlinedButton(onClick = ::check) { Text("Kontrol et") }
+                    PrimaryButton("İndir ve kur", onClick = { rel?.let(::downloadAndInstall) })
+                else -> OutlineButton("Denetle", onClick = ::check)
             }
         }
         if (phase == UpdPhase.Downloading) {
-            Spacer(Modifier.height(Space.sm))
-            CellMeter(progress, warnAt = 2f)
+            Spacer(Modifier.height(Space.md))
+            Meter(progress, warnAt = 2f)
         }
         rel?.notes?.takeIf { it.isNotBlank() && phase == UpdPhase.Available }?.let {
-            Spacer(Modifier.height(Space.sm))
-            Text(
-                it.lines().take(3).joinToString("\n"),
-                style = MaterialTheme.typography.bodySmall,
-                color = Tok.muted,
-                maxLines = 3,
-            )
+            Spacer(Modifier.height(Space.md))
+            Text(it.lines().take(4).joinToString("\n"), style = MaterialTheme.typography.bodySmall, color = t.text2, maxLines = 4)
         }
-    }
-}
-
-// Tema hücresi: grid'de kompakt mini terminal önizlemesi — zemin rengi +
-// accent çizgisi + isim. Seçili hücre accent halkası alır.
-@Composable
-private fun ThemeCell(t: ConsoleTheme, selected: Boolean, modifier: Modifier = Modifier, onTap: () -> Unit) {
-    val mono = Readout
-    Column(
-        modifier
-            .clip(MaterialTheme.shapes.small)
-            .background(Color(t.term.background))
-            .then(
-                // Seçim tek işaret: mürekkep çerçeve (mavi sinyale saklı).
-                if (selected) {
-                    Modifier.border(2.dp, Tok.text, MaterialTheme.shapes.small)
-                } else {
-                    Modifier.border(1.dp, Tok.border, MaterialTheme.shapes.small)
-                },
-            )
-            .clickable(onClick = onTap)
-            .padding(7.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("›", color = Color(t.accent), fontFamily = mono, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
-            listOf(t.accent, t.warning, t.error).forEach { c ->
-                Box(
-                    Modifier
-                        .padding(start = 2.dp)
-                        .size(5.dp)
-                        .clip(RoundedCornerShape(1.dp))
-                        .background(Color(c)),
-                )
-            }
-        }
-        Spacer(Modifier.height(5.dp))
-        Text("src/  notes.md", color = Color(t.term.foreground), fontFamily = mono, fontSize = 7.5.sp, maxLines = 1)
-        Text("main.go  ok", color = Color(t.term.ansi[2]), fontFamily = mono, fontSize = 7.5.sp, maxLines = 1)
-        Spacer(Modifier.height(5.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                t.name,
-                style = MaterialTheme.typography.labelSmall,
-                color = Color(t.term.foreground).copy(alpha = if (selected) 1f else 0.75f),
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
-            // Seçim biçimle de söylenir (çerçeve + tik) — renk tek ipucu değil.
-            if (selected) {
-                Icon(
-                    Icons.Filled.Check,
-                    contentDescription = "Seçili",
-                    tint = Color(t.term.foreground),
-                    modifier = Modifier.size(12.dp),
-                )
-            }
-        }
-    }
-}
-
-// Font çipi: adı kendi fontuyla render eder (canlı önizleme). Seçim
-// yalnız zeminle — renk değişmez.
-@Composable
-private fun FontChip(f: ConsoleFont, selected: Boolean, onTap: () -> Unit) {
-    Box(
-        Modifier
-            .clip(MaterialTheme.shapes.small)
-            .background(if (selected) Tok.active else Color.Transparent)
-            .border(1.dp, if (selected) Tok.borderStrong else Tok.border, MaterialTheme.shapes.small)
-            .clickable(onClick = onTap)
-            .defaultMinSize(minHeight = 40.dp)
-            .padding(horizontal = Space.md, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(f.name, fontFamily = f.family, style = MaterialTheme.typography.labelLarge, color = if (selected) Tok.text else Tok.text2, maxLines = 1)
     }
 }

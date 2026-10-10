@@ -98,7 +98,7 @@ class App : Application() {
         val n = android.app.Notification.Builder(this, "agents")
             .setContentTitle("Agent onayı bekliyor")
             .setContentText(approvals.last().message.ifBlank { approvals.last().category })
-            .setSmallIcon(android.R.drawable.stat_notify_more)
+            .setSmallIcon(dev.pocketagent.android.R.drawable.ic_stat_pocket)
             .setContentIntent(openApp)
             .setAutoCancel(true)
             .build()

@@ -6,14 +6,19 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
+import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.FakeSshTransport
 import dev.pocketagent.transport.SavedConnection
 import dev.pocketagent.transport.Secret
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.SshConnector
 import dev.pocketagent.transport.SshTransport
+import dev.pocketagent.transport.TerminalInput
 import dev.pocketagent.transport.TerminalSize
 import dev.pocketagent.transport.TofuHostKeyStore
 import dev.pocketagent.ui.SettingsViewModel
@@ -27,11 +32,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-// Compose UI smoke testleri (Robolectric): ekranlar gerçek Compose tree ile
-// render edilir; kritik metinler/düğmeler doğrulanır.
+// Compose UI smoke testleri (Robolectric): çalışma alanı gerçek Compose
+// ağacıyla render edilir; kritik metinler/düğmeler doğrulanır.
 private class UiFakeConnector : SshConnector {
+    var last: FakeSshTransport? = null
     override suspend fun open(conn: SavedConnection, secret: Secret?, size: TerminalSize): SshTransport =
-        FakeSshTransport().also { it.openPty("xterm-256color", size) }
+        FakeSshTransport().also { it.openPty("xterm-256color", size); last = it }
 }
 
 private class UiSftpConnector : SshConnector {
@@ -54,23 +60,27 @@ class TerminalScreenUiTest {
         return SessionManager(scope, store) { connector }
     }
 
+    private val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
+
+    private fun openActive(m: SessionManager) {
+        m.open(conn, Secret.Password("pw"))
+        rule.waitUntil(5_000) { m.sessions.value.single().controller.state.value == ConnectionState.ACTIVE }
+        rule.waitForIdle()
+    }
+
     @Test fun emptyTerminalShowsHint() {
         rule.setContent {
             TerminalScreen(manager(), SettingsViewModel(), onNewConnection = {})
         }
         rule.onNodeWithText("açık oturum yok", substring = true).assertIsDisplayed()
-        rule.onNodeWithContentDescription("Yeni bağlantı").assertIsDisplayed()
+        rule.onNodeWithText("Yeni bağlantı").assertIsDisplayed()
     }
 
-    @Test fun sessionChipAppearsOnConnect() {
+    @Test fun sessionAppearsOnConnect() {
         val m = manager()
-        rule.setContent {
-            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {})
-        }
-        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
-        m.open(conn, Secret.Password("pw"))
-        rule.waitForIdle()
-        // oturum çipi + terminal yüzeyi + alt tuş şeridi render edildi
+        rule.setContent { TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {}) }
+        openActive(m)
+        // oturum başlığı + terminal yüzeyi + tuş paneli render edildi
         rule.onNodeWithText("sunucu").assertIsDisplayed()
         rule.onNodeWithContentDescription("Terminal çıktısı").assertIsDisplayed()
         rule.onNodeWithText("ctrl").assertIsDisplayed()
@@ -78,24 +88,35 @@ class TerminalScreenUiTest {
         m.closeAll()
     }
 
+    // Agent istemleri için klavyesiz yanıt: Enter ve Shift+Tab tuşları.
+    @Test fun enterAndShiftTabKeysReachPty() {
+        val connector = UiFakeConnector()
+        val m = manager(connector)
+        rule.setContent { TerminalScreen(m, SettingsViewModel(), {}) }
+        openActive(m)
+        rule.onNodeWithContentDescription("Enter").performClick()
+        rule.onNodeWithContentDescription("Shift Tab").performScrollTo().performClick()
+        rule.waitUntil(5_000) {
+            val sent = connector.last?.sent.orEmpty().filterIsInstance<TerminalInput.Text>().map { it.s }
+            "\r" in sent && "\u001B[Z" in sent
+        }
+        m.closeAll()
+    }
+
     @Test fun fullscreenKeepsKeyBarAndNotifies() {
         val m = manager()
         var fullscreenSeen: Boolean? = null
-        // Aksiyonlar artık üst barda (PocketApp); izole testte chrome durumu
-        // doğrudan sürülür — panel fullscreen'de kendi aksiyonlarını gösterir.
         val chrome = TerminalChromeState()
         rule.setContent {
             TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = { fullscreenSeen = it }, chrome = chrome)
         }
-        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
-        m.open(conn, Secret.Password("pw"))
-        rule.waitForIdle()
+        openActive(m)
         rule.runOnIdle { chrome.fullscreen = true }
         rule.waitForIdle()
         org.junit.Assert.assertEquals(true, fullscreenSeen)
         rule.onNodeWithText("ctrl").assertIsDisplayed()
         rule.onNodeWithText("esc").assertIsDisplayed()
-        // Tam ekranda üst bar gizli → aksiyonlar panel başlığına döner.
+        // Tam ekranda çubuk gizli → eylemler sağ üst kapsülde.
         rule.onNodeWithContentDescription("Scrollback'te ara").assertIsDisplayed()
         rule.onNodeWithContentDescription("Scrollback'i paylaş").assertIsDisplayed()
         rule.onNodeWithContentDescription("Tam ekrandan çık").performClick()
@@ -107,55 +128,62 @@ class TerminalScreenUiTest {
     @Test fun attachButtonDisabledWithoutSftp() {
         // FakeSshTransport SFTP uygulamaz → ek düğmesi görünür ama pasif.
         val m = manager()
-        rule.setContent {
-            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {})
-        }
-        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
-        m.open(conn, Secret.Password("pw"))
-        rule.waitForIdle()
+        rule.setContent { TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {}) }
+        openActive(m)
         rule.onNodeWithContentDescription("Dosya ekle").assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Dosyalar").assertIsNotEnabled()
         m.closeAll()
     }
 
     @Test fun attachButtonEnabledWithSftp() {
         val m = manager(UiSftpConnector())
-        rule.setContent {
-            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {})
-        }
-        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
-        m.open(conn, Secret.Password("pw"))
-        rule.waitForIdle()
+        rule.setContent { TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {}) }
+        openActive(m)
         rule.onNodeWithContentDescription("Dosya ekle").assertIsEnabled()
+        rule.onNodeWithContentDescription("Dosyalar").assertIsEnabled()
         m.closeAll()
     }
 
-    @Test fun previewButtonDisabledWithoutTunnel() {
-        // FakeSshTransport TcpipCapable uygulamaz → düğme pasif.
+    @Test fun previewDisabledWithoutTunnel() {
+        // FakeSshTransport TcpipCapable uygulamaz → menü öğesi pasif.
         val m = manager()
-        rule.setContent {
-            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {})
-        }
-        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
-        m.open(conn, Secret.Password("pw"))
+        rule.setContent { TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {}) }
+        openActive(m)
+        rule.onNodeWithContentDescription("Diğer").performClick()
         rule.waitForIdle()
-        rule.onNodeWithContentDescription("Önizleme").assertIsNotEnabled()
+        rule.onNodeWithText("Web önizleme").assertIsNotEnabled()
         m.closeAll()
     }
 
-    @Test fun previewButtonOpensPortPicker() {
-        // Tünel+exec fake'i: diyalog açılır, ss sondası 8080'i listeler.
+    @Test fun previewOpensPortPicker() {
+        // Tünel+exec fake'i: sayfa açılır, ss sondası 8080'i listeler.
         val m = manager(UiTunnelConnector())
-        rule.setContent {
-            TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {})
-        }
-        val conn = SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1")
-        m.open(conn, Secret.Password("pw"))
+        rule.setContent { TerminalScreen(m, SettingsViewModel(), {}, onFullscreenChange = {}) }
+        openActive(m)
+        rule.onNodeWithContentDescription("Diğer").performClick()
         rule.waitForIdle()
-        rule.onNodeWithContentDescription("Önizleme").assertIsEnabled().performClick()
+        rule.onNodeWithText("Web önizleme").assertIsEnabled().performClick()
         rule.waitForIdle()
-        // ss/netstat bulguları "localhost" hedefiyle listelenir (host'ta
-        // resolve edilir — v4/v6 bind farkını kapsar).
+        // ss/netstat bulguları "localhost" hedefiyle listelenir.
+        rule.waitUntil(5_000) { rule.onAllNodes(androidx.compose.ui.test.hasText("localhost:8080")).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("localhost:8080").assertIsDisplayed()
         m.closeAll()
+    }
+
+    // Kapatma her zaman sorulur; "Sonlandır" oturumu listeden düşürür.
+    @Test fun closeFromMenuAsksFirst() {
+        val m = manager()
+        var collapsed = false
+        rule.setContent { TerminalScreen(m, SettingsViewModel(), {}, onCollapse = { collapsed = true }) }
+        openActive(m)
+        rule.onNodeWithContentDescription("Diğer").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Oturumu kapat…").performClick()
+        rule.waitForIdle()
+        org.junit.Assert.assertEquals("onaydan önce kapanmamalı", 1, m.sessions.value.size)
+        rule.onNodeWithText("Sonlandır").performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitUntil(5_000) { m.sessions.value.isEmpty() }
+        rule.waitForIdle()
+        org.junit.Assert.assertTrue(collapsed)
     }
 }

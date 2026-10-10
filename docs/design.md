@@ -1,113 +1,134 @@
 # Pocket Agent design language
 
-Pocket Agent's look comes from its mark: a `›` prompt built from square
-pixels, plus one amber and one coral pixel. Everything below follows from
-that, so new UI should too.
+Pocket Agent is a terminal you carry. The design keeps the terminal at the
+center, shows what is running before anything else, and makes every state
+readable at a glance on a small screen. The mark is a mint tile with a `>_`
+prompt; the same geometry is the launcher icon, the in-app `BrandMark` and
+the notification icon.
 
 ## Principles
 
-- **Color is signal, never decoration.** Three colors each carry one meaning,
-  and nothing else uses them:
-  - blue (`accent`): live / working / the active thing (a connected session,
-    focus, links, a search match);
-  - amber (`warning`): Pocket needs you (pin a host key, a reconnect retry,
-    a dropped session, a meter near its limit);
-  - coral (`danger`): an error, a failed connection, close, delete.
+- **Running things first.** The root screen (*Oturumlar*, `HubScreen`) is
+  ordered by urgency: open sessions with a live preview, tmux sessions that
+  live on the host but are not open on this device, agent activity, quick
+  launch profiles, then hosts. There is no tab bar; everything is one scroll.
+- **The terminal is a layer, not a tab.** Tapping a session slides the
+  workspace up over the root. It can be dismissed with the chevron, the back
+  gesture, or by pulling the session bar down (the workspace follows the
+  finger, a hint says when releasing will return). While the root is
+  scrolled past the session cards, a dock at the bottom shows the active
+  session's last line and brings it back with one tap.
+- **Tone, not lines.** Surfaces step up in tone (`bg` → `card` → `raised` →
+  `overlay`); there are no hairline borders around cards and no shadows.
+  Lists are grouped into one rounded block whose rows are separate lazy
+  items (`GroupRow`), so long lists stay virtualized.
+- **Status is a word plus a shape.** `StatusChip` pairs a dot with the state
+  in words ("Bağlı", "Bağlanıyor", "Yeniden bağlanıyor 2/5", "Bağlantı
+  hatası"). Dots are filled for a state and hollow for idle; the busy dot
+  pulses only while connecting and holds still when animations are off.
+  Color is never the only cue.
+- **One primary action per view.** Filled mint pill = primary, tonal mint =
+  secondary, outlined = neutral alternative, text button = inline action.
+  Destructive actions are coral and always confirmed.
+- **Closing is explicit.** Closing a session asks every time and offers
+  *Sonlandır* (kill the tmux session and its agent) or *Ayır* (drop the
+  connection, keep the session running on the host). Sessions owned by
+  another device can only be left.
+- **Two voices of type.** Interface text uses IBM Plex Sans. Technical
+  values use IBM Plex Mono (`Code`): hosts, `user@host:port`, paths,
+  commands, fingerprints, key caps. The terminal uses the user's chosen
+  terminal font (`LocalMonoFont`), independent of both.
+- **Hosts have faces.** `HostAvatar` shows the host's initial on a hue
+  derived from `host + user`, so the same machine looks the same in the
+  session card, the dock, the host list and the host picker.
+- **Agent work reads as steps.** In a transcript (`ChatDialog`) messages are
+  plain prose. Each tool call is a row with an icon tile for its kind;
+  results are small check/cross chips under it. Three or more consecutive
+  tool calls fold into one group row ("4 araç · 1 hata").
 
-  Everything else is ink on graphite (dark) or ink on paper (light).
-  `success` green exists only for result readouts (`exit 0`, diff `+`,
-  "Kaydedildi") — never for chrome. Primary buttons and the FAB are *ink*
-  filled, not blue, so blue stays a signal.
-- **Pixels, not dots.** Status marks are small squares (corner ≤ 2dp,
-  `PixelShape`), drawn by `SignalPixel` / `StatusPixel`:
-  - hollow blue — running (connecting, reconnecting, uploading). It blinks on
-    the shared 1 Hz clock (`BlinkClock`), never an infinite animation;
-  - solid blue — live (an active SSH session);
-  - solid amber — needs you (suspended session, TOFU prompt);
-  - solid coral — error;
-  - hollow muted — idle (a remote tmux session not attached here).
+## Navigation
 
-  Hollow vs. solid also carries the meaning, so color is never the only cue.
-- **Two voices of type.** Prose, titles and controls use the system sans.
-  Every *readout* uses IBM Plex Mono (`Readout`): hosts, `user@host:port`,
-  session names, paths, times, counts, key caps, fingerprints, versions. The
-  terminal itself uses the user's chosen terminal font (`LocalMonoFont`),
-  independent of `Readout`. Section labels are plain sentence case,
-  12sp medium, muted (`SectionLabel`) — no all-caps, no letter-spacing.
-- **One selection mark.** The current item (a nav tab, a session tab, a
-  segmented option, a font chip) is shown by its ground (`active`) alone — no
-  accent stripe, no color change of the label. A theme swatch is selected by
-  an ink frame.
-- **Sheets on chrome.** The window is chrome (`chrome`): the top strip and the
-  bottom navigation sit on it directly. Content is a sheet (`bg`) inset by
-  8dp (`SheetInset`) with a 10dp radius and a hairline border (`SheetShape`).
-  In the terminal tab the terminal panel *is* the sheet; the session tabs and
-  the key strip sit on chrome around it. Full screen drops chrome entirely.
-- **Hosts have sigils.** `HostSigil` draws a deterministic, mirrored 3×3 pixel
-  pattern in one of six hues (the theme's bright ANSI colors), derived from
-  `host + user`. It replaces the generic server icon wherever a host appears,
-  so the same machine looks the same everywhere.
-- **Agent work is a soft list of steps.** In a transcript (`ChatDialog`) a
-  message is plain prose — no bubbles, no side stripes. Each tool call is a
-  borderless row with an icon tile that tells its kind (terminal, read,
-  edit, write, web, search) and, by its color, its state — coral when it
-  failed, quiet ink when done. Results are a small mono line under the tile.
-  Three or more consecutive tool calls fold into one group row
-  ("4 araç · 1 hata · Bash, Read, Edit") whose chevron turns when opened.
-- **Meters are cells.** Usage and download progress are rows of pixel cells
-  (`CellMeter`), turning amber past the warning threshold. No spinners: busy
-  state is a blinking hollow pixel with a mono label (`BusyPixel`).
+`PocketApp` keeps a small back stack of routes: `Hub` (root), `Workspace`
+(terminal), `Files`, `Settings`. Back always pops one layer; closing the
+last session drops `Workspace` and `Files` from the stack so the user never
+lands on an empty terminal. Deep links (`pocketagent://tmux`) open the
+workspace; `pocketagent://add` and "Hostu düzenle" from a failed connection
+return to the root with the host editor open.
 
-- **Empty states are drawn in pixels.** `PixelIllustration` renders small
-  pixel drawings (`PixelArt.Terminal`, `PixelArt.Folder`) from the same palette
-  as the mark, so an empty screen still speaks the product's language.
-- **Controls wear the language.** `ui/Controls.kt` re-dresses Material:
-  dialogs are raised sheets with a hairline and ink text buttons
-  (`PocketAlertDialog`); text fields keep their label visible *above* the box,
-  turn blue only on focus, and render readout values (host, port, URL, token,
-  path) in Plex Mono (`mono = true`); switches use a blue track only when on;
-  the snackbar is a raised strip with a live pixel.
-- **Home is a status board.** A time-of-day greeting with the date as a
-  readout, three stat tiles (sessions, hosts, backend), live session sheets,
-  then *Agent activity*: the backend inbox as rows whose pixel maps the event
-  category (approval → amber, error → coral, running → hollow blue, unread
-  completion → solid blue).
+Choices with a few options open a bottom sheet (`PocketSheet`), confirmations
+use a dialog (`PocketDialog`, `ConfirmDialog`), long forms and readers open
+full screen (`FullScreenDialog`: host editor, file/diff viewer, transcript,
+web preview).
 
 ## Tokens (`ui/theme/Tokens.kt`)
 
-Surfaces step up `chrome` → `bg` (sheet) → `surface` (cards, key strip,
-tiles) → `raised` (dialogs, popovers, icon tiles). `hover` and `active` are
-ink washes for pressed/selected grounds. Borders: `border` for hairlines
-inside a sheet, `borderStrong` for control outlines. Text: `text`, `text2`,
-`muted`; `faint` is decorative only (empty cells, handles, separators in a
-path), never text.
+Every catalog theme maps onto the same roles (`ConsoleTheme.tokens()`), so
+all 19 themes follow the same rules:
 
-Every theme in the catalog maps onto these tokens (`ConsoleTheme.tokens()`),
-so all 19 themes follow the same rules. The house themes are **Pocket**
-(graphite), **Pocket AMOLED** (true black) and **Pocket Paper** (light). Muted
-text meets WCAG AA (4.5:1) on `bg`, `surface` and `raised` in the house
-themes.
+- Surfaces: `bg`, `card`, `raised`, `overlay`; separators `line` and
+  `lineStrong`.
+- Text: `text`, `text2`, `text3` (decorative, never body text).
+- Brand: `primary`, `onPrimary`, `primaryText`.
+- Tones: `accent`, `live`, `busy`, `warn`, `danger`, `neutral`, `violet`.
+  Each `Tone` carries `fg` (dot/icon), `text` (on cards), `soft`
+  (container) and `onSoft` (text on that container).
 
-Shapes: pixel 2dp, key/control 6dp, button 8dp, sheet/card 10dp, dialog 16dp.
-Touch targets are at least 44dp (48dp for icon buttons).
+Contrast is computed, not hoped for: `readableOn()` nudges a color toward the
+theme ink (and then toward white/black) until it meets the target. Text and
+`text2` reach 4.5:1 on `bg`, `card` and `raised`; tone text and `onSoft`
+reach 4.5:1; dots and icons reach 3:1. `ThemeCatalogTest` checks this for
+every theme.
 
-## Motion
+Inset controls (text fields, segmented rails, disabled buttons) use
+`wellColor`, one tone above the surface they sit on (`LocalSurface`), so they
+stay visible on the page, inside cards and inside sheets.
 
-One-shot only: tabs cross-fade (150ms in, 90ms out), a settings detail page
-slides 1/16 of the width while fading in, selection grounds cross-fade in
-130ms, the group chevron turns, the terminal panel springs back when a
-pull-down is released. No
-loops, no shimmer, no spinners. The only repeating thing is the 1 Hz blink,
-and its clock only ticks while something is actually running. With the
-system "remove animations" setting (animator scale 0) the blink holds steady
-and one-shot motion jumps to its end state.
+The house themes are **Pocket** (ink with mint), **Pocket AMOLED** (true
+black) and **Pocket Paper** (light).
+
+## Shape and spacing
+
+Spacing follows a 4/8 rhythm (`Space`): 16dp screen margins, 12–16dp inside
+cards, 28dp between sections. Corners grow with the surface: key 10dp,
+field 14dp, card 22dp, sheet 28dp, buttons and chips fully round. Touch
+targets are at least 48dp; icon buttons use the Material 48dp target.
+
+## Type scale
+
+Plex Sans, SemiBold titles with slight negative tracking: headline 28/24sp,
+title 20/16/14sp, body 16/14/12.5sp, labels 14/12/11sp Medium. Nothing that
+must be read is smaller than 12sp.
+
+## Motion (`Motion`)
+
+Durations are 120ms (fast), 220ms (standard) and 320ms (emphasized) with
+decelerating enter and accelerating exit curves. Opening the terminal slides
+up a fifth of the height while fading in; pushing Files or Settings slides
+in from the right by an eighth; settings pages slide by a tenth. The pulled
+workspace springs back if released early. With the system "remove
+animations" setting, transitions are skipped and the busy dot stops
+pulsing.
 
 ## Adaptive layout
 
-At 600dp and wider (tablets, landscape, unfolded foldables) the bottom bar
-becomes a left navigation rail with the same selection ground, and sheet
-content is centered at a readable 760dp max width. The terminal always uses
-the full width.
+At 840dp and wider (tablets, unfolded foldables, landscape tablets) the root
+stays on the left at 400dp and the selected layer (terminal, files,
+settings) opens on the right; the dock and the pull-to-dismiss gesture are
+off because the list is always visible. Forms and settings are capped at a
+readable 640dp width. The terminal always uses the full width of its pane.
+
+## Terminal workspace
+
+- Session bar: chevron, session name, status line (state · `user@host` ·
+  `cols×rows`), search, files, overflow (new session, rename, web preview,
+  share scrollback, full screen, reconnect, close).
+- Session tabs appear when two or more sessions are open.
+- The canvas runs edge to edge. Rows are measured as if the keyboard were
+  closed, so opening the keyboard never resizes the remote PTY.
+- Key panel: `ctrl` latch on the left; scrolling keys ordered for agent
+  prompts (`esc`, Enter, arrows, `tab`, Shift+Tab, `^C` `^D` `^Z` `^L`,
+  navigation, symbols, user snippets); paste, attach file and keyboard
+  toggle fixed on the right.
 
 ## Performance and energy
 
@@ -117,28 +138,26 @@ the full width.
   in-app updates keep working. R8 stays off until the sshj/BouncyCastle
   reflection paths are verified on a device.
 - **Baseline profiles.** `profileinstaller` installs the libraries' profiles
-  on sideload installs; `src/main/baseline-prof.txt` marks all app code
-  (terminal parser, buffer, screens) hot.
+  on sideload installs; `src/main/baseline-prof.txt` marks all app code hot.
 - **No IO in composition.** Secret presence checks are cached in
-  `ConnectionRepository` (invalidated on upsert/delete) instead of hitting
-  `File.exists` on every row recomposition.
+  `ConnectionRepository` instead of hitting `File.exists` on every row.
 - **Derive once.** Theme tokens, the color scheme and typography are
-  remembered per theme; snippet parsing is cached per source string.
-- **Redraw, don't recompose.** The 1 Hz blink is read in the draw phase, so
-  a running pixel only invalidates its own drawing.
-- **Throttle previews.** Home session previews sample the terminal buffer at
-  most 4×/s and carry only the last 7 lines.
+  remembered per theme; avatar colors are remembered per host.
+- **Redraw, don't recompose.** The busy pulse and the cursor blink are read
+  in the draw phase (`graphicsLayer`).
+- **Throttle previews.** Session card and dock previews sample the terminal
+  buffer at most 4×/s and keep only the last non-empty lines.
 - **No theme flash.** The shell paints only the window color until saved
-  preferences are read (bounded at 1.5s), so the default theme never flashes
-  before the chosen one.
-- **Stable lists.** Lazy lists declare keys and `contentType`; loading
-  states are static skeleton rows in the final geometry (no layout shift, no
-  shimmer).
+  preferences are read, so the default theme never flashes before the
+  chosen one.
+- **Stable lists.** Lazy lists declare keys and `contentType`; loading states
+  are static skeleton rows in the final geometry (no layout shift).
 
 ## Verifying a change
 
-`DesignShotsTest` renders the main screens in dark and light with Robolectric
-native graphics. It is skipped unless `PA_SHOTS_DIR` is set:
+`DesignShotsTest` renders the main screens, sheets and the launcher icon in
+dark and light with Robolectric native graphics. It is skipped unless
+`PA_SHOTS_DIR` is set:
 
 ```bash
 cd apps/android

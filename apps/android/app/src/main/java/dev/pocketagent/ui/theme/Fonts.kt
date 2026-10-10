@@ -8,9 +8,18 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import dev.pocketagent.android.R
 
+// Arayüz yazı tipi: IBM Plex Sans (OFL-1.1). Başlık, gövde, kontrol hepsi
+// bu aileyle basılır; cihaz fontundan bağımsız tek bir ses.
+val PlexSansFamily = FontFamily(
+    Font(R.font.ibm_plex_sans_regular, FontWeight.Normal),
+    Font(R.font.ibm_plex_sans_medium, FontWeight.Medium),
+    Font(R.font.ibm_plex_sans_semibold, FontWeight.SemiBold),
+    Font(R.font.ibm_plex_sans_bold, FontWeight.Bold),
+)
+
 // Terminal / veri tipografisi için seçilebilir font aileleri. İlk üçü
-// gömülü (OFL-1.1), son üçü sistem fontu. Seçim LocalMonoFont ile yayılır;
-// başlık/label/veri bu fontu, düz metin sistem sans'ı kullanır.
+// gömülü (OFL-1.1), son üçü sistem fontu. Seçim LocalMonoFont ile yayılır
+// ve yalnız terminali etkiler.
 val JetBrainsMonoFamily = FontFamily(
     Font(R.font.jetbrains_mono_regular, FontWeight.Normal),
     Font(R.font.jetbrains_mono_bold, FontWeight.Bold),

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Chrome zeminiyle eşleşen launcher arkaplanı (grafit) -->
-    <color name="ic_launcher_background">#0E0F11</color>
+    <!-- Launcher zemini: birincil nane (Pocket teması primary) -->
+    <color name="ic_launcher_background">#3DDC97</color>
 </resources>

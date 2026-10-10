@@ -4,34 +4,42 @@ package dev.pocketagent.ui
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.NoteAdd
-import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.automirrored.rounded.NoteAdd
+import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,70 +54,57 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import dev.pocketagent.net.ChatBlockDto
-import dev.pocketagent.ui.theme.Readout
-import dev.pocketagent.ui.theme.SheetShape
+import dev.pocketagent.ui.theme.Code
+import dev.pocketagent.ui.theme.Motion
+import dev.pocketagent.ui.theme.PillShape
+import dev.pocketagent.ui.theme.Space
 import dev.pocketagent.ui.theme.rememberReducedMotion
 
 // P14: agent transcript görünümü. Bloklar gateway /chat üzerinden gelir
 // (tam içerik yalnız SSH tünelinde; backend yalnız ≤256 karakter özet görür).
-// Sunum (docs/design.md): agent işi yumuşak bir adım listesidir — balon
-// yok, kenar şeridi yok. Her araç çağrısı kenarsız bir satır: türünü
-// söyleyen ikon karosu, sonucu rengiyle (mercan = hata, sessiz = bitti).
-// Art arda üç+ araç tek bir grup satırına katlanır.
+// Sunum (docs/design.md): bir zaman çizelgesi — agent'ın sözleri düz metin,
+// her araç çağrısı türünü söyleyen renkli karo + ad, sonucu altında küçük
+// bir rozet. Art arda üç+ araç tek satıra katlanır, dokununca açılır.
 @Composable
 fun ChatDialog(title: String, blocks: List<ChatBlockDto>, onClose: () -> Unit) {
-    val t = Tok
-    Dialog(
-        onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth(0.94f)
-                .padding(vertical = 24.dp)
-                .clip(SheetShape)
-                .background(t.bg)
-                .border(1.dp, t.border, SheetShape),
-        ) {
-            Row(
-                Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("›", style = MaterialTheme.typography.titleMedium.copy(fontFamily = Readout), color = t.muted)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleSmall.copy(fontFamily = Readout),
-                    color = t.text,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                )
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Filled.Close, contentDescription = "Kapat", tint = t.text2)
-                }
-            }
-            ConsoleDivider()
+    FullScreenDialog(onDismiss = onClose) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.navigationBars))) {
+            PocketTopBar(
+                title,
+                onBack = onClose,
+                backIcon = Icons.Rounded.Close,
+                backDesc = "Kapat",
+                insetTop = false,
+                subtitle = {
+                    Text(
+                        "${blocks.count { it.role == "tool" }} araç · ${blocks.count { it.role == "message" }} mesaj",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
+            )
             if (blocks.isEmpty()) {
-                Text(
-                    "Blok yok — transcript boş ya da tanınmadı.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = t.muted,
-                    modifier = Modifier.padding(16.dp),
-                )
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    EmptyState(
+                        icon = Icons.Rounded.Forum,
+                        title = "Gösterilecek adım yok",
+                        body = "Blok yok — transcript boş ya da tanınmadı.",
+                    )
+                }
             } else {
                 LazyColumn(
-                    Modifier.padding(horizontal = 8.dp),
+                    Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = Space.lg, vertical = Space.md),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 10.dp),
                 ) {
                     items(foldSteps(blocks)) { item ->
-                        when (item) {
-                            is ChatItem.Single -> ChatBlockRow(item.block)
-                            is ChatItem.Group -> ToolGroupRow(item.blocks)
+                        Box(Modifier.widthIn(max = 720.dp)) {
+                            when (item) {
+                                is ChatItem.Single -> ChatBlockRow(item.block)
+                                is ChatItem.Group -> ToolGroupRow(item.blocks)
+                            }
                         }
                     }
                 }
@@ -146,13 +141,13 @@ private fun toolName(b: ChatBlockDto) = b.text.removePrefix("tool:").trim()
 private fun toolIcon(name: String): ImageVector {
     val n = name.lowercase()
     return when {
-        n.startsWith("bash") || n.contains("shell") || n.contains("exec") -> Icons.Filled.Terminal
-        n.startsWith("read") || n.contains("view") || n.contains("cat") -> Icons.Filled.Description
-        n.contains("edit") || n.contains("patch") -> Icons.Filled.Edit
-        n.startsWith("write") || n.contains("create") -> Icons.Filled.NoteAdd
-        n.contains("web") || n.contains("fetch") || n.contains("browser") -> Icons.Filled.Language
-        n.contains("grep") || n.contains("glob") || n.contains("search") -> Icons.Filled.Search
-        else -> Icons.Filled.Build
+        n.startsWith("bash") || n.contains("shell") || n.contains("exec") -> Icons.Rounded.Terminal
+        n.startsWith("read") || n.contains("view") || n.contains("cat") -> Icons.Rounded.Description
+        n.contains("edit") || n.contains("patch") -> Icons.Rounded.Edit
+        n.startsWith("write") || n.contains("create") -> Icons.AutoMirrored.Rounded.NoteAdd
+        n.contains("web") || n.contains("fetch") || n.contains("browser") -> Icons.Rounded.Language
+        n.contains("grep") || n.contains("glob") || n.contains("search") -> Icons.Rounded.Search
+        else -> Icons.Rounded.Build
     }
 }
 
@@ -160,113 +155,107 @@ private fun toolIcon(name: String): ImageVector {
 private fun ChatBlockRow(b: ChatBlockDto) {
     val t = Tok
     when (b.role) {
-        "tool" -> {
-            val name = toolName(b)
-            StepRow(toolIcon(name), name, t.text2)
-        }
-        "result" -> ResultLine(b.text.removePrefix("result:"), error = false)
-        "error" -> ResultLine(b.text.removePrefix("result:"), error = true)
-        "thinking" -> Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
-            IconTile(Icons.Filled.Psychology, t.muted, size = 26.dp)
-            Spacer(Modifier.width(10.dp))
-            Text(
-                b.text,
-                style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
-                color = t.muted,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+        "tool" -> StepRow(toolIcon(toolName(b)), toolName(b))
+        "result" -> ResultChip(b.text.removePrefix("result:"), error = false)
+        "error" -> ResultChip(b.text.removePrefix("result:"), error = true)
+        "thinking" -> Row(Modifier.padding(vertical = Space.sm), verticalAlignment = Alignment.Top) {
+            IconTile(Icons.Rounded.Psychology, size = 32.dp)
+            Spacer(Modifier.width(Space.md))
+            Column(Modifier.weight(1f)) {
+                Text("Düşünüyor", style = MaterialTheme.typography.labelMedium, color = t.text2)
+                Text(b.text, style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic), color = t.text2)
+            }
         }
         // Mesaj: düz düzyazı — balon yok.
         else -> Text(
             b.text,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             color = t.text,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = Space.md),
         )
     }
 }
 
-// Adım satırı: ikon karosu (tür) + mono başlık. Kenarsız; zemin yok.
 @Composable
-private fun StepRow(icon: ImageVector, label: String, tint: androidx.compose.ui.graphics.Color) {
+private fun StepRow(icon: ImageVector, label: String) {
     Row(
-        Modifier.fillMaxWidth().defaultMinSize(minHeight = 40.dp).padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconTile(icon, tint, size = 26.dp)
-        Spacer(Modifier.width(10.dp))
-        Text(label, style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout), color = Tok.text, maxLines = 1)
+        IconTile(icon, tone = Tok.busy, size = 32.dp)
+        Spacer(Modifier.width(Space.md))
+        Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Code), color = Tok.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
-// Sonuç: karonun hizasında küçük okuma — başarı sessiz yeşil, hata mercan.
+// Sonuç rozeti: karonun hizasında; başarı yeşil tik, hata mercan çarpı.
 @Composable
-private fun ResultLine(text: String, error: Boolean) {
-    val t = Tok
-    Row(
-        Modifier.padding(start = 8.dp + 26.dp + 10.dp, end = 8.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SignalPixel(if (error) Signal.Error else Signal.Idle, size = 6.dp)
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text,
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
-            color = if (error) t.danger else t.success,
-        )
+private fun ResultChip(text: String, error: Boolean) {
+    val tone = if (error) Tok.danger else Tok.live
+    Row(Modifier.padding(start = 32.dp + Space.md, bottom = 4.dp)) {
+        Row(
+            Modifier.clip(PillShape).background(tone.soft).padding(start = 6.dp, end = 10.dp, top = 3.dp, bottom = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(if (error) Icons.Rounded.Close else Icons.Rounded.Check, contentDescription = if (error) "hata" else "başarılı", tint = tone.onSoft, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(text, style = MaterialTheme.typography.labelMedium.copy(fontFamily = Code, fontWeight = FontWeight.Normal), color = tone.onSoft, maxLines = 2)
+        }
     }
 }
 
-// Grup satırı: "5 araç · Bash, Read, Edit" — dokununca açılır, chevron döner.
-// Açık grup hafif zeminde durur, adımlar içinde.
+// Grup satırı: "5 araç · 1 hata" + araç adları; dokununca açılır, ok döner.
 @Composable
 private fun ToolGroupRow(blocks: List<ChatBlockDto>) {
     val t = Tok
     var open by remember { mutableStateOf(false) }
     val reduced = rememberReducedMotion()
-    val angle by animateFloatAsState(if (open) 90f else 0f, tween(if (reduced) 0 else 130), label = "chev")
+    val angle by animateFloatAsState(if (open) 90f else 0f, tween(if (reduced) 0 else Motion.Fast), label = "chev")
     val tools = blocks.filter { it.role == "tool" }
     val errors = blocks.count { it.role == "error" }
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.medium)
-            .background(if (open) t.hover else androidx.compose.ui.graphics.Color.Transparent),
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (open) t.card else androidx.compose.ui.graphics.Color.Transparent),
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .clickable { open = !open }
-                .defaultMinSize(minHeight = 44.dp)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .tap({ open = !open })
+                .defaultMinSize(minHeight = 52.dp)
+                .padding(horizontal = if (open) Space.md else 0.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconTile(Icons.Filled.Build, if (errors > 0) t.danger else t.text2, size = 26.dp)
-            Spacer(Modifier.width(10.dp))
+            IconTile(Icons.Rounded.Build, tone = if (errors > 0) t.danger else t.neutral, size = 32.dp)
+            Spacer(Modifier.width(Space.md))
             Column(Modifier.weight(1f)) {
                 Text(
                     "${tools.size} araç" + if (errors > 0) " · $errors hata" else "",
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                    color = t.text,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (errors > 0) t.danger.text else t.text,
                 )
                 Text(
                     tools.map { toolName(it) }.distinct().joinToString(", "),
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
-                    color = t.muted,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code),
+                    color = t.text2,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                 contentDescription = if (open) "Grubu kapat" else "Grubu aç",
-                tint = t.muted,
-                modifier = Modifier.size(18.dp).rotate(angle),
+                tint = t.text2,
+                modifier = Modifier.size(22.dp).rotate(angle),
             )
         }
         if (open) {
-            Box(Modifier.padding(bottom = 4.dp)) {
-                Column { blocks.forEach { ChatBlockRow(it) } }
+            Column(Modifier.padding(start = Space.md, end = Space.md, bottom = Space.sm)) {
+                blocks.forEach { ChatBlockRow(it) }
             }
+            Spacer(Modifier.height(2.dp))
         }
     }
 }

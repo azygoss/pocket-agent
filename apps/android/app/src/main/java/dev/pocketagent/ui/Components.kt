@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package dev.pocketagent.ui
 
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,295 +21,287 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.pocketagent.transport.ConnectionState
+import dev.pocketagent.transport.TerminalController
+import dev.pocketagent.ui.theme.CardShape
+import dev.pocketagent.ui.theme.Code
+import dev.pocketagent.ui.theme.InnerShape
 import dev.pocketagent.ui.theme.LocalTokens
-import dev.pocketagent.ui.theme.PixelShape
+import dev.pocketagent.ui.theme.PillShape
 import dev.pocketagent.ui.theme.PocketTokens
-import dev.pocketagent.ui.theme.Readout
-import dev.pocketagent.ui.theme.SheetShape
 import dev.pocketagent.ui.theme.Space
-import dev.pocketagent.ui.theme.rememberBlinkClock
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.drawscope.Stroke
+import dev.pocketagent.ui.theme.Tone
+import dev.pocketagent.ui.theme.readableOn
+import dev.pocketagent.ui.theme.rememberReducedMotion
 
-// ── Bileşen kütüphanesi — Pocket tasarım dili (docs/design.md) ──────────────
-// Renk sinyaldir, süs değil: mavi canlı/aktif, amber "sana ihtiyaç var",
-// mercan hata. Seçim yalnız zeminle (active) gösterilir — kenar şeridi yok.
-// Durum işaretleri nokta değil pikseldir. Okumalar Readout (Plex Mono) ile.
+// ── Bileşen kütüphanesi (docs/design.md) ────────────────────────────────────
+// Ton katmanlı yüzeyler (çizgi yok, gölge yok), büyük köşeler, hap düğmeler.
+// Durum her yerde renk + metin + biçimle söylenir; renk tek ipucu değildir.
 
 val Tok: PocketTokens
     @Composable @ReadOnlyComposable
     get() = LocalTokens.current
 
+// Üstünde durulan yüzey (zemin, kart, sayfa). Alan, segment rayı ve pasif
+// düğme gibi "gömük" kontroller bir ton yukarı çıkar ki her yüzeyde görünsün.
+val LocalSurface = staticCompositionLocalOf { Color.Unspecified }
+
+val wellColor: Color
+    @Composable @ReadOnlyComposable
+    get() = if (LocalSurface.current == Tok.raised) Tok.overlay else Tok.raised
+
+// Tıklama + uzun basma tek yerden: uzun basma varsa combinedClickable.
+@OptIn(ExperimentalFoundationApi::class)
+fun Modifier.tap(onClick: (() -> Unit)?, onLongClick: (() -> Unit)? = null, label: String? = null): Modifier = when {
+    onLongClick != null -> combinedClickable(onClickLabel = label, onClick = { onClick?.invoke() }, onLongClick = onLongClick)
+    onClick != null -> clickable(onClickLabel = label, onClick = onClick)
+    else -> this
+}
+
+// ── Durum ───────────────────────────────────────────────────────────────────
+
+enum class Status { Live, Busy, Warn, Error, Idle }
+
+fun ConnectionState.status(): Status = when (this) {
+    ConnectionState.ACTIVE -> Status.Live
+    ConnectionState.CONNECTING, ConnectionState.RECONNECTING -> Status.Busy
+    ConnectionState.SUSPENDED -> Status.Warn
+    ConnectionState.FAILED -> Status.Error
+    ConnectionState.CLOSED -> Status.Idle
+}
+
+// Bağlantı durumunun insan dili — rozet, alt satır ve sekmede aynı kelimeler.
+fun ConnectionState.label(retry: Int = 0): String = if (retry > 0) {
+    "Yeniden bağlanıyor $retry/${TerminalController.MAX_RETRY}"
+} else when (this) {
+    ConnectionState.ACTIVE -> "Bağlı"
+    ConnectionState.CONNECTING -> "Bağlanıyor"
+    ConnectionState.RECONNECTING -> "Yeniden bağlanıyor"
+    ConnectionState.SUSPENDED -> "Askıda"
+    ConnectionState.FAILED -> "Bağlantı hatası"
+    ConnectionState.CLOSED -> "Bağlantı kapalı"
+}
+
+@Composable
+@ReadOnlyComposable
+fun Status.tone(): Tone = when (this) {
+    Status.Live -> Tok.live
+    Status.Busy -> Tok.busy
+    Status.Warn -> Tok.warn
+    Status.Error -> Tok.danger
+    Status.Idle -> Tok.neutral
+}
+
+// Durum noktası: dolu = bir durum var, halka = boşta. Bağlanırken yumuşakça
+// nabız atar (animasyon kapalıysa sabit); nabız çizim katmanında okunur.
+@Composable
+fun StatusDot(status: Status, modifier: Modifier = Modifier, size: Dp = 8.dp) {
+    val tone = status.tone()
+    val reduced = rememberReducedMotion()
+    val pulse = if (status == Status.Busy && !reduced) {
+        rememberInfiniteTransition(label = "pulse").animateFloat(
+            initialValue = 1f,
+            targetValue = 0.3f,
+            animationSpec = infiniteRepeatable(tween(700, easing = LinearEasing), RepeatMode.Reverse),
+            label = "pulse-a",
+        )
+    } else {
+        null
+    }
+    Box(
+        modifier
+            .size(size)
+            .graphicsLayer { alpha = pulse?.value ?: 1f }
+            .then(
+                if (status == Status.Idle) Modifier.border(1.5.dp, tone.fg, CircleShape)
+                else Modifier.background(tone.fg, CircleShape),
+            ),
+    )
+}
+
+// Durum rozeti: yumuşak zeminde nokta + kelime.
+@Composable
+fun StatusChip(status: Status, label: String, modifier: Modifier = Modifier) {
+    val tone = status.tone()
+    Row(
+        modifier
+            .clip(PillShape)
+            .background(tone.soft)
+            .padding(start = 8.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StatusDot(status, size = 7.dp)
+        Spacer(Modifier.width(6.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = tone.onSoft, maxLines = 1)
+    }
+}
+
+// Küçük etiket: transport, kaynak, "başka cihaz" gibi okumalar.
+@Composable
+fun Tag(text: String, modifier: Modifier = Modifier, tone: Tone? = null, mono: Boolean = false) {
+    val bg = tone?.soft ?: wellColor
+    val fg = tone?.onSoft ?: Tok.text2
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall.let { if (mono) it.copy(fontFamily = Code, fontWeight = FontWeight.Normal) else it },
+        color = fg,
+        maxLines = 1,
+        modifier = modifier.clip(RoundedCornerShape(6.dp)).background(bg).padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+// ── Kimlik ──────────────────────────────────────────────────────────────────
+
+// Host avatarı: adın ilk harfi, host+kullanıcıdan türetilen tonda yuvarlak
+// kare. Aynı makine her ekranda aynı renkle görünür.
+@Composable
+fun HostAvatar(name: String, seed: String, modifier: Modifier = Modifier, size: Dp = 40.dp, dim: Boolean = false) {
+    val t = Tok
+    val (bg, fg) = remember(seed, t) {
+        val h = seed.fold(0x811C9DC5.toInt()) { acc, c -> (acc xor c.code) * 0x01000193 }
+        val hue = t.avatars[Math.floorMod(h, t.avatars.size)]
+        val b = lerp(t.card, hue, if (t.dark) 0.24f else 0.16f)
+        b to hue.readableOn(b, t.text, 4.5f)
+    }
+    val letter = name.trim().firstOrNull { it.isLetterOrDigit() }?.uppercase(java.util.Locale.forLanguageTag("tr")) ?: "?"
+    Box(
+        modifier
+            .size(size)
+            .graphicsLayer { alpha = if (dim) 0.5f else 1f }
+            .clip(RoundedCornerShape(size * 0.32f))
+            .background(bg),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            letter,
+            style = MaterialTheme.typography.titleMedium.copy(fontSize = (size.value * 0.42f).sp, lineHeight = (size.value * 0.5f).sp),
+            color = fg,
+        )
+    }
+}
+
+// Tür ikonu karosu: dosya türü, ayar kategorisi, araç adımı.
+@Composable
+fun IconTile(icon: ImageVector, modifier: Modifier = Modifier, tone: Tone? = null, size: Dp = 40.dp) {
+    Box(
+        modifier
+            .size(size)
+            .clip(RoundedCornerShape(size * 0.3f))
+            .background(tone?.soft ?: wellColor),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = tone?.fg ?: Tok.text2, modifier = Modifier.size(size * 0.5f))
+    }
+}
+
 // ── Yüzeyler ────────────────────────────────────────────────────────────────
 
-// Kart: surface zemini + hairline kenar, 10dp. Bir bölümün satırları tek
-// kartta yaşar; satırlar arasına SoftDivider konur.
+// Kart: zeminden bir ton yukarıda, 22dp köşe. Kenar çizgisi ve gölge yok.
 @Composable
-fun ConsoleCard(
+fun PocketCard(
     modifier: Modifier = Modifier,
-    padding: Dp = Space.lg,
-    containerColor: Color = Tok.surface,
-    borderColor: Color = Tok.border,
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    color: Color = Tok.card,
+    shape: Shape = CardShape,
+    contentPadding: PaddingValues = PaddingValues(Space.lg),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // Kart kendi içerik rengini verir — renksiz Text asla siyah düşmez.
-    CompositionLocalProvider(LocalContentColor provides Tok.text) {
+    CompositionLocalProvider(LocalContentColor provides Tok.text, LocalSurface provides color) {
         Column(
             modifier
                 .fillMaxWidth()
-                .clip(SheetShape)
-                .background(containerColor)
-                .border(1.dp, borderColor, SheetShape)
-                .padding(padding),
+                .clip(shape)
+                .background(color)
+                .tap(onClick, onLongClick)
+                .padding(contentPadding),
             content = content,
         )
     }
 }
 
-// İkon karosu: adımın/satırın türünü söyler; rengiyle durumunu. Varsayılan
-// sessiz mürekkep — renk yalnız sinyal varsa verilir.
+// Bölüm başlığı: sayfa içindeki gruplar. Ekran okuyucuya başlık olarak bildirilir.
 @Composable
-fun IconTile(
-    icon: ImageVector,
-    tint: Color = Tok.text2,
-    modifier: Modifier = Modifier,
-    size: Dp = 36.dp,
-    containerColor: Color = Tok.raised,
-) {
-    Box(
-        modifier
-            .size(size)
-            .clip(MaterialTheme.shapes.small)
-            .background(containerColor),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.5f))
-    }
-}
-
-// Kart başlığı: semibold sans başlık + sağda isteğe bağlı aksiyon.
-@Composable
-fun CardHeader(
+fun SectionHeader(
     title: String,
     modifier: Modifier = Modifier,
-    trailing: (@Composable () -> Unit)? = null,
+    count: String? = null,
+    action: (@Composable () -> Unit)? = null,
 ) {
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = MaterialTheme.typography.titleMedium, color = Tok.text)
-        if (trailing != null) {
-            Spacer(Modifier.weight(1f))
-            trailing()
-        }
-    }
-}
-
-// Sayfa başlığı: sakin sans başlık + mono okuma satırı.
-@Composable
-fun ScreenHeader(title: String, modifier: Modifier = Modifier, meta: String? = null) {
-    Column(modifier.fillMaxWidth()) {
-        Text(title, style = MaterialTheme.typography.headlineMedium, color = Tok.text)
-        if (meta != null) {
-            Spacer(Modifier.height(2.dp))
-            Text(
-                meta,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
-                color = Tok.muted,
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-// Bölüm etiketi: cümle düzeni, 12sp medium, loş — büyük harf/tracking yok.
-@Composable
-fun SectionLabel(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.labelMedium, color = Tok.muted, modifier = modifier)
-}
-
-// ── Pikseller ───────────────────────────────────────────────────────────────
-
-enum class Signal { Idle, Running, Live, NeedsYou, Error }
-
-fun ConnectionState.signal(): Signal = when (this) {
-    ConnectionState.ACTIVE -> Signal.Live
-    ConnectionState.CONNECTING, ConnectionState.RECONNECTING -> Signal.Running
-    ConnectionState.SUSPENDED -> Signal.NeedsYou
-    ConnectionState.FAILED -> Signal.Error
-    ConnectionState.CLOSED -> Signal.Idle
-}
-
-// Durum pikseli (≤2dp köşe): içi boş mavi = çalışıyor (ortak 1 Hz saatle
-// yanıp söner), dolu mavi = canlı, dolu amber = sana ihtiyaç var, dolu
-// mercan = hata, içi boş loş = boşta. Renk tek başına anlam taşımasın diye
-// içi boş/dolu biçim farkı da var.
-@Composable
-fun SignalPixel(signal: Signal, modifier: Modifier = Modifier, size: Dp = 8.dp) {
-    val t = Tok
-    // Yanıp sönme fazı çizim aşamasında okunur → tik başına yalnız redraw.
-    val clock = if (signal == Signal.Running) rememberBlinkClock() else null
-    val color = when (signal) {
-        Signal.Idle -> t.muted
-        Signal.Running, Signal.Live -> t.accent
-        Signal.NeedsYou -> t.warning
-        Signal.Error -> t.danger
-    }
-    val hollow = signal == Signal.Idle || signal == Signal.Running
-    Box(
-        modifier.size(size).drawBehind {
-            val r = CornerRadius(2.dp.toPx())
-            if (hollow) {
-                val w = 1.5.dp.toPx()
-                val on = clock?.on ?: true
-                drawRoundRect(
-                    color.copy(alpha = if (on) 1f else 0.25f),
-                    topLeft = Offset(w / 2, w / 2),
-                    size = Size(this.size.width - w, this.size.height - w),
-                    cornerRadius = r,
-                    style = Stroke(width = w),
-                )
-            } else {
-                drawRoundRect(color, cornerRadius = r)
-            }
-        },
-    )
-}
-
-@Composable
-fun StatusPixel(state: ConnectionState, modifier: Modifier = Modifier, size: Dp = 8.dp) =
-    SignalPixel(state.signal(), modifier, size)
-
-// Meşgul göstergesi: dönen çember yerine yanıp sönen içi boş piksel + okuma.
-@Composable
-fun BusyPixel(label: String? = null, modifier: Modifier = Modifier) {
     Row(
-        modifier.semantics { contentDescription = label ?: "Yükleniyor" },
+        modifier.fillMaxWidth().heightIn(min = 44.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SignalPixel(Signal.Running, size = 10.dp)
-        if (label != null) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp),
+            color = Tok.text,
+            modifier = Modifier.semantics { heading() },
+        )
+        if (count != null) {
             Spacer(Modifier.width(8.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout), color = Tok.muted)
+            Text(count, style = MaterialTheme.typography.labelMedium, color = Tok.text2)
         }
+        Spacer(Modifier.weight(1f))
+        action?.invoke()
     }
 }
 
-// Host sigil'i: host kimliğinden türetilen, aynalı 3×3 piksel deseni —
-// altı tondan birinde. Klasör/sunucu ikonunun yerini alır; aynı host her
-// yerde aynı işareti taşır.
 @Composable
-fun HostSigil(seed: String, modifier: Modifier = Modifier, size: Dp = 36.dp, dim: Boolean = false) {
-    val t = Tok
-    val h = seed.fold(0x811C9DC5.toInt()) { acc, c -> (acc xor c.code) * 0x01000193 }
-    val hue = t.sigils[Math.floorMod(h, t.sigils.size)].copy(alpha = if (dim) 0.45f else 1f)
-    // 6 bit: sol sütun (aynası sağ) + orta sütun. En az 4 piksel dolu olsun.
-    var bits = (h ushr 8) and 0x3F
-    if (Integer.bitCount(bits) < 3) bits = bits or 0x12
-    Box(
-        modifier
-            .size(size)
-            .clip(MaterialTheme.shapes.small)
-            .background(t.raised),
-        contentAlignment = Alignment.Center,
-    ) {
-        Canvas(Modifier.size(size * 0.5f)) {
-            val cell = this.size.width / 3f
-            val gap = cell * 0.14f
-            val r = CornerRadius(cell * 0.12f)
-            for (row in 0..2) for (col in 0..2) {
-                val src = if (col == 2) 0 else col
-                if ((bits shr (row * 2 + src)) and 1 == 1) {
-                    drawRoundRect(
-                        hue,
-                        topLeft = Offset(col * cell + gap / 2, row * cell + gap / 2),
-                        size = Size(cell - gap, cell - gap),
-                        cornerRadius = r,
-                    )
-                }
-            }
-        }
-    }
+fun InsetDivider(start: Dp = 0.dp) {
+    HorizontalDivider(Modifier.padding(start = start), thickness = 1.dp, color = Tok.line)
 }
 
-// Hücre ölçer: doluluk oranı yatay piksel hücreleriyle (kullanım, indirme).
-// Eşiği aşınca amber — "sana ihtiyaç var".
-@Composable
-fun CellMeter(fraction: Float, modifier: Modifier = Modifier, cells: Int = 20, warnAt: Float = 0.85f) {
-    val t = Tok
-    val f = fraction.coerceIn(0f, 1f)
-    val filled = (f * cells).let { if (f > 0f && it < 1f) 1 else it.toInt() }
-    val fill = if (f >= warnAt) t.warning else t.accent
-    Row(modifier.fillMaxWidth().height(8.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-        repeat(cells) { i ->
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(8.dp)
-                    .clip(PixelShape)
-                    .background(if (i < filled) fill else t.faint.copy(alpha = 0.6f)),
-            )
-        }
-    }
-}
-
-// ── Ayırıcılar ──────────────────────────────────────────────────────────────
-
-@Composable
-fun ConsoleDivider(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().height(1.dp).background(Tok.border))
-}
-
-@Composable
-fun SoftDivider(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().height(1.dp).background(Tok.border))
-}
-
-// ── Satırlar ────────────────────────────────────────────────────────────────
-
-// Evrensel liste satırı: leading işaret + başlık + alt satır + trailing.
-// Kutusuz; ayırma çağıranın SoftDivider'ındadır. Basınca zemin kalkar
-// (ripple), sınırlar oynamaz.
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+// Evrensel satır: sol işaret + başlık + alt satır + sağ öğe. En az 56dp.
 @Composable
 fun ListRow(
     title: String,
@@ -313,48 +309,44 @@ fun ListRow(
     subtitle: String? = null,
     titleMono: Boolean = false,
     subtitleMono: Boolean = false,
-    contentPadding: PaddingValues = PaddingValues(horizontal = Space.lg, vertical = Space.md),
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    titleColor: Color = Tok.text,
+    subtitleMaxLines: Int = 1,
+    contentPadding: PaddingValues = PaddingValues(horizontal = Space.lg, vertical = Space.md),
 ) {
     Row(
         modifier
             .fillMaxWidth()
-            .then(
-                if (onLongClick != null) {
-                    Modifier.combinedClickable(onClick = { onClick?.invoke() }, onLongClick = onLongClick)
-                } else if (onClick != null) {
-                    Modifier.clickable(onClick = onClick)
-                } else {
-                    Modifier
-                },
-            )
+            .tap(onClick, onLongClick)
             .defaultMinSize(minHeight = 56.dp)
             .padding(contentPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leading != null) {
             leading()
-            Spacer(Modifier.width(Space.md))
+            Spacer(Modifier.width(Space.md + 2.dp))
         }
         Column(Modifier.weight(1f)) {
             Text(
                 title,
-                style = if (titleMono) MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout)
+                style = if (titleMono) MaterialTheme.typography.bodyMedium.copy(fontFamily = Code)
                 else MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                color = Tok.text,
+                color = titleColor,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             if (subtitle != null) {
                 Spacer(Modifier.height(2.dp))
                 Text(
                     subtitle,
-                    style = if (subtitleMono) MaterialTheme.typography.bodySmall.copy(fontFamily = Readout)
-                    else MaterialTheme.typography.bodySmall,
-                    color = Tok.muted,
-                    maxLines = 1,
+                    style = if (subtitleMono) MaterialTheme.typography.bodySmall.copy(fontFamily = Code)
+                    else MaterialTheme.typography.bodyMedium,
+                    color = Tok.text2,
+                    maxLines = subtitleMaxLines,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -365,268 +357,317 @@ fun ListRow(
     }
 }
 
-// Okuma çipi (transport, kategori, durum): 4dp köşe, mono metin. tone
-// verilirse sinyal renginde (zemin %14), yoksa nötr.
+// ── Düğmeler ────────────────────────────────────────────────────────────────
+// Birincil: dolu nane hap, ekranda bir tane. Tonlu: yumuşak nane zemin,
+// ikincil eylem. Çerçeveli: nötr alternatif. Metin: satır içi eylem.
+
+private val ButtonPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
+
 @Composable
-fun TagPill(
+private fun ButtonContent(text: String, icon: ImageVector?) {
+    if (icon != null) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+    }
+    Text(text, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
+}
+
+@Composable
+fun PrimaryButton(
     text: String,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    active: Boolean = false,
-    tone: Color? = null,
+    enabled: Boolean = true,
+    icon: ImageVector? = null,
+    danger: Boolean = false,
 ) {
-    val color = tone ?: Tok.text2
-    Box(
-        modifier
-            .clip(MaterialTheme.shapes.extraSmall)
-            .background(if (active) color.copy(alpha = 0.14f) else Tok.hover)
-            .padding(horizontal = 7.dp, vertical = 3.dp),
+    val t = Tok
+    Button(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 48.dp),
+        enabled = enabled,
+        shape = PillShape,
+        contentPadding = ButtonPadding,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (danger) t.danger.fg else t.primary,
+            contentColor = if (danger) (if (t.dark) Color(0xFF1A0605) else Color.White) else t.onPrimary,
+            disabledContainerColor = wellColor,
+            disabledContentColor = t.text3,
+        ),
+    ) { ButtonContent(text, icon) }
+}
+
+@Composable
+fun TonalButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: ImageVector? = null,
+) {
+    val t = Tok
+    Button(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 48.dp),
+        enabled = enabled,
+        shape = PillShape,
+        contentPadding = ButtonPadding,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = t.accent.soft,
+            contentColor = t.accent.onSoft,
+            disabledContainerColor = wellColor,
+            disabledContentColor = t.text3,
+        ),
+    ) { ButtonContent(text, icon) }
+}
+
+@Composable
+fun OutlineButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: ImageVector? = null,
+) {
+    val t = Tok
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 48.dp),
+        enabled = enabled,
+        shape = PillShape,
+        contentPadding = ButtonPadding,
+        border = BorderStroke(1.dp, if (enabled) t.lineStrong else t.line),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = t.text, disabledContentColor = t.text3),
+    ) { ButtonContent(text, icon) }
+}
+
+@Composable
+fun GhostButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    color: Color = Tok.primaryText,
+    icon: ImageVector? = null,
+) {
+    TextButton(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 48.dp),
+        enabled = enabled,
+        shape = PillShape,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+        colors = ButtonDefaults.textButtonColors(contentColor = color, disabledContentColor = Tok.text3),
+    ) { ButtonContent(text, icon) }
+}
+
+// 48dp dokunma hedefli ikon eylemi; açıklama ekran okuyucuya gider.
+@Composable
+fun IconAction(
+    icon: ImageVector,
+    desc: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tint: Color = Tok.text2,
+    selected: Boolean = false,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        colors = IconButtonDefaults.iconButtonColors(
+            containerColor = if (selected) Tok.accent.soft else Color.Transparent,
+            contentColor = if (selected) Tok.accent.onSoft else tint,
+            disabledContentColor = Tok.text3,
+        ),
     ) {
-        Text(
-            text,
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
-            color = if (active) color else Tok.text2,
-            maxLines = 1,
-        )
+        Icon(icon, contentDescription = desc, modifier = Modifier.size(22.dp))
     }
 }
 
-// Boş durum: sessiz ikon karosu + başlık + açıklama + isteğe bağlı aksiyon.
+// ── Üst çubuk ───────────────────────────────────────────────────────────────
+
+// Ekran başlığı: geri + başlık (+ isteğe bağlı alt satır) + eylemler.
+@Composable
+fun PocketTopBar(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: (@Composable () -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
+    backIcon: ImageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+    backDesc: String = "Geri",
+    insetTop: Boolean = true,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .then(if (insetTop) Modifier.windowInsetsPadding(WindowInsets.statusBars) else Modifier)
+            .heightIn(min = 64.dp)
+            .padding(start = if (onBack != null) 4.dp else Space.lg, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onBack != null) {
+            IconAction(backIcon, backDesc, onBack, tint = Tok.text)
+            Spacer(Modifier.width(4.dp))
+        }
+        Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleLarge,
+                color = Tok.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.semantics { heading() },
+            )
+            if (subtitle != null) {
+                Spacer(Modifier.height(2.dp))
+                CompositionLocalProvider(LocalContentColor provides Tok.text2) { subtitle() }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, content = actions)
+    }
+}
+
+// ── Geri bildirim ───────────────────────────────────────────────────────────
+
+// Boş durum: tonlu ikon karosu + başlık + açıklama + eylemler.
 @Composable
 fun EmptyState(
     icon: ImageVector,
     title: String,
     body: String,
     modifier: Modifier = Modifier,
-    tint: Color = Tok.text2,
-    art: List<String>? = null,
     action: (@Composable () -> Unit)? = null,
 ) {
     Column(
-        modifier.fillMaxWidth().padding(horizontal = Space.xl, vertical = Space.xxl),
+        modifier.fillMaxWidth().padding(horizontal = Space.xxl, vertical = Space.x3),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (art != null) {
-            PixelIllustration(art, cell = 8.dp)
-            Spacer(Modifier.height(Space.xl))
-        } else {
-            IconTile(icon, tint, size = 52.dp)
-            Spacer(Modifier.height(Space.lg))
-        }
-        Text(title, style = MaterialTheme.typography.titleMedium, color = Tok.text, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(Space.xs))
+        IconTile(icon, tone = Tok.accent, size = 64.dp)
+        Spacer(Modifier.height(Space.lg + 4.dp))
+        Text(title, style = MaterialTheme.typography.titleLarge, color = Tok.text, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(Space.sm))
         Text(
             body,
             style = MaterialTheme.typography.bodyMedium,
-            color = Tok.muted,
+            color = Tok.text2,
             textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 340.dp),
         )
         if (action != null) {
-            Spacer(Modifier.height(Space.lg))
+            Spacer(Modifier.height(Space.xl))
             action()
         }
     }
 }
 
-// Tek başına duran satır karosu: surface + hairline, 10dp.
+// Satır içi uyarı: durum tonunda yumuşak kutu, ikon + başlık + açıklama + eylem.
 @Composable
-fun TonalTile(
-    modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null,
-    content: @Composable RowScope.() -> Unit,
-) {
-    CompositionLocalProvider(LocalContentColor provides Tok.text) {
-        Row(
-            modifier
-                .fillMaxWidth()
-                .clip(SheetShape)
-                .background(Tok.surface)
-                .border(1.dp, Tok.border, SheetShape)
-                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-                .defaultMinSize(minHeight = 56.dp)
-                .padding(horizontal = Space.md, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content,
-        )
-    }
-}
-
-data class Segment<T>(val value: T, val label: String)
-
-// Segmentli geçiş: loş ray üstünde sheet zemini — seçim yalnız zeminle.
-@Composable
-fun <T> SegmentedControl(
-    options: List<Segment<T>>,
-    selected: T,
-    onSelect: (T) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val t = Tok
-    Row(
-        modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(t.hover)
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        options.forEach { option ->
-            val isSelected = option.value == selected
-            val bg by animateColorAsState(if (isSelected) t.active else Color.Transparent, tween(130), label = "segment-bg")
-            Box(
-                Modifier
-                    .weight(1f)
-                    .clip(MaterialTheme.shapes.small)
-                    .background(bg)
-                    .selectable(selected = isSelected, role = Role.Tab, onClick = { onSelect(option.value) })
-                    .defaultMinSize(minHeight = 36.dp)
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    option.label,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (isSelected) t.text else t.muted,
-                    maxLines = 1,
-                )
-            }
-        }
-    }
-}
-
-// Ayar satırı: başlık + açıklama solda, kontrol sağda.
-@Composable
-fun SettingRow(
+fun Banner(
+    status: Status,
     title: String,
     modifier: Modifier = Modifier,
-    subtitle: String? = null,
-    control: @Composable () -> Unit,
+    body: String? = null,
+    icon: ImageVector? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
-    Row(
-        modifier.fillMaxWidth().padding(vertical = Space.md),
-        verticalAlignment = Alignment.CenterVertically,
+    val tone = status.tone()
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(tone.soft)
+            .padding(start = Space.lg, end = Space.sm, top = Space.md, bottom = if (actions != null) 2.dp else Space.md),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = Tok.text)
-            if (subtitle != null) {
-                Spacer(Modifier.height(2.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Tok.muted)
+        Row(verticalAlignment = Alignment.Top) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = tone.onSoft, modifier = Modifier.padding(top = 1.dp).size(20.dp))
+                Spacer(Modifier.width(Space.md))
+            } else {
+                StatusDot(status, Modifier.padding(top = 6.dp))
+                Spacer(Modifier.width(Space.md))
+            }
+            Column(Modifier.weight(1f).padding(end = Space.sm)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, color = Tok.text)
+                if (body != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(body, style = MaterialTheme.typography.bodyMedium, color = Tok.text2)
+                }
             }
         }
-        Spacer(Modifier.width(Space.md))
-        control()
+        if (actions != null) {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 2.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+                content = actions,
+            )
+        }
     }
 }
 
-// ── Butonlar ────────────────────────────────────────────────────────────────
-// Birincil: mürekkep dolgu (kâğıtta koyu, grafitte açık) — mavi sinyale
-// saklanır. İkincil: hairline çerçeve. 8dp köşe, 44dp hedef.
-
-private val ButtonShape = RoundedCornerShape(8.dp)
-
+// Kopyalanabilir komut satırı: "$" istemi + mono komut + kopyala.
 @Composable
-fun ConsoleButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    content: @Composable RowScope.() -> Unit,
-) {
-    val t = Tok
-    Button(
-        onClick = onClick,
-        modifier = modifier.defaultMinSize(minHeight = 44.dp),
-        enabled = enabled,
-        shape = ButtonShape,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = t.text,
-            contentColor = t.bg,
-            disabledContainerColor = t.active,
-            disabledContentColor = t.muted,
-        ),
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+fun CodeLine(code: String, onCopy: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(InnerShape)
+            .background(wellColor)
+            .padding(start = Space.lg, end = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        ProvideTextStyle(MaterialTheme.typography.labelLarge) { content() }
+        Text("$", style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Code), color = Tok.primaryText)
+        Spacer(Modifier.width(10.dp))
+        Text(
+            code,
+            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Code),
+            color = Tok.text,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        IconAction(Icons.Rounded.ContentCopy, "Kopyala", onCopy)
     }
 }
 
+// Mono değer kutusu: parmak izi, public anahtar gibi okunacak/kopyalanacak veri.
 @Composable
-fun ConsoleOutlinedButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    content: @Composable RowScope.() -> Unit,
-) {
-    val t = Tok
-    OutlinedButton(
-        onClick = onClick,
-        modifier = modifier.defaultMinSize(minHeight = 44.dp),
-        enabled = enabled,
-        shape = ButtonShape,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-        border = BorderStroke(1.dp, if (enabled) t.borderStrong else t.border),
-        colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = Color.Transparent,
-            contentColor = t.text,
-            disabledContentColor = t.muted,
-        ),
+fun ValueBox(text: String, modifier: Modifier = Modifier, label: String? = null) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(InnerShape)
+            .background(wellColor)
+            .padding(horizontal = Space.md + 2.dp, vertical = Space.md),
     ) {
-        ProvideTextStyle(MaterialTheme.typography.labelLarge) { content() }
+        if (label != null) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = Tok.text2)
+            Spacer(Modifier.height(4.dp))
+        }
+        Text(text, style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code), color = Tok.text)
     }
 }
 
+// İnce ilerleme çubuğu: kullanım ve indirme. Eşiği geçince amber.
 @Composable
-fun ConsoleTextButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    content: @Composable RowScope.() -> Unit,
-) {
-    TextButton(
-        onClick = onClick,
-        modifier = modifier,
-        enabled = enabled,
-        shape = ButtonShape,
-        colors = ButtonDefaults.textButtonColors(contentColor = Tok.text),
+fun Meter(fraction: Float, modifier: Modifier = Modifier, warnAt: Float = 0.85f) {
+    val f = fraction.coerceIn(0f, 1f)
+    val fill = if (f >= warnAt) Tok.warn.fg else Tok.primary
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(8.dp)
+            .clip(PillShape)
+            .background(wellColor)
+            .semantics { contentDescription = "%${(f * 100).toInt()}" },
     ) {
-        ProvideTextStyle(MaterialTheme.typography.labelLarge) { content() }
+        Box(Modifier.fillMaxWidth(f).height(8.dp).clip(PillShape).background(fill))
     }
 }
 
-// Oturum yeniden adlandırma: tek alan; boş kaydet → bağlantı adına döner.
-@Composable
-fun RenameSessionDialog(
-    connName: String,
-    initial: String?,
-    onDismiss: () -> Unit,
-    onSave: (String?) -> Unit,
-) {
-    var name by remember { mutableStateOf(initial ?: "") }
-    PocketAlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Oturum adı") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    name, { name = it },
-                    label = { Text("Ad") },
-                    placeholder = { Text(connName) },
-                    singleLine = true,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Boş bırakırsan bağlantı adı kullanılır.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Tok.muted,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(name.trim().ifBlank { null }) }) { Text("Kaydet") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
-    )
-}
-
-// "az önce / 5 dk önce / 3 sa önce / 2 g önce" — bağlantı kartlarında son
-// bağlanma zamanı için.
+// "az önce / 5 dk önce / 3 sa önce / 2 g önce" — son bağlanma, olay zamanı.
 fun relativeTime(ts: Long, now: Long = System.currentTimeMillis()): String {
     if (ts <= 0) return "hiç"
     val d = (now - ts) / 1000

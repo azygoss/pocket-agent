@@ -2,113 +2,74 @@
 package dev.pocketagent.ui
 
 import android.content.Intent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.Dns
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Terminal
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.rounded.GppMaybe
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import dev.pocketagent.transport.ConnectionState
-import dev.pocketagent.transport.SessionHandle
-import dev.pocketagent.transport.SessionManager
-import dev.pocketagent.ui.theme.consoleTheme
-import dev.pocketagent.ui.theme.consoleFont
-import dev.pocketagent.ui.theme.LocalMonoFont
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import dev.pocketagent.android.App
 import dev.pocketagent.service.TerminalService
-import dev.pocketagent.ui.theme.BlinkClock
-import dev.pocketagent.ui.theme.BlinkClockDriver
+import dev.pocketagent.transport.ConnectionState
+import dev.pocketagent.ui.theme.Motion
 import dev.pocketagent.ui.theme.PocketAgentTheme
-import dev.pocketagent.ui.theme.Readout
-import dev.pocketagent.ui.theme.SheetInset
-import dev.pocketagent.ui.theme.SheetShape
 import dev.pocketagent.ui.theme.Space
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.animateColorAsState
+import dev.pocketagent.ui.theme.consoleFont
+import dev.pocketagent.ui.theme.consoleTheme
 import dev.pocketagent.ui.theme.rememberReducedMotion
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
 
-// Seçili sekme dolu ikon, diğerleri çizgi ikon — aynı aile, tek hiyerarşi.
-enum class AppTab(val label: String, val icon: ImageVector, val iconIdle: ImageVector) {
-    Home("Ana Sayfa", Icons.Filled.Home, Icons.Outlined.Home),
-    Connections("Bağlantılar", Icons.Filled.Dns, Icons.Outlined.Dns),
-    Terminal("Terminal", Icons.Filled.Terminal, Icons.Outlined.Terminal),
-    Files("Dosyalar", Icons.Filled.Folder, Icons.Outlined.Folder),
-    Settings("Ayarlar", Icons.Filled.Settings, Icons.Outlined.Settings),
-}
+// ── Gezinme ─────────────────────────────────────────────────────────────────
+// Sekme çubuğu yok. Kök ekran Oturumlar; terminal oturuma dokununca alttan
+// gelen bir katman, dosyalar ve ayarlar sağdan itilen sayfalar. Geri her
+// zaman bir önceki katmana döner; oturumlar arka planda yaşar.
+enum class Route { Hub, Workspace, Files, Settings }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PocketAgentApp(
     app: App,
@@ -118,10 +79,12 @@ fun PocketAgentApp(
     val settings = remember { SettingsViewModel(app.settingsStore, app.appScope) }
     val usage = app.usage
     val files = remember { FilesViewModel(app.sessions, app.appScope, app.cacheDir) }
-    var tab by remember { mutableStateOf(AppTab.Home) }
-    // Terminal chrome: arama/tam-ekran bayrakları üst barla paylaşılır.
+    val stack = remember { mutableStateListOf(Route.Hub) }
+    fun push(r: Route) { if (stack.last() != r) stack.add(r) }
+    fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
+    fun home() { while (stack.size > 1) stack.removeAt(stack.lastIndex) }
+    val top = stack.last()
     val termChrome = remember { TerminalChromeState() }
-    val termFullscreen = termChrome.fullscreen
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     val notifPermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -147,7 +110,7 @@ fun PocketAgentApp(
         val last = conns.maxByOrNull { it.lastConnectedAt } ?: return@LaunchedEffect
         val secret = app.connections.secret(last.id) ?: return@LaunchedEffect // RAM/Keystore'da yoksa elle bağlan
         sessions.open(last, secret)
-        tab = AppTab.Terminal
+        push(Route.Workspace)
     }
 
     // Oturum persistansı: açık oturumların conn id'leri diske yazılır;
@@ -175,8 +138,7 @@ fun PocketAgentApp(
         }
     }
     // Liste yalnız restore denendikten sonra diske yazılır — aksi halde ilk
-    // boş emission kayıtlı id'leri okunmadan silerdi. Özel adlar da aynı
-    // kayda gömülür; ad değişimi liste değişmeden tetikler (combine).
+    // boş emission kayıtlı id'leri okunmadan silerdi.
     LaunchedEffect(sessionsRestored) {
         if (!sessionsRestored) return@LaunchedEffect
         kotlinx.coroutines.flow.combine(
@@ -184,28 +146,34 @@ fun PocketAgentApp(
             sessions.customNames,
             sessions.tmuxNames,
         ) { list, names, tmuxes ->
-            list.map {
-                dev.pocketagent.data.OpenSession(it.conn.id, names[it.id], tmuxes[it.id])
-            }
+            list.map { dev.pocketagent.data.OpenSession(it.conn.id, names[it.id], tmuxes[it.id]) }
         }.collect { app.settingsStore.saveOpenSessions(it) }
     }
 
-    // pocketagent://tmux|herdr → Terminal sekmesine düş.
+    // pocketagent://tmux|herdr → açık oturum varsa terminale geç.
     LaunchedEffect(Unit) {
         deepLinkAction.collect { action ->
             if (action != null) {
-                tab = AppTab.Terminal
+                if (sessions.sessions.value.isNotEmpty()) { home(); push(Route.Workspace) }
                 deepLinkAction.value = null
             }
         }
     }
-
-    // Sekme değişince tam ekran bayrağını sıfırla (nav bar geri gelir).
-    LaunchedEffect(tab) { if (tab != AppTab.Terminal) { termChrome.fullscreen = false; termChrome.searchOpen = false } }
-
-    // pocketagent://add?host=… → Bağlantılar sekmesi (diyalog ekranda açılır).
+    // pocketagent://add?host=… ya da terminalden "hostu düzenle" → Oturumlar'da
+    // düzenleyici açılır (Hub akışı tüketir).
     LaunchedEffect(Unit) {
-        addHostLink.collect { c -> if (c != null) tab = AppTab.Connections }
+        addHostLink.collect { c -> if (c != null) home() }
+    }
+
+    // Çalışma alanından çıkınca tam ekran/arama sıfırlanır (sistem çubukları döner).
+    LaunchedEffect(top) {
+        if (top != Route.Workspace) { termChrome.fullscreen = false; termChrome.searchOpen = false }
+    }
+
+    // Son oturum kapanınca terminal/dosyalar çıkmaz sokağa dönmesin.
+    val sessionList by sessions.sessions.collectAsState()
+    LaunchedEffect(sessionList.isEmpty()) {
+        if (sessionList.isEmpty()) stack.removeAll { it == Route.Workspace || it == Route.Files }
     }
 
     // Backend ayarı değişince client'ı yeniden kur, poller'ı başlat.
@@ -215,15 +183,13 @@ fun PocketAgentApp(
     }
 
     // Oturum varken foreground service ayakta; yokken durur.
-    val sessionList by sessions.sessions.collectAsState()
-    val activeCount = sessionList.count { it.controller.state.collectAsState().value == dev.pocketagent.transport.ConnectionState.ACTIVE }
+    val activeCount = sessionList.count { it.controller.state.collectAsState().value == ConnectionState.ACTIVE }
     LaunchedEffect(activeCount) {
         if (activeCount > 0) {
             // Android 13+: bildirim izni yoksa FGS bildirimi görünmez — iste.
             if (android.os.Build.VERSION.SDK_INT >= 33 &&
-                androidx.core.content.ContextCompat.checkSelfPermission(
-                    context, android.Manifest.permission.POST_NOTIFICATIONS,
-                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
             ) {
                 notifPermLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             }
@@ -237,12 +203,7 @@ fun PocketAgentApp(
         if (anyActive) snackbar.showSnackbar("Oturum bağlandı")
     }
 
-    // Terminalde geri tuşu da çıkış yoludur: arama/tam-ekran açıksa onlar
-    // önce kapanır (TerminalScreen'in kendi BackHandler'ı önceliklidir),
-    // değilse oturumlar bölümüne (ana sayfa) dönülür — oturum yaşar.
-    androidx.activity.compose.BackHandler(
-        enabled = tab == AppTab.Terminal && sessionList.isNotEmpty(),
-    ) { tab = AppTab.Home }
+    androidx.activity.compose.BackHandler(enabled = stack.size > 1) { pop() }
 
     val console = consoleTheme(settings.theme.themeId)
     // Sistem çubuğu ikon kontrastı temayı takip eder — açık temada koyu ikon.
@@ -254,387 +215,168 @@ fun PocketAgentApp(
             isAppearanceLightNavigationBars = !console.dark
         }
     }
-    // Ortak 1 Hz saat: "çalışıyor" pikselleri tek kaynaktan yanıp söner.
-    val blink = remember { BlinkClock() }
-    BlinkClockDriver(blink)
     // Tercihler okunana kadar yalnız pencere zemini (splash ile aynı renk).
     if (!settings.loaded) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF0E0F11)))
+        Box(Modifier.fillMaxSize().background(Color(0xFF0F1317)))
         return
     }
-    PocketAgentTheme(
-        theme = console,
-        mono = consoleFont(settings.theme.fontId).family,
-        blink = blink,
-    ) {
-        val t = Tok
-        val immersive = tab == AppTab.Terminal && termFullscreen
-        // Geniş pencere (tablet, yatay, katlanabilir): alt bar yerine sol ray.
-        val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
-        val navVisible = !immersive && (tab != AppTab.Terminal || sessionList.isEmpty() || wide)
-        Scaffold(
-            containerColor = if (immersive) Color(console.term.background) else t.chrome,
-            contentColor = t.text,
-            topBar = {
-                // Terminal tam ekrandayken üst bar da gizlenir — gerçek immersive.
-                if (!immersive) {
-                    ConsoleTopBar(activeCount) {
-                        // Terminal sekmesindeyken aksiyonlar üst barda yaşar.
-                        if (tab == AppTab.Terminal) {
-                            val activeId by sessions.activeId.collectAsState()
-                            sessionList.firstOrNull { it.id == activeId }?.let { h ->
-                                TerminalBarActions(h, sessions, termChrome, onExit = { tab = AppTab.Home })
-                            }
-                        }
-                    }
-                }
-            },
-            snackbarHost = { SnackbarHost(snackbar) { PocketSnackbar(it) } },
-            // Bar'lar kendi inset'lerini uygular; fullscreen'de (bar yokken)
-            // status/nav boşluğu içerikte kalmasın diye sıfırlanır.
-            contentWindowInsets = WindowInsets(0, 0, 0, 0),
-            bottomBar = {
-                // Aktif terminalde ana nav bar tamamen gizlenir — çıkış
-                // tutamaç çekişi, üst bardaki X veya geri tuşuyla yapılır.
-                // Oturum yokken (boş terminal) bar görünür kalır ki ekran
-                // çıkışsız bir tuzağa dönüşmesin.
-                if (!wide && (tab != AppTab.Terminal || sessionList.isEmpty())) {
-                    ConsoleNavBar(tab, liveSessions = activeCount) { tab = it }
-                }
-            },
-        ) { pad ->
-            // Sheets on chrome: ana içerik chrome üstünde 8dp içeride duran
-            // bir sheet'tir. Terminal kendi sheet'ini (panel) taşır — şerit ve
-            // tuş kapsülü doğrudan chrome üstünde durur.
-            // Sekme geçişi tek seferlik bir çapraz geçiştir (150ms); azaltılmış
-            // harekette anında. Sheet dekorasyonu hedef sekmeye göre çizilir.
-            val reduced = rememberReducedMotion()
+    PocketAgentTheme(theme = console, mono = consoleFont(settings.theme.fontId).family) {
+        CompositionLocalProvider(LocalSnackbar provides snackbar) {
+            val t = Tok
             val syncStatus by app.eventSync.status.collectAsState()
-            Row(Modifier.fillMaxSize().padding(pad)) {
-            if (wide && navVisible) ConsoleNavRail(tab, liveSessions = activeCount) { tab = it }
-            AnimatedContent(
-                targetState = tab,
-                transitionSpec = {
-                    if (reduced) EnterTransition.None togetherWith ExitTransition.None
-                    else fadeIn(tween(150, delayMillis = 40)) togetherWith fadeOut(tween(90))
-                },
-                label = "tab",
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-            ) { current ->
-                val sheet = current != AppTab.Terminal || sessionList.isEmpty()
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .then(
-                            if (sheet) {
-                                Modifier
-                                    .padding(horizontal = SheetInset)
-                                    .clip(SheetShape)
-                                    .background(t.bg)
-                                    .border(1.dp, t.border, SheetShape)
-                            } else Modifier,
-                        ),
-                ) {
-                    // Okunabilir ölçü: geniş ekranda içerik 760dp'de ortalanır
-                    // (terminal tam genişliği kullanır).
-                    Box(
-                        Modifier
-                            .fillMaxHeight()
-                            .then(if (current == AppTab.Terminal) Modifier.fillMaxWidth() else Modifier.widthIn(max = 760.dp).fillMaxWidth())
-                            .align(Alignment.TopCenter),
-                    ) {
-                    when (current) {
-                        AppTab.Home -> HomeScreen(
+            val wide = LocalConfiguration.current.screenWidthDp >= 840
+            val holder = rememberSaveableStateHolder()
+
+            @Composable
+            fun Screen(route: Route, twoPane: Boolean) {
+                holder.SaveableStateProvider(route.name) {
+                    when (route) {
+                        Route.Hub -> HubScreen(
                             sessions = sessions,
-                            connections = app.connections,
-                            inbox = app.inbox,
-                            syncStatus = if (settings.backendConfigured) syncStatus else null,
-                            onGoTo = { tab = it },
-                        )
-                        AppTab.Connections -> ConnectionsScreen(
                             repo = app.connections,
                             profiles = app.profiles,
-                            sessions = sessions,
+                            inbox = app.inbox,
+                            syncStatus = if (settings.backendConfigured) syncStatus else null,
                             app = app,
                             settings = settings,
                             pendingAdd = addHostLink,
-                            onConnected = { tab = AppTab.Terminal },
+                            showDock = !twoPane,
+                            onOpenSession = { home(); push(Route.Workspace) },
+                            onOpenFiles = { home(); push(Route.Files) },
+                            onOpenSettings = { home(); push(Route.Settings) },
                         )
-                        AppTab.Terminal -> TerminalScreen(
+                        Route.Workspace -> TerminalScreen(
                             manager = sessions,
                             settings = settings,
-                            onNewConnection = { tab = AppTab.Connections },
-                            onCollapse = { tab = AppTab.Home },
+                            onNewConnection = { home() },
+                            onCollapse = { pop() },
                             chrome = termChrome,
+                            onOpenFiles = { push(Route.Files) },
+                            repo = app.connections,
+                            onEditHost = { c -> addHostLink.value = c; home() },
+                            showBack = !twoPane,
                         )
-                        AppTab.Files -> FilesScreen(files = files, onOpenTerminal = { tab = AppTab.Terminal })
-                        AppTab.Settings -> SettingsScreen(
+                        Route.Files -> FilesScreen(
+                            files = files,
+                            onOpenTerminal = { stack.removeAll { it == Route.Files }; push(Route.Workspace) },
+                            onBack = { pop() },
+                        )
+                        Route.Settings -> SettingsScreen(
                             settings = settings,
                             usage = usage,
                             hostKeys = app.hostKeys,
                             app = app,
+                            onBack = { pop() },
                         )
-                    }
                     }
                 }
             }
-            }
-        }
 
-        // TOFU: ilk bağlantıda parmak izi onayı; değişim zaten hard-stop.
-        // Amber = sana ihtiyaç var.
-        hostKeyPrompt?.let { prompt ->
-            val key = prompt.key
-            PocketAlertDialog(
-                onDismissRequest = { prompt.controller.rejectHostKey() },
-                icon = { SignalPixel(Signal.NeedsYou, size = 12.dp) },
-                title = { Text("Host anahtarını onayla") },
-                text = {
-                    Column {
-                        Text(
-                            "${key.host}:${key.port} için sunulan anahtar ilk kez görülüyor. " +
-                                "Doğruladıysan pinle; anahtar daha sonra değişirse bağlantı durur.",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Spacer(Modifier.height(Space.md))
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(MaterialTheme.shapes.small)
-                                .background(t.bg)
-                                .border(1.dp, t.border, MaterialTheme.shapes.small)
-                                .padding(Space.md),
-                        ) {
-                            Text(key.algorithm, style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout), color = t.muted)
-                            Spacer(Modifier.height(4.dp))
-                            Text(key.fingerprint, style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout), color = t.text)
+            val reduced = rememberReducedMotion()
+            Box(Modifier.fillMaxSize().background(if (top == Route.Workspace) t.termBg else t.bg)) {
+                if (wide) {
+                    // Geniş pencere: solda Oturumlar sabit, sağda seçili katman.
+                    Row(Modifier.fillMaxSize()) {
+                        Box(Modifier.width(400.dp).fillMaxHeight()) { Screen(Route.Hub, twoPane = true) }
+                        VerticalDivider(color = t.line)
+                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                            if (top == Route.Hub) {
+                                DetailPlaceholder()
+                            } else {
+                                AnimatedContent(
+                                    targetState = top,
+                                    transitionSpec = {
+                                        if (reduced) EnterTransition.None togetherWith ExitTransition.None
+                                        else fadeIn(tween(Motion.Standard)) togetherWith fadeOut(tween(Motion.Fast))
+                                    },
+                                    label = "detail",
+                                ) { r -> Screen(r, twoPane = true) }
+                            }
                         }
                     }
-                },
-                confirmButton = {
-                    ConsoleButton(onClick = { prompt.controller.acceptHostKeyAndReconnect() }) { Text("Pinle ve bağlan") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { prompt.controller.rejectHostKey() }) { Text("Vazgeç", color = t.text2) }
-                },
-            )
-        }
-    }
-}
-
-// ── Uygulama chrome'u ───────────────────────────────────────────────────────
-// Pencere chrome'dur: üst şerit ve alt gezinme doğrudan chrome üstünde
-// durur; içerik onların arasında bir sheet'tir. Seçili sekme yalnız
-// zeminiyle (active) işaretlenir — mavi sinyale saklıdır.
-
-// Piksel işareti: "›" istemi kare piksellerden + iki sinyal pikseli.
-@Composable
-fun PocketMark(modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 18.dp) {
-    val t = Tok
-    androidx.compose.foundation.Canvas(modifier.size(size)) {
-        val cell = this.size.width / 5f
-        val gap = cell * 0.18f
-        fun px(c: Int, r: Int, color: Color) = drawRoundRect(
-            color,
-            topLeft = androidx.compose.ui.geometry.Offset(c * cell + gap / 2, r * cell + gap / 2),
-            size = androidx.compose.ui.geometry.Size(cell - gap, cell - gap),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(cell * 0.12f),
-        )
-        listOf(0 to 0, 1 to 1, 2 to 2, 1 to 3, 0 to 4).forEach { (c, r) -> px(c, r, t.accent) }
-        px(3, 4, t.warning)
-        px(4, 4, t.danger)
-    }
-}
-
-// Üst şerit: piksel işareti + wordmark, sağda canlı oturum okuması ve
-// isteğe bağlı aksiyonlar (Terminal sekmesinde ara/paylaş/tam-ekran/kapat).
-@Composable
-private fun ConsoleTopBar(activeSessions: Int, actions: (@Composable () -> Unit)? = null) {
-    val t = Tok
-    Row(
-        Modifier
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .fillMaxWidth()
-            .height(48.dp)
-            .padding(start = Space.lg, end = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        PocketMark(size = 16.dp)
-        Spacer(Modifier.width(10.dp))
-        Text(
-            "pocket-agent",
-            style = MaterialTheme.typography.labelLarge.copy(fontFamily = Readout),
-            color = t.text,
-            maxLines = 1,
-        )
-        Spacer(Modifier.weight(1f))
-        if (activeSessions > 0) {
-            Row(
-                Modifier.padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SignalPixel(Signal.Live, size = 7.dp)
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    "$activeSessions oturum",
-                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = Readout, fontWeight = FontWeight.Normal),
-                    color = t.text2,
-                )
-            }
-        }
-        actions?.invoke()
-    }
-}
-
-// Terminal aksiyonları üst barda: ara / paylaş / tam ekran / yeniden bağlan /
-// kapat. X oturumu kapatır ve terminalden çıkar (oturumlar bölümüne dönülür).
-@Composable
-private fun TerminalBarActions(h: SessionHandle, sessions: SessionManager, chrome: TerminalChromeState, onExit: () -> Unit) {
-    val state by h.controller.state.collectAsState()
-    val context = LocalContext.current
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        TerminalBarIcon("Scrollback'te ara", Icons.Filled.Search, active = chrome.searchOpen) { chrome.searchOpen = !chrome.searchOpen }
-        TerminalBarIcon("Scrollback'i paylaş", Icons.Filled.Share) {
-            shareScrollback(context, h.controller.vm.lines.value)
-        }
-        TerminalBarIcon("Tam ekran", Icons.Filled.Fullscreen) { chrome.fullscreen = true }
-        if ((state == ConnectionState.CLOSED || state == ConnectionState.FAILED) && h.controller.canReconnect()) {
-            TerminalBarIcon("Yeniden bağlan", Icons.Filled.Refresh, tint = Tok.accent) {
-                h.controller.reconnect()
-            }
-        }
-        TerminalBarIcon("Oturumu kapat", Icons.Filled.Close, tint = Tok.danger) {
-            sessions.close(h.id)
-            onExit()
-        }
-    }
-}
-
-// 40dp görsel, 48dp dokunma hedefi; açık durumdaki araç zeminle işaretlenir.
-@Composable
-private fun TerminalBarIcon(
-    desc: String,
-    icon: ImageVector,
-    tint: Color = Tok.text2,
-    active: Boolean = false,
-    onClick: () -> Unit,
-) {
-    Box(
-        Modifier
-            .size(44.dp)
-            .padding(2.dp)
-            .clip(MaterialTheme.shapes.small)
-            .background(if (active) Tok.active else Color.Transparent)
-            .semantics { contentDescription = desc }
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
-    }
-}
-
-// Alt gezinme: chrome üstünde; seçili sekme ikon+etiketin arkasındaki
-// active zeminiyle — renk değişmez, mürekkep kalır.
-@Composable
-private fun ConsoleNavBar(current: AppTab, liveSessions: Int = 0, onSelect: (AppTab) -> Unit) {
-    val t = Tok
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.navigationBars)
-            .height(64.dp)
-            .padding(horizontal = SheetInset, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        AppTab.entries.forEach { tab ->
-            val selected = current == tab
-            val bg by animateColorAsState(if (selected) t.active else Color.Transparent, tween(130), label = "nav-bg")
-            Column(
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clip(MaterialTheme.shapes.medium)
-                    .background(bg)
-                    .semantics { contentDescription = tab.label }
-                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(tab) }),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Box {
-                    Icon(
-                        if (selected) tab.icon else tab.iconIdle,
-                        contentDescription = null,
-                        tint = if (selected) t.text else t.muted,
-                        modifier = Modifier.size(22.dp),
-                    )
-                    // Canlı oturum varken Terminal ikonunun köşesinde mavi piksel.
-                    if (tab == AppTab.Terminal && liveSessions > 0) {
-                        SignalPixel(
-                            Signal.Live,
-                            Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-2).dp),
-                            size = 6.dp,
-                        )
-                    }
+                } else {
+                    val depth = stack.size
+                    AnimatedContent(
+                        targetState = top to depth,
+                        contentKey = { it.first },
+                        transitionSpec = {
+                            val (from, fromDepth) = initialState
+                            val (to, toDepth) = targetState
+                            val forward = toDepth > fromDepth
+                            val vertical = (from == Route.Hub && to == Route.Workspace) || (from == Route.Workspace && to == Route.Hub)
+                            when {
+                                reduced -> EnterTransition.None togetherWith ExitTransition.None
+                                vertical && forward ->
+                                    (slideInVertically(tween(Motion.Emphasized, easing = Motion.Enter)) { it / 5 } + fadeIn(tween(Motion.Standard))) togetherWith
+                                        fadeOut(tween(Motion.Fast))
+                                vertical ->
+                                    fadeIn(tween(Motion.Standard)) togetherWith
+                                        (slideOutVertically(tween(Motion.Standard, easing = Motion.Exit)) { it / 4 } + fadeOut(tween(Motion.Standard)))
+                                forward ->
+                                    (slideInHorizontally(tween(Motion.Emphasized, easing = Motion.Enter)) { it / 8 } + fadeIn(tween(Motion.Standard))) togetherWith
+                                        (slideOutHorizontally(tween(Motion.Fast, easing = Motion.Exit)) { -it / 16 } + fadeOut(tween(Motion.Fast)))
+                                else ->
+                                    (slideInHorizontally(tween(Motion.Emphasized, easing = Motion.Enter)) { -it / 16 } + fadeIn(tween(Motion.Standard))) togetherWith
+                                        (slideOutHorizontally(tween(Motion.Fast, easing = Motion.Exit)) { it / 8 } + fadeOut(tween(Motion.Fast)))
+                            }
+                        },
+                        label = "route",
+                    ) { (r, _) -> Screen(r, twoPane = false) }
                 }
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    tab.label,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    ),
-                    color = if (selected) t.text else t.muted,
-                    maxLines = 1,
+                SnackbarHost(
+                    snackbar,
+                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding().padding(bottom = if (top == Route.Workspace) 72.dp else 0.dp),
+                ) { PocketSnackbar(it) }
+            }
+
+            // TOFU: ilk bağlantıda parmak izi onayı; değişim zaten hard-stop.
+            hostKeyPrompt?.let { prompt ->
+                val key = prompt.key
+                PocketDialog(
+                    onDismiss = { prompt.controller.rejectHostKey() },
+                    title = "Bu host'a güveniyor musun?",
+                    icon = Icons.Rounded.GppMaybe,
+                    iconTone = t.warn,
+                    content = {
+                        Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
+                            Text(
+                                "${key.host}:${key.port} ilk kez görülüyor. Parmak izini host'takiyle karşılaştır; pinledikten sonra anahtar değişirse bağlantı durur.",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            ValueBox(key.fingerprint, label = key.algorithm)
+                            Text(
+                                "Host'ta kontrol: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = dev.pocketagent.ui.theme.Code),
+                                color = t.text2,
+                            )
+                        }
+                    },
+                    confirm = { GhostButton("Pinle ve bağlan", onClick = { prompt.controller.acceptHostKeyAndReconnect() }) },
+                    dismiss = { GhostButton("Vazgeç", onClick = { prompt.controller.rejectHostKey() }, color = t.text2) },
                 )
             }
         }
     }
 }
 
-// Geniş pencerede sol ray: aynı seçim dili (zemin), ikon üstte etiket altta.
+// İki bölmeli düzende sağ taraf boşken: ne yapılacağını söyleyen sakin yüzey.
 @Composable
-private fun ConsoleNavRail(current: AppTab, liveSessions: Int = 0, onSelect: (AppTab) -> Unit) {
-    val t = Tok
+private fun DetailPlaceholder() {
     Column(
-        Modifier
-            .fillMaxHeight()
-            .width(84.dp)
-            .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(start = SheetInset, top = 4.dp, bottom = SheetInset),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        Modifier.fillMaxSize().padding(Space.x3),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        AppTab.entries.forEach { tab ->
-            val selected = current == tab
-            val bg by animateColorAsState(if (selected) t.active else Color.Transparent, tween(130), label = "rail-bg")
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .height(60.dp)
-                    .clip(MaterialTheme.shapes.medium)
-                    .background(bg)
-                    .semantics { contentDescription = tab.label }
-                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(tab) }),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Box {
-                    Icon(
-                        if (selected) tab.icon else tab.iconIdle,
-                        contentDescription = null,
-                        tint = if (selected) t.text else t.muted,
-                        modifier = Modifier.size(22.dp),
-                    )
-                    if (tab == AppTab.Terminal && liveSessions > 0) {
-                        SignalPixel(Signal.Live, Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-2).dp), size = 6.dp)
-                    }
-                }
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    tab.label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (selected) t.text else t.muted,
-                    maxLines = 1,
-                )
-            }
-        }
+        BrandMark(size = 56.dp)
+        Spacer(Modifier.height(Space.lg))
+        Text("Bir oturum seç", style = MaterialTheme.typography.titleLarge, color = Tok.text)
+        Spacer(Modifier.height(Space.sm))
+        Text(
+            "Soldaki listeden bir oturuma ya da host'a dokun; terminal burada açılır.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Tok.text2,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(0.6f),
+        )
     }
 }

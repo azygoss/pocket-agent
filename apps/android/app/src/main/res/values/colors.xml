@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="term_bg">#0E0F11</color>
+    <!-- Pocket teması zemini (ConsoleThemes.PocketConsoleTheme.background) -->
+    <color name="term_bg">#0F1317</color>
 </resources>

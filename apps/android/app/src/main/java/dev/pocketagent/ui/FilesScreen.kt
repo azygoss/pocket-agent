@@ -6,88 +6,109 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Difference
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.DriveFileRenameOutline
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.material.icons.rounded.TravelExplore
+import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material.icons.outlined.Build
-import androidx.compose.material.icons.outlined.Folder as OutlinedFolder
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DataObject
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Inventory2
-import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import dev.pocketagent.transport.RemoteFile
+import dev.pocketagent.ui.theme.Code
+import dev.pocketagent.ui.theme.PillShape
 import dev.pocketagent.ui.theme.Space
-import dev.pocketagent.ui.theme.Readout
-import androidx.compose.foundation.border
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.foundation.shape.RoundedCornerShape
+import dev.pocketagent.ui.theme.Tone
 
-// P15: gerçek dosya sekmesi — aktif SSH oturumunun SFTP kanalı üzerinden
-// uzak dosya sistemi gezgini. Backend içerik görmez; trafik SSH içinde kalır.
+// P15: aktif SSH oturumunun SFTP kanalı (ya da workspace gateway'i) üzerinden
+// uzak dosya gezgini. Backend içerik görmez; trafik SSH içinde kalır.
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
+fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}, onBack: (() -> Unit)? = null) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    var notice by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(notice) {
-        if (notice != null) { kotlinx.coroutines.delay(2500); notice = null }
-    }
+    val notify = rememberNotify()
+    val t = Tok
 
-    // Uzun-basma aksiyonları + yeni klasör + yola git diyalog durumları.
     var actionFile by remember { mutableStateOf<RemoteFile?>(null) }
     var renaming by remember { mutableStateOf<RemoteFile?>(null) }
     var deleting by remember { mutableStateOf<RemoteFile?>(null) }
@@ -95,13 +116,12 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
     var mkdirOpen by remember { mutableStateOf(false) }
     var gotoOpen by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
-    // Çoklu seçim (aksiyon diyaloğundaki "Seç" ile başlar) + ad filtresi +
-    // içerik arama (grep) durumları.
-    val selected = remember { androidx.compose.runtime.mutableStateListOf<RemoteFile>() }
+    val selected = remember { mutableStateListOf<RemoteFile>() }
     var deletingMany by remember { mutableStateOf<List<RemoteFile>?>(null) }
     var filterOpen by remember { mutableStateOf(false) }
     var filter by remember { mutableStateOf("") }
     var grepOpen by remember { mutableStateOf(false) }
+    var devServerOpen by remember { mutableStateOf(false) }
 
     // Oturum açıldığında home dizinine gir
     LaunchedEffect(files.hasActiveSftp()) { files.open() }
@@ -110,15 +130,11 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
     LaunchedEffect(files.downloaded) {
         val list = files.downloaded ?: return@LaunchedEffect
         if (list.isEmpty()) { files.clearDownloaded(); return@LaunchedEffect }
-        val uris = list.map {
-            FileProvider.getUriForFile(context, context.packageName + ".fileprovider", it)
-        }
+        val uris = list.map { FileProvider.getUriForFile(context, context.packageName + ".fileprovider", it) }
         val share = if (uris.size == 1) {
             Intent(Intent.ACTION_SEND).apply { putExtra(Intent.EXTRA_STREAM, uris[0]) }
         } else {
-            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
-            }
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply { putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris)) }
         }
         share.type = "*/*"
         share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -129,293 +145,208 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
     val uploadLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val (name, bytes) = pickedFile(context, uri) ?: return@rememberLauncherForActivityResult
-        if (bytes.size <= 10 * 1024 * 1024) files.upload(name, bytes) // P15: 10MB cap
+        if (bytes.size <= 10 * 1024 * 1024) files.upload(name, bytes) else notify("10 MB sınırı aşıldı") // P15: 10MB cap
     }
 
-    Column(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 4.dp)) {
+    val isGw = files.mode == FilesMode.WORKSPACE
+    // Geri tuşu: önce seçim, sonra bu ekranda girilen alt dizinlerden yukarı;
+    // giriş dizinine dönünce ekrandan çıkar.
+    var entryPath by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(files.path) { if (entryPath == null && files.path != null) entryPath = files.path }
+    val canGoUp = if (isGw) files.gwPath.isNotEmpty() else files.path != null && files.path != "/"
+    val backGoesUp = if (isGw) files.gwPath.isNotEmpty()
+    else entryPath != null && files.path != null && files.path != entryPath && files.path!!.startsWith(entryPath!!.trimEnd('/') + "/")
+    BackHandler(enabled = backGoesUp && selected.isEmpty()) { files.up() }
+    BackHandler(enabled = selected.isNotEmpty()) { selected.clear() }
+
+    Column(Modifier.fillMaxSize().background(t.bg).windowInsetsPadding(WindowInsets.navigationBars)) {
         if (!files.hasActiveSftp()) {
-            NoSessionCard()
+            PocketTopBar("Dosyalar", onBack = onBack)
+            NoSession()
             return@Column
         }
 
-        // Başlık: ekran adı + aktif host okuması; dizin aksiyonları sağda.
-        Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = Space.md)) {
-            ScreenHeader(
+        if (selected.isNotEmpty()) {
+            PocketTopBar(
+                "${selected.size} seçildi",
+                onBack = { selected.clear() },
+                backIcon = Icons.Rounded.Close,
+                backDesc = "Seçimi kapat",
+            ) {
+                IconAction(Icons.Rounded.SelectAll, "Tümünü seç", {
+                    files.entries.filter { it !in selected }.forEach { selected.add(it) }
+                })
+                IconAction(Icons.Rounded.Download, "İndir", {
+                    files.downloadAll(selected.toList()); selected.clear()
+                }, enabled = !isGw && selected.any { !it.isDir })
+                IconAction(Icons.Rounded.ContentCopy, "Yolları kopyala", {
+                    clipboard.setText(AnnotatedString(selected.joinToString("\n") { it.path }))
+                    notify("${selected.size} yol kopyalandı")
+                    selected.clear()
+                })
+                if (!isGw) IconAction(Icons.Rounded.Delete, "Sil", { deletingMany = selected.toList() }, tint = t.danger.fg)
+            }
+        } else {
+            PocketTopBar(
                 "Dosyalar",
-                meta = listOfNotNull(files.hostLabel(), if (files.mode == FilesMode.WORKSPACE) "workspace" else "sftp").joinToString(" · "),
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = { files.refresh() }, enabled = !files.loading) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Yenile", tint = Tok.text2)
-            }
-            if (files.mode == FilesMode.SFTP) {
-                IconButton(onClick = { uploadLauncher.launch("*/*") }, enabled = !files.loading) {
-                    Icon(Icons.Filled.Upload, contentDescription = "Dosya yükle", tint = Tok.text2)
-                }
-            }
-            Box {
-                IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "Diğer", tint = Tok.text2)
-                }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Dosya ara…") },
-                        onClick = { menuOpen = false; filterOpen = true },
+                onBack = onBack,
+                subtitle = {
+                    Text(
+                        listOfNotNull(files.hostLabel(), if (isGw) "workspace" else "SFTP").joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code),
+                        maxLines = 1,
                     )
-                    if (files.mode == FilesMode.SFTP) {
-                        DropdownMenuItem(
-                            text = { Text("İçerikte ara…") },
-                            onClick = { menuOpen = false; grepOpen = true },
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = { Text("Yola git…") },
-                        onClick = { menuOpen = false; gotoOpen = true },
-                    )
-                    if (files.mode == FilesMode.SFTP) {
-                        DropdownMenuItem(
-                            text = { Text("Yeni klasör") },
-                            onClick = { menuOpen = false; mkdirOpen = true },
-                        )
+                },
+            ) {
+                IconAction(Icons.Rounded.Search, "Bu dizinde ara", { filterOpen = !filterOpen; if (!filterOpen) filter = "" }, selected = filterOpen)
+                if (!isGw) IconAction(Icons.Rounded.Upload, "Dosya yükle", { uploadLauncher.launch("*/*") }, enabled = !files.loading)
+                Box {
+                    IconAction(Icons.Rounded.MoreVert, "Diğer", { menuOpen = true })
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }, containerColor = t.raised) {
+                        if (!isGw) FileMenuItem(Icons.Rounded.TravelExplore, "İçerikte ara") { menuOpen = false; grepOpen = true }
+                        FileMenuItem(Icons.Rounded.FolderOpen, "Yola git") { menuOpen = false; gotoOpen = true }
+                        if (!isGw) FileMenuItem(Icons.Rounded.CreateNewFolder, "Yeni klasör") { menuOpen = false; mkdirOpen = true }
+                        FileMenuItem(Icons.Rounded.Refresh, "Yenile") { menuOpen = false; files.refresh() }
                     }
                 }
             }
         }
 
-        // Kaynak seçimi: SFTP (tüm FS) veya Workspace (gateway jail'i)
-        SegmentedControl(
-            options = listOf(
-                Segment(FilesMode.SFTP, "SFTP"),
-                Segment(FilesMode.WORKSPACE, "Workspace"),
-            ),
-            selected = files.mode,
-            onSelect = { files.selectMode(it) },
-            modifier = Modifier.fillMaxWidth(),
-        )
+        Column(Modifier.padding(horizontal = Space.lg)) {
+            SegmentedTabs(
+                options = listOf(Segment(FilesMode.SFTP, "SFTP"), Segment(FilesMode.WORKSPACE, "Workspace")),
+                selected = files.mode,
+                onSelect = { files.selectMode(it); selected.clear() },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (filterOpen) {
+                Spacer(Modifier.height(Space.md))
+                PocketTextField(
+                    filter, { filter = it },
+                    placeholder = "Bu dizinde ada göre süz",
+                    leading = { Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                    trailing = { IconAction(Icons.Rounded.Close, "Aramayı kapat", { filter = ""; filterOpen = false }) },
+                )
+            }
+        }
 
-        if (files.mode == FilesMode.WORKSPACE && files.gatewayAvailable == false) {
-            WorkspaceMissingCard()
+        if (isGw && files.gatewayAvailable == false) {
+            WorkspaceMissing()
             return@Column
         }
 
-        // Workspace modunda diff kısayolları + preview
-        if (files.mode == FilesMode.WORKSPACE) {
-            var previewPort by remember { mutableStateOf<String?>(null) }
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+        if (isGw) {
+            FlowRow(
+                Modifier.fillMaxWidth().padding(horizontal = Space.lg, vertical = Space.md),
+                horizontalArrangement = Arrangement.spacedBy(Space.sm),
+                verticalArrangement = Arrangement.spacedBy(Space.sm),
             ) {
                 listOf("staged" to "Staged", "unstaged" to "Unstaged", "working" to "Working", "last" to "Son commit").forEach { (kind, label) ->
-                    ConsoleOutlinedButton(onClick = { files.gwDiff(kind, "git diff ($label)") }) { Text(label) }
+                    ToolChip(Icons.Rounded.Difference, label, t.live) { files.gwDiff(kind, "git diff ($label)") }
                 }
-                ConsoleOutlinedButton(onClick = { previewPort = "" }) { Text("Dev server…") }
-                ConsoleOutlinedButton(onClick = { files.loadTranscripts() }) { Text("Agent sohbetleri") }
+                ToolChip(Icons.Rounded.Language, "Dev server", t.busy) { devServerOpen = true }
+                ToolChip(Icons.Rounded.Forum, "Agent sohbetleri", t.accent) { files.loadTranscripts() }
             }
-            // Son agent transcript'leri (allowlist dizinlerinden; ~/.claude, ~/.codex)
             files.transcripts?.let { list ->
-                if (list.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        list.take(5).forEach { t ->
-                            TextButton(onClick = { files.openTranscript(t) }, modifier = Modifier.fillMaxWidth()) {
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    TagPill(t.src)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        t.rel.substringAfterLast('/').removeSuffix(".jsonl"),
-                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
-                                        color = Tok.text,
-                                        maxLines = 1,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    Text(
-                                        relativeTime(t.mtime * 1000),
-                                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = androidx.compose.ui.text.font.FontWeight.Normal),
-                                        color = Tok.muted,
-                                    )
-                                }
+                Column(Modifier.padding(horizontal = Space.lg)) {
+                    if (list.isEmpty()) {
+                        Text("Son agent sohbeti bulunamadı.", style = MaterialTheme.typography.bodyMedium, color = t.text2, modifier = Modifier.padding(bottom = Space.md))
+                    } else {
+                        list.take(5).forEachIndexed { i, tr ->
+                            GroupRow(i, list.take(5).size) {
+                                ListRow(
+                                    title = tr.rel.substringAfterLast('/').removeSuffix(".jsonl"),
+                                    titleMono = true,
+                                    subtitle = "${tr.src} · ${relativeTime(tr.mtime * 1000)}",
+                                    leading = { IconTile(Icons.Rounded.Forum, tone = t.accent, size = 36.dp) },
+                                    onClick = { files.openTranscript(tr) },
+                                )
                             }
                         }
+                        Spacer(Modifier.height(Space.md))
                     }
                 }
             }
-            // Dev-server önizleme diyaloğu (loopback-only)
-            previewPort?.let { current ->
-                var port by remember { mutableStateOf(current) }
-                var path by remember { mutableStateOf("/") }
-                PocketAlertDialog(
-                    onDismissRequest = { previewPort = null },
-                    title = { Text("Dev server önizleme") },
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                "Yalnız host üzerindeki loopback adresler (127.0.0.1) — SSRF korumalı.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Tok.muted,
-                            )
-                            OutlinedTextField(
-                                value = port,
-                                onValueChange = { port = it.filter(Char::isDigit).take(5) },
-                                label = { Text("Port (örn. 3000)") },
-                        mono = true,
-                                singleLine = true,
-                            )
-                            OutlinedTextField(
-                                value = path,
-                                onValueChange = { path = it },
-                                label = { Text("Yol") },
-                        mono = true,
-                                singleLine = true,
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            port.toIntOrNull()?.let { files.gwPreview(it, path) }
-                            previewPort = null
-                        }) { Text("Getir") }
-                    },
-                    dismissButton = { TextButton(onClick = { previewPort = null }) { Text("Vazgeç") } },
-                )
-            }
         }
 
-        // Geri tuşu önce seçimi, sonra üst dizini kapatır; kökte normal davranır.
-        val canGoUp = if (files.mode == FilesMode.WORKSPACE) files.gwPath.isNotEmpty()
-        else files.path != null && files.path != "/"
-        BackHandler(enabled = canGoUp) { files.up() }
-        BackHandler(enabled = selected.isNotEmpty()) { selected.clear() }
-
-        when {
-            // Çoklu seçim çubuğu: sayı + toplu indir/kopyala/sil + kapat.
-            selected.isNotEmpty() -> Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "${selected.size} seçildi",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f).padding(start = 12.dp),
-                )
-                IconButton(
-                    onClick = {
-                        files.downloadAll(selected.toList())
-                        selected.clear()
-                    },
-                    enabled = selected.any { !it.isDir },
-                ) {
-                    Icon(Icons.Filled.Download, contentDescription = "İndir", tint = Tok.text2)
-                }
-                IconButton(onClick = {
-                    clipboard.setText(AnnotatedString(selected.joinToString("\n") { it.path }))
-                    notice = "${selected.size} yol kopyalandı"
-                    selected.clear()
-                }) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = "Yolları kopyala", tint = Tok.text2)
-                }
-                IconButton(onClick = { deletingMany = selected.toList() }) {
-                    Icon(
-                        Icons.Filled.Delete,
-                        contentDescription = "Sil",
-                        tint = Tok.danger,
-                    )
-                }
-                IconButton(onClick = { selected.clear() }) {
-                    Icon(Icons.Filled.Close, contentDescription = "Seçimi kapat", tint = Tok.text2)
-                }
-            }
-            // Ad filtresi: geçerli dizin listesini istemci tarafında süzer.
-            filterOpen -> Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedTextField(
-                    value = filter,
-                    onValueChange = { filter = it },
-                    placeholder = { Text("Bu dizinde ara…") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = { filter = ""; filterOpen = false }) {
-                    Icon(Icons.Filled.Close, contentDescription = "Aramayı kapat", tint = Tok.text2)
-                }
-            }
-            // Yol çubuğu: dokunulabilir breadcrumb — her segment o dizine atlar.
-            else -> Row(Modifier.fillMaxWidth().padding(top = Space.sm), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = { files.up() },
-                    enabled = canGoUp,
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Üst dizin", tint = if (canGoUp) Tok.text2 else Tok.faint)
-                }
-                PathBar(files, Modifier.weight(1f))
-            }
+        // Yol çubuğu: dokunulabilir kırıntılar — her parça o dizine atlar.
+        Row(
+            Modifier.fillMaxWidth().padding(start = 4.dp, end = Space.lg, top = Space.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconAction(Icons.Rounded.ArrowUpward, "Üst dizin", { files.up() }, enabled = canGoUp)
+            PathBar(files, Modifier.weight(1f))
         }
 
         files.error?.let {
-            Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                SignalPixel(Signal.Error, size = 7.dp)
-                Spacer(Modifier.width(8.dp))
-                Text(it, color = Tok.text, style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout))
-            }
-        }
-        notice?.let {
-            Text(
-                it,
-                color = Tok.muted,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
-            )
+            Banner(Status.Error, it, modifier = Modifier.padding(horizontal = Space.lg, vertical = Space.sm))
         }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (files.loading && files.entries.isEmpty()) {
-                // İskelet: gerçek satır geometrisinde loş bloklar — liste geldiğinde
-                // düzen kaymaz (CLS yok). Shimmer yok; tek okuma "yükleniyor".
-                Column(Modifier.fillMaxSize().semantics { contentDescription = "Yükleniyor" }) {
-                    repeat(7) { i -> SkeletonRow(widthFraction = listOf(0.42f, 0.6f, 0.35f, 0.5f, 0.7f, 0.3f, 0.55f)[i]) }
+            val shown = if (filter.isBlank()) files.entries.toList()
+            else files.entries.filter { it.name.contains(filter, ignoreCase = true) }
+            when {
+                // İskelet: gerçek satır geometrisinde loş bloklar — liste
+                // geldiğinde düzen kaymaz. Tek okuma "yükleniyor".
+                files.loading && files.entries.isEmpty() -> Column(
+                    Modifier.fillMaxSize().padding(horizontal = Space.lg).semantics { contentDescription = "Yükleniyor" },
+                ) {
+                    repeat(7) { i -> SkeletonRow(listOf(0.42f, 0.6f, 0.35f, 0.5f, 0.7f, 0.3f, 0.55f)[i]) }
                 }
-            } else {
-                val shown = if (filter.isBlank()) files.entries
-                else files.entries.filter { it.name.contains(filter, ignoreCase = true) }
-                LazyColumn(Modifier.fillMaxSize()) {
-                    items(shown, key = { it.path }, contentType = { if (it.isDir) 0 else 1 }) { f ->
-                        RemoteFileRow(
-                            f,
-                            selected = f in selected,
-                            onClick = {
-                                if (selected.isNotEmpty()) {
-                                    if (f in selected) selected.remove(f) else selected.add(f)
-                                } else {
-                                    files.onFile(f)
-                                }
-                            },
-                            onLongClick = { actionFile = f },
+                shown.isEmpty() && !files.loading -> Text(
+                    if (filter.isNotBlank()) "\"$filter\" ile eşleşen öğe yok." else "Bu dizin boş.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = t.text2,
+                    modifier = Modifier.padding(horizontal = Space.xl, vertical = Space.lg),
+                )
+                else -> LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = Space.lg, end = Space.lg, top = Space.sm, bottom = Space.xxl),
+                ) {
+                    itemsIndexed(shown, key = { _, f -> f.path }, contentType = { _, f -> if (f.isDir) 0 else 1 }) { i, f ->
+                        GroupRow(i, shown.size) {
+                            RemoteFileRow(
+                                f,
+                                selecting = selected.isNotEmpty(),
+                                selected = f in selected,
+                                onClick = {
+                                    if (selected.isNotEmpty()) {
+                                        if (f in selected) selected.remove(f) else selected.add(f)
+                                    } else {
+                                        files.onFile(f)
+                                    }
+                                },
+                                onLongClick = { if (selected.isEmpty()) actionFile = f else if (f !in selected) selected.add(f) },
+                            )
+                        }
+                    }
+                    item(key = "footer") {
+                        Text(
+                            (if (isGw) "Gateway · SSH tüneli · workspace sınırında" else "SFTP · SSH oturumu içinde · indirme ≤10 MB") +
+                                " · ${files.entries.size} öğe",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = t.text2,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = Space.md),
                         )
-                        SoftDivider(Modifier.padding(start = 62.dp))
                     }
                 }
             }
-            if (files.downloading) {
-                Box(
+            if (files.downloading || (files.loading && files.entries.isNotEmpty())) {
+                Row(
                     Modifier
-                        .align(Alignment.Center)
-                        .clip(MaterialTheme.shapes.medium)
-                        .background(Tok.raised)
-                        .border(1.dp, Tok.border, MaterialTheme.shapes.medium)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                ) { BusyPixel("indiriliyor…") }
+                        .align(Alignment.BottomCenter)
+                        .padding(Space.lg)
+                        .clip(PillShape)
+                        .background(t.raised)
+                        .padding(horizontal = Space.lg, vertical = Space.md),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = t.primary)
+                    Spacer(Modifier.width(Space.md))
+                    Text(if (files.downloading) "İndiriliyor…" else "Yükleniyor…", style = MaterialTheme.typography.labelLarge, color = t.text)
+                }
             }
         }
-
-        Text(
-            (if (files.mode == FilesMode.WORKSPACE) "gateway · SSH tüneli · workspace jail"
-            else "sftp · SSH oturumu içinde · indirme ≤10MB") +
-                " · ${files.entries.size} öğe",
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = androidx.compose.ui.text.font.FontWeight.Normal),
-            color = Tok.muted,
-            maxLines = 1,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
-        )
     }
 
     // P14: agent transcript sohbet görünümü
@@ -423,395 +354,306 @@ fun FilesScreen(files: FilesViewModel, onOpenTerminal: () -> Unit = {}) {
         ChatDialog(title = name, blocks = blocks, onClose = { files.dismissChat() })
     }
 
-    // Önizleme diyaloğu (diff içeriği renklendirilir)
+    // Önizleme: tam ekran okuyucu (diff içeriği renklendirilir).
     files.preview?.let { (name, content) ->
-        PocketAlertDialog(
-            onDismissRequest = { files.dismissPreview() },
-            confirmButton = { TextButton(onClick = { files.dismissPreview() }) { Text("Kapat") } },
-            title = { Text(name, fontFamily = Readout, fontSize = 14.sp) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    if (name.startsWith("git diff")) {
-                        Text(
-                            diffAnnotated(content, Tok),
-                            fontFamily = Readout,
-                            fontSize = 12.sp,
-                            lineHeight = 15.sp,
-                        )
-                    } else {
-                        Text(
-                            content,
-                            fontFamily = Readout,
-                            fontSize = 12.sp,
-                            lineHeight = 15.sp,
-                        )
-                    }
-                }
-            },
+        TextViewer(
+            title = name,
+            content = content,
+            diff = name.startsWith("git diff"),
+            onCopy = { clipboard.setText(AnnotatedString(content)); notify("Kopyalandı") },
+            onClose = { files.dismissPreview() },
         )
     }
 
-    // ── Uzun-basma aksiyon diyaloğu ─────────────────────────────────────────
+    // ── Uzun basma eylemleri ────────────────────────────────────────────────
     actionFile?.let { f ->
-        PocketAlertDialog(
-            onDismissRequest = { actionFile = null },
-            title = { Text(f.name, fontFamily = Readout, fontSize = 15.sp) },
-            text = {
-                Column {
-                    Text(
-                        f.path,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
-                        color = Tok.muted,
-                        maxLines = 2,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    ActionRow("Yolu kopyala") {
-                        clipboard.setText(AnnotatedString(f.path))
-                        notice = "yol kopyalandı"
-                        actionFile = null
-                    }
-                    ActionRow("Terminale yaz") {
-                        if (files.pastePathToTerminal(f)) {
-                            actionFile = null
-                            onOpenTerminal()
-                        } else {
-                            notice = "aktif oturum yok"
-                            actionFile = null
-                        }
-                    }
-                    ActionRow("Seç") {
-                        if (f !in selected) selected.add(f)
-                        actionFile = null
-                    }
-                    if (files.mode == FilesMode.SFTP) {
-                        if (!f.isDir) {
-                            ActionRow("İndir / paylaş") {
-                                files.download(f)
-                                actionFile = null
-                            }
-                        } else {
-                            ActionRow("İçinde yeni klasör") {
-                                mkdirIn = f
-                                actionFile = null
-                            }
-                        }
-                        ActionRow("Yeniden adlandır") {
-                            renaming = f
-                            actionFile = null
-                        }
-                        ActionRow("Sil", danger = true) {
-                            deleting = f
-                            actionFile = null
-                        }
-                    }
+        PocketSheet(onDismiss = { actionFile = null }, title = f.name, subtitle = f.path, subtitleMono = true) { dismiss ->
+            SheetAction(Icons.Rounded.ContentCopy, "Yolu kopyala", onClick = {
+                clipboard.setText(AnnotatedString(f.path)); notify("Yol kopyalandı"); dismiss()
+            })
+            SheetAction(Icons.Rounded.Terminal, "Terminale yaz", sublabel = "Yol imlece yazılır; Enter sende", onClick = {
+                if (files.pastePathToTerminal(f)) { actionFile = null; onOpenTerminal() } else { notify("Aktif oturum yok"); dismiss() }
+            })
+            SheetAction(Icons.Rounded.CheckCircle, "Seç", sublabel = "Çoklu seçim başlar", onClick = {
+                if (f !in selected) selected.add(f); dismiss()
+            })
+            if (!isGw) {
+                if (!f.isDir) {
+                    SheetAction(Icons.Rounded.Download, "İndir ve paylaş", onClick = { files.download(f); dismiss() })
+                } else {
+                    SheetAction(Icons.Rounded.CreateNewFolder, "İçinde yeni klasör", onClick = { mkdirIn = f; dismiss() })
                 }
-            },
-            confirmButton = { TextButton(onClick = { actionFile = null }) { Text("Kapat") } },
-        )
+                SheetAction(Icons.Rounded.DriveFileRenameOutline, "Yeniden adlandır", onClick = { renaming = f; dismiss() })
+                InsetDivider(Space.xxl)
+                SheetAction(Icons.Rounded.Delete, "Sil", danger = true, onClick = { deleting = f; dismiss() })
+            }
+        }
     }
 
-    // Yeniden adlandır
     renaming?.let { f ->
         var name by remember { mutableStateOf(f.name) }
-        PocketAlertDialog(
-            onDismissRequest = { renaming = null },
-            title = { Text("Yeniden adlandır") },
-            text = {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Yeni ad") },
-                    singleLine = true,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { files.rename(f, name); renaming = null }) { Text("Kaydet") }
-            },
-            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Vazgeç") } },
+        PocketDialog(
+            onDismiss = { renaming = null },
+            title = "Yeniden adlandır",
+            content = { PocketTextField(name, { name = it }, label = "Yeni ad", mono = true) },
+            confirm = { GhostButton("Kaydet", enabled = name.isNotBlank() && !name.contains('/'), onClick = { files.rename(f, name); renaming = null }) },
+            dismiss = { GhostButton("Vazgeç", onClick = { renaming = null }, color = t.text2) },
         )
     }
 
-    // Yeni klasör (cwd veya uzun-basma ile seçilen dizin içi)
     if (mkdirOpen || mkdirIn != null) {
         var name by remember { mutableStateOf("") }
-        PocketAlertDialog(
-            onDismissRequest = { mkdirOpen = false; mkdirIn = null },
-            title = { Text("Yeni klasör") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    mkdirIn?.let {
-                        Text(
-                            "İçinde: ${it.path}",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = Readout),
-                            color = Tok.muted,
-                        )
-                    }
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = { Text("Klasör adı") },
-                        singleLine = true,
-                    )
-                }
+        PocketDialog(
+            onDismiss = { mkdirOpen = false; mkdirIn = null },
+            title = "Yeni klasör",
+            content = {
+                PocketTextField(
+                    name, { name = it },
+                    label = "Klasör adı", mono = true,
+                    helper = "Konum: " + (mkdirIn?.path ?: files.path ?: "/"),
+                )
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    files.mkdir(name, mkdirIn)
-                    mkdirOpen = false; mkdirIn = null
-                }) { Text("Oluştur") }
+            confirm = {
+                GhostButton("Oluştur", enabled = name.isNotBlank() && !name.contains('/'), onClick = {
+                    files.mkdir(name, mkdirIn); mkdirOpen = false; mkdirIn = null
+                })
             },
-            dismissButton = {
-                TextButton(onClick = { mkdirOpen = false; mkdirIn = null }) { Text("Vazgeç") }
-            },
+            dismiss = { GhostButton("Vazgeç", onClick = { mkdirOpen = false; mkdirIn = null }, color = t.text2) },
         )
     }
 
-    // Yola git (derin uzak yolları elle girmek için)
     if (gotoOpen) {
-        var target by remember {
-            mutableStateOf(if (files.mode == FilesMode.WORKSPACE) files.gwPath else files.path ?: "/")
-        }
-        PocketAlertDialog(
-            onDismissRequest = { gotoOpen = false },
-            title = { Text("Yola git") },
-            text = {
-                OutlinedTextField(
-                    value = target,
-                    onValueChange = { target = it },
-                    label = { Text("Dizin yolu") },
-                        mono = true,
-                    singleLine = true,
+        var target by remember { mutableStateOf(if (isGw) files.gwPath else files.path ?: "/") }
+        PocketDialog(
+            onDismiss = { gotoOpen = false },
+            title = "Yola git",
+            content = {
+                PocketTextField(
+                    target, { target = it },
+                    label = "Dizin", mono = true,
+                    helper = if (isGw) "Workspace köküne göreli." else "Göreli yol bu dizinden başlar.",
                 )
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    val t = target.trim()
-                    if (t.isNotEmpty()) {
-                        // SFTP'de göreli yol cwd'ye bağlanır; workspace zaten
-                        // jail-göreli çalışır.
-                        val abs = if (files.mode == FilesMode.SFTP && !t.startsWith("/")) {
-                            (files.path ?: "/").trimEnd('/') + "/" + t
-                        } else t
+            confirm = {
+                GhostButton("Git", onClick = {
+                    val tr = target.trim()
+                    if (tr.isNotEmpty() || isGw) {
+                        // SFTP'de göreli yol cwd'ye bağlanır; workspace zaten jail-göreli.
+                        val abs = if (!isGw && !tr.startsWith("/")) (files.path ?: "/").trimEnd('/') + "/" + tr else tr
                         files.cd(abs)
                     }
                     gotoOpen = false
-                }) { Text("Git") }
+                })
             },
-            dismissButton = { TextButton(onClick = { gotoOpen = false }) { Text("Vazgeç") } },
+            dismiss = { GhostButton("Vazgeç", onClick = { gotoOpen = false }, color = t.text2) },
         )
     }
 
-    // Silme onayı
     deleting?.let { f ->
-        PocketAlertDialog(
-            onDismissRequest = { deleting = null },
-            title = { Text("Sil") },
-            text = {
-                Text(
-                    if (f.isDir) "'${f.name}' klasörü ve içindekiler kalıcı olarak silinsin mi?"
-                    else "'${f.name}' kalıcı olarak silinsin mi?",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { files.delete(f); deleting = null }) {
-                    Text("Sil", color = Tok.danger)
-                }
-            },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Vazgeç") } },
+        ConfirmDialog(
+            title = "${f.name} silinsin mi?",
+            message = if (f.isDir) "Klasör ve içindeki her şey host'tan kalıcı olarak silinir." else "Dosya host'tan kalıcı olarak silinir.",
+            confirmLabel = "Sil",
+            onConfirm = { files.delete(f); deleting = null },
+            onDismiss = { deleting = null },
         )
     }
-
-    // Toplu silme onayı
     deletingMany?.let { fs ->
-        PocketAlertDialog(
-            onDismissRequest = { deletingMany = null },
-            title = { Text("Sil") },
-            text = {
-                Text("${fs.size} öğe kalıcı olarak silinsin mi? (klasörler içerikleriyle birlikte)")
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    files.deleteAll(fs)
-                    deletingMany = null
-                    selected.clear()
-                }) { Text("Sil", color = Tok.danger) }
-            },
-            dismissButton = { TextButton(onClick = { deletingMany = null }) { Text("Vazgeç") } },
+        ConfirmDialog(
+            title = "${fs.size} öğe silinsin mi?",
+            message = "Seçili dosyalar ve klasörler (içerikleriyle birlikte) host'tan kalıcı olarak silinir.",
+            confirmLabel = "Sil",
+            onConfirm = { files.deleteAll(fs); deletingMany = null; selected.clear() },
+            onDismiss = { deletingMany = null },
         )
     }
 
-    // İçerikte ara (grep) — desen girişi
     if (grepOpen) {
         var pattern by remember { mutableStateOf("") }
-        PocketAlertDialog(
-            onDismissRequest = { grepOpen = false },
-            title = { Text("İçerikte ara") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "Geçerli dizinde recursive grep (.git hariç, binary atlanır).",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Tok.muted,
-                    )
-                    OutlinedTextField(
-                        value = pattern,
-                        onValueChange = { pattern = it },
-                        label = { Text("Desen") },
-                        mono = true,
-                        singleLine = true,
-                    )
-                }
+        PocketDialog(
+            onDismiss = { grepOpen = false },
+            title = "İçerikte ara",
+            content = {
+                PocketTextField(
+                    pattern, { pattern = it },
+                    label = "Aranacak metin", mono = true,
+                    helper = "Bu dizinde alt klasörlerle birlikte; .git ve ikili dosyalar atlanır.",
+                )
             },
-            confirmButton = {
-                TextButton(onClick = { files.grep(pattern); grepOpen = false }) { Text("Ara") }
-            },
-            dismissButton = { TextButton(onClick = { grepOpen = false }) { Text("Vazgeç") } },
+            confirm = { GhostButton("Ara", enabled = pattern.isNotBlank(), onClick = { files.grep(pattern); grepOpen = false }) },
+            dismiss = { GhostButton("Vazgeç", onClick = { grepOpen = false }, color = t.text2) },
         )
     }
 
     // Grep sonuçları: yol:satır → dokununca üst dizine iner + önizleme açar.
     if (files.grepRunning || files.grepResults != null) {
-        PocketAlertDialog(
-            onDismissRequest = { files.dismissGrep() },
-            title = { Text("İçerik arama sonuçları") },
-            text = {
-                if (files.grepRunning) {
-                    Column(
-                        Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) { BusyPixel("aranıyor…") }
-                } else {
-                    val hits = files.grepResults.orEmpty()
-                    if (hits.isEmpty()) {
-                        Text("eşleşme yok")
-                    } else {
-                        LazyColumn(Modifier.height(320.dp)) {
-                            items(hits, key = { "${it.path}:${it.line}:${it.text}" }) { h ->
-                                Column(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            files.revealPath(h.path)
-                                            files.dismissGrep()
-                                        }
-                                        .padding(vertical = 6.dp),
-                                ) {
-                                    Text(
-                                        "${h.path}:${h.line}",
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontFamily = Readout,
-                                        ),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        maxLines = 1,
-                                    )
-                                    Text(
-                                        h.text.trim(),
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontFamily = Readout,
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                    )
-                                }
-                            }
+        val hits = files.grepResults.orEmpty()
+        PocketSheet(
+            onDismiss = { files.dismissGrep() },
+            title = if (files.grepRunning) "Aranıyor…" else "${hits.size} eşleşme",
+        ) { dismiss ->
+            if (files.grepRunning) {
+                Box(Modifier.fillMaxWidth().padding(Space.xxl), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = t.primary)
+                }
+            } else if (hits.isEmpty()) {
+                Text("Eşleşme yok.", style = MaterialTheme.typography.bodyMedium, color = t.text2, modifier = Modifier.padding(horizontal = Space.xxl))
+            } else {
+                LazyColumn(Modifier.heightIn(max = 460.dp)) {
+                    itemsIndexed(hits, key = { _, h -> "${h.path}:${h.line}:${h.text}" }) { _, h ->
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .tap({ files.revealPath(h.path); dismiss() })
+                                .padding(horizontal = Space.xxl, vertical = Space.sm + 2.dp),
+                        ) {
+                            Text(
+                                "${h.path}:${h.line}",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code),
+                                color = t.primaryText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                h.text.trim(),
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code),
+                                color = t.text,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { files.dismissGrep() }) { Text("Kapat") }
-            },
-        )
-    }
-}
-
-// Aksiyon diyaloğu satırı: sola yaslı tam-genişlik metin düğmesi.
-@Composable
-private fun ActionRow(label: String, danger: Boolean = false, onClick: () -> Unit) {
-    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Text(
-            label,
-            color = if (danger) Tok.danger else Tok.text,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-// Diff renklendirme — renk sinyaldir: + success, - danger, @@ accent,
-// başlıklar kalın mürekkep, +++/--- loş.
-private fun diffAnnotated(content: String, t: dev.pocketagent.ui.theme.PocketTokens): androidx.compose.ui.text.AnnotatedString =
-    androidx.compose.ui.text.buildAnnotatedString {
-        content.lines().forEach { line ->
-            val style = when {
-                line.startsWith("+++") || line.startsWith("---") ->
-                    androidx.compose.ui.text.SpanStyle(color = t.muted)
-                line.startsWith("+") ->
-                    androidx.compose.ui.text.SpanStyle(color = t.success)
-                line.startsWith("-") ->
-                    androidx.compose.ui.text.SpanStyle(color = t.danger)
-                line.startsWith("@@") ->
-                    androidx.compose.ui.text.SpanStyle(color = t.accent)
-                line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("commit ") ->
-                    androidx.compose.ui.text.SpanStyle(
-                        color = t.text,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    )
-                else -> null
-            }
-            if (style != null) {
-                withStyle(style) { append(line); append('\n') }
-            } else {
-                append(line); append('\n')
             }
         }
     }
 
-// Dosya satırı: türünü söyleyen çizgi ikon (klasör, kod, görsel, arşiv,
-// metin), mono ad + zaman; boyut sağda hizalı okuma. Seçim zeminle + mavi tik.
+    // Dev-server önizleme (yalnız host loopback'i — SSRF korumalı).
+    if (devServerOpen) {
+        var port by remember { mutableStateOf("") }
+        var path by remember { mutableStateOf("/") }
+        PocketDialog(
+            onDismiss = { devServerOpen = false },
+            title = "Dev server önizleme",
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(Space.lg)) {
+                    Text("Yalnız host üzerindeki 127.0.0.1 adresleri; içerik metin olarak gösterilir.", style = MaterialTheme.typography.bodyMedium)
+                    PocketTextField(port, { port = it.filter(Char::isDigit).take(5) }, label = "Port", placeholder = "3000", mono = true)
+                    PocketTextField(path, { path = it }, label = "Yol", mono = true)
+                }
+            },
+            confirm = {
+                GhostButton("Getir", enabled = port.toIntOrNull() in 1..65535, onClick = {
+                    port.toIntOrNull()?.let { files.gwPreview(it, path) }
+                    devServerOpen = false
+                })
+            },
+            dismiss = { GhostButton("Vazgeç", onClick = { devServerOpen = false }, color = t.text2) },
+        )
+    }
+}
+
+@Composable
+private fun FileMenuItem(icon: ImageVector, label: String, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(label, color = Tok.text) },
+        leadingIcon = { Icon(icon, contentDescription = null, tint = Tok.text2) },
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun ToolChip(icon: ImageVector, label: String, tone: Tone, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .clip(PillShape)
+            .background(tone.soft)
+            .tap(onClick)
+            .heightIn(min = 40.dp)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = tone.onSoft, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = tone.onSoft, maxLines = 1)
+    }
+}
+
+// Tam ekran metin okuyucu: mono, seçilebilir; diff satırları renklenir.
+@Composable
+private fun TextViewer(title: String, content: String, diff: Boolean, onCopy: () -> Unit, onClose: () -> Unit) {
+    val t = Tok
+    FullScreenDialog(onDismiss = onClose) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.navigationBars))) {
+            PocketTopBar(title, onBack = onClose, backIcon = Icons.Rounded.Close, backDesc = "Kapat", insetTop = false) {
+                IconAction(Icons.Rounded.ContentCopy, "İçeriği kopyala", onCopy)
+            }
+            SelectionContainer(Modifier.weight(1f)) {
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = Space.lg, vertical = Space.sm),
+                ) {
+                    Text(
+                        if (diff) diffAnnotated(content, t) else AnnotatedString(content),
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code, fontSize = 12.5.sp, lineHeight = 18.sp),
+                        color = t.text,
+                    )
+                    Spacer(Modifier.height(Space.x3))
+                }
+            }
+        }
+    }
+}
+
+// Diff renklendirme: + yeşil, - mercan, @@ mavi, başlıklar kalın, +++/--- soluk.
+private fun diffAnnotated(content: String, t: dev.pocketagent.ui.theme.PocketTokens): AnnotatedString =
+    androidx.compose.ui.text.buildAnnotatedString {
+        content.lines().forEach { line ->
+            val style = when {
+                line.startsWith("+++") || line.startsWith("---") -> androidx.compose.ui.text.SpanStyle(color = t.text2)
+                line.startsWith("+") -> androidx.compose.ui.text.SpanStyle(color = t.live.text, background = t.live.soft)
+                line.startsWith("-") -> androidx.compose.ui.text.SpanStyle(color = t.danger.text, background = t.danger.soft)
+                line.startsWith("@@") -> androidx.compose.ui.text.SpanStyle(color = t.busy.text)
+                line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("commit ") ->
+                    androidx.compose.ui.text.SpanStyle(color = t.text, fontWeight = FontWeight.Bold)
+                else -> null
+            }
+            if (style != null) withStyle(style) { append(line); append('\n') } else { append(line); append('\n') }
+        }
+    }
+
+// Dosya satırı: türünü söyleyen renkli ikon karosu, mono ad, boyut · zaman.
 @Composable
 private fun RemoteFileRow(
     f: RemoteFile,
+    selecting: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
     val t = Tok
+    val (icon, tone) = fileKind(f)
     ListRow(
         title = f.name,
         titleMono = true,
-        subtitle = if (f.mtime > 0) relativeTime(f.mtime * 1000) else null,
-        subtitleMono = true,
-        modifier = Modifier.background(if (selected) t.active else androidx.compose.ui.graphics.Color.Transparent),
-        leading = {
-            Box(
-                Modifier
-                    .size(36.dp)
-                    .clip(MaterialTheme.shapes.small)
-                    .background(if (f.isDir) t.raised else t.hover),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    fileIcon(f),
-                    contentDescription = null,
-                    tint = if (f.isDir) t.text else t.text2,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        },
+        subtitle = listOfNotNull(
+            if (!f.isDir) humanSize(f.size) else null,
+            if (f.mtime > 0) relativeTime(f.mtime * 1000) else null,
+        ).joinToString(" · ").ifBlank { null },
+        modifier = Modifier.background(if (selected) t.accent.soft else androidx.compose.ui.graphics.Color.Transparent),
+        leading = { IconTile(icon, tone = tone, size = 38.dp) },
         trailing = {
             when {
-                selected -> Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = t.accent, modifier = Modifier.size(20.dp))
-                f.isDir -> Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = t.faint,
-                    modifier = Modifier.size(18.dp),
+                selecting -> Icon(
+                    if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                    contentDescription = if (selected) "Seçili" else "Seçili değil",
+                    tint = if (selected) t.primary else t.text3,
+                    modifier = Modifier.size(22.dp),
                 )
-                else -> Text(
-                    humanSize(f.size),
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = Readout, fontWeight = androidx.compose.ui.text.font.FontWeight.Normal),
-                    color = t.muted,
-                )
+                f.isDir -> Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = t.text3, modifier = Modifier.size(20.dp))
+                else -> {}
             }
         },
         onClick = onClick,
@@ -819,22 +661,24 @@ private fun RemoteFileRow(
     )
 }
 
-private fun fileIcon(f: RemoteFile): androidx.compose.ui.graphics.vector.ImageVector {
-    if (f.isDir) return Icons.Outlined.OutlinedFolder
+@Composable
+private fun fileKind(f: RemoteFile): Pair<ImageVector, Tone?> {
+    val t = Tok
+    if (f.isDir) return Icons.Outlined.Folder to t.accent
     val ext = f.name.substringAfterLast('.', "").lowercase()
     return when (ext) {
-        "kt", "kts", "java", "go", "rs", "py", "js", "ts", "tsx", "jsx", "c", "h", "cpp", "rb", "swift", "sh", "zsh", "bash", "lua", "php" -> Icons.Outlined.Code
-        "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "heic" -> Icons.Outlined.Image
-        "zip", "gz", "tgz", "tar", "xz", "bz2", "7z", "rar", "zst", "apk", "jar" -> Icons.Outlined.Inventory2
-        "md", "txt", "rst", "log", "pdf", "doc", "docx" -> Icons.Outlined.Description
-        "json", "yaml", "yml", "toml", "ini", "conf", "cfg", "env", "xml", "mod", "sum", "lock", "jsonl" -> Icons.Outlined.DataObject
-        else -> if (f.name.equals("Makefile", true) || f.name.equals("Dockerfile", true)) Icons.Outlined.Build
-        else Icons.AutoMirrored.Outlined.InsertDriveFile
+        "kt", "kts", "java", "go", "rs", "py", "js", "ts", "tsx", "jsx", "c", "h", "cpp", "rb", "swift", "sh", "zsh", "bash", "lua", "php" -> Icons.Outlined.Code to t.busy
+        "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "heic" -> Icons.Outlined.Image to t.violet
+        "zip", "gz", "tgz", "tar", "xz", "bz2", "7z", "rar", "zst", "apk", "jar" -> Icons.Outlined.Inventory2 to t.warn
+        "md", "txt", "rst", "log", "pdf", "doc", "docx" -> Icons.Outlined.Description to null
+        "json", "yaml", "yml", "toml", "ini", "conf", "cfg", "env", "xml", "mod", "sum", "lock", "jsonl" -> Icons.Outlined.DataObject to null
+        else -> if (f.name.equals("Makefile", true) || f.name.equals("Dockerfile", true)) Icons.Outlined.Build to null
+        else Icons.AutoMirrored.Outlined.InsertDriveFile to null
     }
 }
 
-// Dokunulabilir yol çubuğu: "/a/b/c" → / a / b / c; her segment o derinliğe
-// cd eder. Yol uzayınca en derin segment görünür kalır (sona otomatik kayar).
+// Kırıntı çubuğu: "/a/b/c" → ⌂ / a / b / c; her parça o derinliğe gider.
+// Yol uzayınca en derin parça görünür kalır (sona otomatik kayar).
 @Composable
 private fun PathBar(files: FilesViewModel, modifier: Modifier = Modifier) {
     val isGw = files.mode == FilesMode.WORKSPACE
@@ -842,43 +686,54 @@ private fun PathBar(files: FilesViewModel, modifier: Modifier = Modifier) {
     val segments = rel.split('/').filter { it.isNotEmpty() }
     val scroll = rememberScrollState()
     LaunchedEffect(rel) { scroll.scrollTo(scroll.maxValue) }
+    val t = Tok
     Row(
         modifier
-            .clip(MaterialTheme.shapes.small)
-            .background(Tok.hover)
+            .clip(PillShape)
+            .background(t.card)
             .horizontalScroll(scroll)
-            .padding(horizontal = 10.dp, vertical = 2.dp),
+            .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            "/",
-            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout),
-            color = if (segments.isEmpty()) Tok.text else Tok.muted,
-            modifier = Modifier.clickable { files.cd(if (isGw) "" else "/") }.padding(vertical = 6.dp, horizontal = 2.dp),
-        )
+        Box(
+            Modifier
+                .clip(PillShape)
+                .tap({ files.cd(if (isGw) "" else "/") })
+                .heightIn(min = 40.dp)
+                .padding(horizontal = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (isGw) Icons.Rounded.Folder else Icons.Rounded.Home,
+                contentDescription = if (isGw) "Workspace kökü" else "Kök dizin",
+                tint = if (segments.isEmpty()) t.text else t.text2,
+                modifier = Modifier.size(18.dp),
+            )
+        }
         segments.forEachIndexed { i, seg ->
             val last = i == segments.lastIndex
+            Text("/", style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Code), color = t.text3)
             Text(
                 seg,
-                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout),
-                color = if (last) Tok.text else Tok.muted,
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Code, fontWeight = if (last) FontWeight.SemiBold else FontWeight.Normal),
+                color = if (last) t.text else t.text2,
                 maxLines = 1,
                 modifier = Modifier
-                    .clickable(enabled = !last) {
-                        val target = segments.take(i + 1).joinToString("/")
-                        files.cd(if (isGw) target else "/$target")
-                    }
-                    .padding(vertical = 6.dp),
+                    .clip(PillShape)
+                    .tap(if (last) null else {
+                        {
+                            val target = segments.take(i + 1).joinToString("/")
+                            files.cd(if (isGw) target else "/$target")
+                        }
+                    })
+                    .padding(horizontal = 6.dp, vertical = 10.dp),
             )
-            if (!last) {
-                Text("/", style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Readout), color = Tok.faint)
-            }
         }
     }
 }
 
 // SAF seçici sonucu: görünen ad + baytlar (null = okunamadı).
-// FilesScreen upload ve terminal agent-ek akışı paylaşır.
+// Dosya yükleme ve terminal agent-ek akışı paylaşır.
 internal fun pickedFile(context: android.content.Context, uri: android.net.Uri): Pair<String, ByteArray>? {
     val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
         val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
@@ -901,63 +756,59 @@ private fun humanSize(bytes: Long): String = when {
 }
 
 @Composable
-private fun WorkspaceMissingCard() {
-    Spacer(Modifier.height(Space.lg))
-    ConsoleCard {
-        CardHeader("Workspace gateway kurulu değil")
-        Spacer(Modifier.height(Space.sm))
-        Text(
-            "Host'ta çalıştır:\n  pocket-agent gateway serve\n  veya kalıcı servis:\n  pocket-agent service install-gateway\n\n" +
-                "Token ~/.config/pocket-agent/gateway.token altında üretilir; " +
-                "uygulama onu SSH oturumu içinden okur. Gateway yalnız 127.0.0.1:24543 dinler.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Tok.muted,
-        )
-    }
-}
-
-@Composable
-private fun NoSessionCard() {
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.Center,
-    ) {
-        EmptyState(
-            icon = Icons.Filled.Folder,
-            art = PixelArt.Folder,
-            title = "Uzak dosyalar",
-            body = "Aktif bir SSH oturumu yok. Terminal sekmesinden bir host'a bağlan; bu sekme aynı oturumun SFTP kanalıyla uzak dosya sistemini gösterir.",
-        )
-        Spacer(Modifier.height(Space.md))
-        Column(Modifier.padding(horizontal = Space.xl)) {
-            ConsoleCard {
-                CardHeader("Güvenlik")
-                Spacer(Modifier.height(Space.xs))
-                Text(
-                    "• Dosyalar yalnız SSH tünelinde akar, backend içerik görmez\n" +
-                        "• İndirilenler paylaşım önbelleğine düşer (10MB üst sınır)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Tok.muted,
-                )
-            }
+private fun WorkspaceMissing() {
+    Column(Modifier.padding(Space.lg)) {
+        PocketCard {
+            Text("Workspace gateway kurulu değil", style = MaterialTheme.typography.titleMedium, color = Tok.text)
+            Spacer(Modifier.height(Space.sm))
+            Text(
+                "Gateway; git diff, dev server önizlemesi ve agent sohbetlerini SSH tüneli üzerinden sunar. Host'ta çalıştır:",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Tok.text2,
+            )
+            Spacer(Modifier.height(Space.md))
+            ValueBox("pocket-agent service install-gateway")
+            Spacer(Modifier.height(Space.md))
+            Text(
+                "Yalnız 127.0.0.1:24543 dinler. Token ~/.config/pocket-agent/gateway.token dosyasındadır; uygulama onu oturum içinden okur.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Tok.text2,
+            )
         }
     }
 }
 
-// İskelet satırı: ikon karosu + iki çizgi, faint zemin, ListRow ölçüsünde.
+@Composable
+private fun NoSession() {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
+        EmptyState(
+            icon = Icons.Rounded.Folder,
+            title = "Uzak dosyalar",
+            body = "Aktif bir SSH oturumu yok. Bir host'a bağlandığında bu ekran aynı oturumun SFTP kanalıyla uzak dosya sistemini gösterir.",
+        )
+        Text(
+            "Dosyalar yalnız SSH tünelinde akar, backend içerik görmez. İndirmeler paylaşım önbelleğine düşer (10 MB üst sınır).",
+            style = MaterialTheme.typography.bodySmall,
+            color = Tok.text2,
+            modifier = Modifier.padding(horizontal = Space.x3).align(Alignment.CenterHorizontally),
+        )
+    }
+}
+
+// İskelet satırı: ikon karosu + iki çizgi, satır ölçüsünde, shimmer yok.
 @Composable
 private fun SkeletonRow(widthFraction: Float) {
-    val c = Tok.hover
+    val c = Tok.card
     Row(
         Modifier.fillMaxWidth().height(64.dp).padding(horizontal = Space.lg),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(36.dp).clip(MaterialTheme.shapes.small).background(c))
-        Spacer(Modifier.width(Space.md))
+        Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(c))
+        Spacer(Modifier.width(Space.md + 2.dp))
         Column {
-            Box(Modifier.fillMaxWidth(widthFraction).height(12.dp).clip(RoundedCornerShape(3.dp)).background(c))
+            Box(Modifier.fillMaxWidth(widthFraction).height(12.dp).clip(RoundedCornerShape(4.dp)).background(c))
             Spacer(Modifier.height(8.dp))
-            Box(Modifier.fillMaxWidth(widthFraction * 0.5f).height(9.dp).clip(RoundedCornerShape(3.dp)).background(c))
+            Box(Modifier.fillMaxWidth(widthFraction * 0.5f).height(9.dp).clip(RoundedCornerShape(4.dp)).background(c))
         }
     }
 }

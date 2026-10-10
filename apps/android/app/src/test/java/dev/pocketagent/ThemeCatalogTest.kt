@@ -6,6 +6,8 @@ import dev.pocketagent.ui.theme.ConsoleThemes
 import dev.pocketagent.ui.theme.colorScheme
 import dev.pocketagent.ui.theme.consoleFont
 import dev.pocketagent.ui.theme.consoleTheme
+import dev.pocketagent.ui.theme.contrast
+import dev.pocketagent.ui.theme.tokens
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,5 +33,28 @@ class ThemeCatalogTest {
     @Test fun colorSchemeBuildsForEveryTheme() {
         // Türetilen şema her tema için hatasız üretilmeli (dark + light).
         ConsoleThemes.forEach { it.colorScheme() }
+    }
+
+    // Okunurluk tabanı her temada: metin ≥4.5:1 (kart ve sayfa yüzeylerinde),
+    // durum işaretleri ≥3:1, birincil düğme etiketi ≥4.5:1.
+    @Test fun tokensMeetContrastFloorInEveryTheme() {
+        ConsoleThemes.forEach { th ->
+            val t = th.tokens()
+            fun floor(what: String, fg: androidx.compose.ui.graphics.Color, bg: androidx.compose.ui.graphics.Color, min: Float) {
+                val c = contrast(fg, bg)
+                assertTrue("${th.id} $what %.2f < $min".format(c), c >= min - 0.01f)
+            }
+            listOf(t.bg to "bg", t.card to "card", t.raised to "raised").forEach { (s, n) ->
+                floor("text/$n", t.text, s, 4.5f)
+                floor("text2/$n", t.text2, s, 4.5f)
+            }
+            floor("primaryText/card", t.primaryText, t.card, 4.5f)
+            floor("onPrimary/primary", t.onPrimary, t.primary, 4.5f)
+            listOf(t.accent, t.live, t.busy, t.warn, t.danger, t.neutral, t.violet).forEachIndexed { i, tone ->
+                floor("tone$i.fg/card", tone.fg, t.card, 3f)
+                floor("tone$i.text/card", tone.text, t.card, 4.5f)
+                floor("tone$i.onSoft/soft", tone.onSoft, tone.soft, 4.5f)
+            }
+        }
     }
 }

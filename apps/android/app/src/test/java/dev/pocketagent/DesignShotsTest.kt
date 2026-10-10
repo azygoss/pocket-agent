@@ -2,23 +2,31 @@
 package dev.pocketagent
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.performScrollToKey
 import androidx.room.Room
 import dev.pocketagent.data.AppDatabase
 import dev.pocketagent.data.ConnectionRepository
@@ -26,6 +34,7 @@ import dev.pocketagent.data.ProfileRepository
 import dev.pocketagent.net.ChatBlockDto
 import dev.pocketagent.transport.FakeSshTransport
 import dev.pocketagent.transport.SavedConnection
+import dev.pocketagent.transport.SavedProfile
 import dev.pocketagent.transport.Secret
 import dev.pocketagent.transport.SessionManager
 import dev.pocketagent.transport.SshConnector
@@ -33,10 +42,11 @@ import dev.pocketagent.transport.SshTransport
 import dev.pocketagent.transport.TerminalSize
 import dev.pocketagent.transport.TofuHostKeyStore
 import dev.pocketagent.ui.ChatDialog
-import dev.pocketagent.ui.ConnectionsScreen
 import dev.pocketagent.ui.FilesScreen
 import dev.pocketagent.ui.FilesViewModel
-import dev.pocketagent.ui.HomeScreen
+import dev.pocketagent.ui.HostEditor
+import dev.pocketagent.ui.HubScreen
+import dev.pocketagent.ui.PairingSheet
 import dev.pocketagent.ui.SettingsScreen
 import dev.pocketagent.ui.SettingsViewModel
 import dev.pocketagent.ui.TerminalScreen
@@ -46,10 +56,10 @@ import dev.pocketagent.ui.theme.LocalTokens
 import dev.pocketagent.ui.theme.PocketAgentTheme
 import dev.pocketagent.ui.theme.PocketConsoleTheme
 import dev.pocketagent.ui.theme.PocketPaperTheme
-import dev.pocketagent.ui.theme.SheetInset
-import dev.pocketagent.ui.theme.SheetShape
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -74,14 +84,16 @@ class DesignShotsTest {
 
     @Before fun gate() = assumeTrue(out != null)
 
-
-
-    private class C : SshConnector {
+    // Gerçekçi terminal çıktısı: yankılanan açılış komutlarını ekran
+    // temizliğiyle siler, sonra bir test koşusu basar.
+    private class Demo(val text: String = DEMO) : SshConnector {
         override suspend fun open(conn: SavedConnection, secret: Secret?, size: TerminalSize): SshTransport =
-            FakeSshTransport().also { it.openPty("xterm-256color", size) }
+            FakeSshTransport().also { t ->
+                t.openPty("xterm-256color", size)
+                CoroutineScope(Dispatchers.IO).launch { delay(250); t.emitOutput("\u001B[2J\u001B[H$text") }
+            }
     }
 
-    // Dosya listesi görüntüsü için örnek dizin döndüren SFTP fake'i.
     private class ListingTransport(val inner: FakeSshTransport = FakeSshTransport()) :
         SshTransport by inner, dev.pocketagent.transport.SftpSession {
         override suspend fun home() = "/home/berk/src/pocket-agent"
@@ -102,11 +114,11 @@ class DesignShotsTest {
         override suspend fun rename(from: String, to: String) {}
     }
 
-    private fun manager(listing: Boolean = false) = SessionManager(
+    private fun manager(listing: Boolean = false, text: String = DEMO) = SessionManager(
         CoroutineScope(Dispatchers.IO),
         TofuHostKeyStore(File.createTempFile("hostkeys", ".db")),
     ) {
-        if (!listing) C() else object : SshConnector {
+        if (!listing) Demo(text) else object : SshConnector {
             override suspend fun open(conn: SavedConnection, secret: Secret?, size: TerminalSize): SshTransport =
                 ListingTransport().also { it.openPty("xterm-256color", size) }
         }
@@ -126,18 +138,20 @@ class DesignShotsTest {
         return r
     }
 
-    // Uygulama kabuğunu taklit eder: chrome zemini + 8dp içeride sheet.
+    private fun profiles(db: AppDatabase): ProfileRepository {
+        val p = ProfileRepository(db.profiles())
+        runBlocking {
+            p.upsert(SavedProfile("Claude", "claude", connectionId = "c1"))
+            p.upsert(SavedProfile("Codex", "codex", connectionId = "c2"))
+            p.upsert(SavedProfile("htop", "htop"))
+        }
+        return p
+    }
+
     @Composable
-    private fun Shell(theme: ConsoleTheme, sheet: Boolean = true, content: @Composable () -> Unit) {
+    private fun Shell(theme: ConsoleTheme, content: @Composable () -> Unit) {
         PocketAgentTheme(theme = theme) {
-            val t = LocalTokens.current
-            Box(Modifier.fillMaxSize().background(t.chrome).padding(top = 8.dp, bottom = 8.dp)) {
-                Box(
-                    if (sheet) Modifier.fillMaxSize().padding(horizontal = SheetInset).clip(SheetShape)
-                        .background(t.bg).border(1.dp, t.border, SheetShape)
-                    else Modifier.fillMaxSize(),
-                ) { content() }
-            }
+            Box(Modifier.fillMaxSize().background(LocalTokens.current.bg)) { content() }
         }
     }
 
@@ -157,16 +171,6 @@ class DesignShotsTest {
         File(out, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    @Test fun homeDark() {
-        val m = manager()
-        val r = seeded(db())
-        rule.setContent { Shell(PocketConsoleTheme) { HomeScreen(m, r) {} } }
-        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
-        Thread.sleep(600)
-        shot("home-dark")
-        m.closeAll()
-    }
-
     private fun inbox(): dev.pocketagent.ui.InboxViewModel = dev.pocketagent.ui.InboxViewModel().apply {
         val now = java.time.Instant.now()
         fun ev(id: String, cat: String, src: String, msg: String, ago: Long) = dev.pocketagent.net.BackendEvent(
@@ -181,58 +185,107 @@ class DesignShotsTest {
         markRead("4")
     }
 
-    @Test fun homeInbox() {
+    private fun hub(theme: ConsoleTheme, name: String, withInbox: Boolean = false, scroll: String? = null) {
         val m = manager()
-        val r = seeded(db())
-        val ib = inbox()
-        rule.setContent { Shell(PocketConsoleTheme) { HomeScreen(m, r, inbox = ib, syncStatus = "bağlı") {} } }
+        val d = db()
+        val r = seeded(d)
+        val p = profiles(d)
+        val ib = if (withInbox) inbox() else null
+        rule.setContent {
+            Shell(theme) { HubScreen(m, r, p, inbox = ib, syncStatus = if (withInbox) "bağlı" else null, onOpenSession = {}) }
+        }
         m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
-        Thread.sleep(600)
-        shot("home-inbox-dark")
+        Thread.sleep(900)
+        if (scroll != null) rule.onNode(androidx.compose.ui.test.hasScrollToKeyAction()).performScrollToKey(scroll)
+        shot(name)
         m.closeAll()
     }
 
-    @Test fun homeLight() {
-        val m = manager()
-        val r = seeded(db())
-        rule.setContent { Shell(PocketPaperTheme) { HomeScreen(m, r) {} } }
-        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
-        Thread.sleep(600)
-        shot("home-light")
-        m.closeAll()
-    }
+    @Test fun hubDark() = hub(PocketConsoleTheme, "hub-dark", withInbox = true)
 
-    @Test fun homeEmpty() {
-        rule.setContent { Shell(PocketConsoleTheme) { HomeScreen(manager(), ConnectionRepository(db().connections())) {} } }
-        shot("home-empty")
-    }
+    @Test fun hubDarkScrolled() = hub(PocketConsoleTheme, "hub-dark-scrolled", withInbox = true, scroll = "more")
 
-    @Test fun connections() {
+    @Test fun hubLight() = hub(PocketPaperTheme, "hub-light", withInbox = true)
+
+    @Test fun hubFirstRun() {
         val d = db()
-        rule.setContent { Shell(PocketConsoleTheme) { ConnectionsScreen(seeded(d), ProfileRepository(d.profiles()), manager()) {} } }
-        shot("connections-dark")
+        rule.setContent { Shell(PocketConsoleTheme) { HubScreen(manager(), ConnectionRepository(d.connections()), ProfileRepository(d.profiles()), onOpenSession = {}) } }
+        shot("hub-first-run-dark")
     }
 
-    @Test fun connectionsWizard() {
+    @Test fun hubFirstRunLight() {
         val d = db()
-        rule.setContent { Shell(PocketPaperTheme) { ConnectionsScreen(ConnectionRepository(d.connections()), ProfileRepository(d.profiles()), manager()) {} } }
-        shot("connections-wizard-light")
+        rule.setContent { Shell(PocketPaperTheme) { HubScreen(manager(), ConnectionRepository(d.connections()), ProfileRepository(d.profiles()), onOpenSession = {}) } }
+        shot("hub-first-run-light")
     }
 
-    @Test fun terminal() {
+    @Test fun workspace() {
         val m = manager()
-        rule.setContent { Shell(PocketConsoleTheme, sheet = false) { TerminalScreen(m, SettingsViewModel(), {}) } }
+        rule.setContent { Shell(PocketConsoleTheme) { TerminalScreen(m, SettingsViewModel(), {}) } }
         m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
         m.open(SavedConnection("build-box", "192.168.1.40", 22, "berk", "ram:password", id = "c2"), Secret.Password("x"))
-        Thread.sleep(600)
-        shot("terminal-dark")
+        Thread.sleep(900)
+        shot("workspace-dark")
         m.closeAll()
+    }
+
+    @Test fun workspaceLight() {
+        val m = manager()
+        rule.setContent { Shell(PocketPaperTheme) { TerminalScreen(m, SettingsViewModel(), {}) } }
+        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
+        Thread.sleep(900)
+        shot("workspace-light")
+        m.closeAll()
+    }
+
+    @Test fun workspaceMenu() {
+        val m = manager()
+        rule.setContent { Shell(PocketConsoleTheme) { TerminalScreen(m, SettingsViewModel(), {}) } }
+        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
+        Thread.sleep(900)
+        rule.onNodeWithContentDescription("Diğer").performClick()
+        shot("workspace-menu-dark", dialog = true)
+        m.closeAll()
+    }
+
+    @Test fun closeSheet() {
+        val m = manager()
+        rule.setContent { Shell(PocketConsoleTheme) { TerminalScreen(m, SettingsViewModel(), {}) } }
+        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
+        Thread.sleep(900)
+        rule.onNodeWithContentDescription("Diğer").performClick()
+        rule.onNodeWithText("Oturumu kapat…").performClick()
+        Thread.sleep(400)
+        shot("sheet-close-dark", dialog = true)
+        m.closeAll()
+    }
+
+    @Test fun workspaceEmpty() {
+        rule.setContent { Shell(PocketConsoleTheme) { TerminalScreen(manager(), SettingsViewModel(), {}) } }
+        shot("workspace-empty-dark")
+    }
+
+    @Test fun filesListing() {
+        val m = manager(listing = true)
+        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
+        Thread.sleep(500)
+        val files = FilesViewModel(m, CoroutineScope(Dispatchers.IO), File.createTempFile("cache", "").parentFile!!)
+        rule.setContent { Shell(PocketConsoleTheme) { FilesScreen(files, onBack = {}) } }
+        rule.waitForIdle(); Thread.sleep(500)
+        shot("files-list-dark")
+        m.closeAll()
+    }
+
+    @Test fun filesEmpty() {
+        val files = FilesViewModel(manager(), CoroutineScope(Dispatchers.IO), File.createTempFile("cache", "").parentFile!!)
+        rule.setContent { Shell(PocketConsoleTheme) { FilesScreen(files, onBack = {}) } }
+        shot("files-empty-dark")
     }
 
     @Test fun settings() {
         val app = RuntimeEnvironment.getApplication() as dev.pocketagent.android.App
         val hk = TofuHostKeyStore(File.createTempFile("hostkeys", ".db"))
-        rule.setContent { Shell(PocketConsoleTheme) { SettingsScreen(SettingsViewModel(), UsageViewModel(), hk, app) } }
+        rule.setContent { Shell(PocketConsoleTheme) { SettingsScreen(SettingsViewModel(), UsageViewModel(), hk, app, onBack = {}) } }
         shot("settings-dark")
         rule.onNodeWithText("Görünüm").performClick()
         shot("settings-appearance-dark")
@@ -241,14 +294,24 @@ class DesignShotsTest {
     @Test fun settingsLight() {
         val app = RuntimeEnvironment.getApplication() as dev.pocketagent.android.App
         val hk = TofuHostKeyStore(File.createTempFile("hostkeys", ".db"))
-        rule.setContent { Shell(PocketPaperTheme) { SettingsScreen(SettingsViewModel(), UsageViewModel(), hk, app) } }
+        rule.setContent { Shell(PocketPaperTheme) { SettingsScreen(SettingsViewModel(), UsageViewModel(), hk, app, onBack = {}) } }
         shot("settings-light")
     }
 
-    @Test fun filesEmpty() {
-        val files = FilesViewModel(manager(), CoroutineScope(Dispatchers.IO), File.createTempFile("cache", "").parentFile!!)
-        rule.setContent { Shell(PocketConsoleTheme) { FilesScreen(files) } }
-        shot("files-empty-dark")
+    @Test fun settingsPages() {
+        val app = RuntimeEnvironment.getApplication() as dev.pocketagent.android.App
+        val hk = TofuHostKeyStore(File.createTempFile("hostkeys", ".db"))
+        val usage = UsageViewModel().apply {
+            updateFrom(org.json.JSONArray("""[{"agent":"claude","percent":62,"reset_in":"2 sa"},{"agent":"codex","percent":91,"reset_in":"40 dk"}]"""))
+        }
+        val vm = SettingsViewModel().apply { updateSnippets("gs=git status\nht=htop") }
+        rule.setContent { Shell(PocketConsoleTheme) { SettingsScreen(vm, usage, hk, app) } }
+        for ((label, file) in listOf("Terminal ve oturum" to "session", "Backend" to "backend", "Yedekleme ve kullanım" to "data", "Hakkında" to "about")) {
+            rule.onNodeWithText(label).performScrollTo().performClick()
+            shot("settings-$file-dark")
+            rule.onNode(hasContentDescription("Geri")).performClick()
+            rule.waitForIdle()
+        }
     }
 
     @Test fun chat() {
@@ -269,41 +332,58 @@ class DesignShotsTest {
         shot("chat-dark", dialog = true)
     }
 
-    @Test fun filesListing() {
-        val m = manager(listing = true)
-        m.open(SavedConnection("prod-web", "10.0.0.5", 22, "root", "ram:password", id = "c1"), Secret.Password("x"))
-        Thread.sleep(500)
-        val files = FilesViewModel(m, CoroutineScope(Dispatchers.IO), File.createTempFile("cache", "").parentFile!!)
-        rule.setContent { Shell(PocketConsoleTheme) { FilesScreen(files) } }
-        rule.waitForIdle(); Thread.sleep(500)
-        shot("files-list-dark")
-        m.closeAll()
-    }
-
-    @Test fun terminalEmpty() {
-        rule.setContent { Shell(PocketConsoleTheme) { TerminalScreen(manager(), SettingsViewModel(), {}) } }
-        shot("terminal-empty-dark")
-    }
-
-    @Test fun hostDialog() {
-        val d = db()
-        rule.setContent { Shell(PocketConsoleTheme) { ConnectionsScreen(seeded(d), ProfileRepository(d.profiles()), manager()) {} } }
-        rule.onNodeWithText("Host ekle", useUnmergedTree = true).performClick()
-        shot("dialog-host-dark", dialog = true)
-    }
-
-    @Test fun settingsPages() {
-        val app = RuntimeEnvironment.getApplication() as dev.pocketagent.android.App
-        val hk = TofuHostKeyStore(File.createTempFile("hostkeys", ".db"))
-        val usage = UsageViewModel().apply {
-            updateFrom(org.json.JSONArray("""[{"agent":"claude","percent":62,"reset_in":"2h"},{"agent":"codex","percent":91,"reset_in":"40m"}]"""))
+    @Test fun hostEditor() {
+        rule.setContent {
+            Shell(PocketConsoleTheme) {
+                HostEditor(SavedConnection("", "", 22, "", "ram:password"), onDismiss = {}, onSave = { _, _, _ -> })
+            }
         }
-        rule.setContent { Shell(PocketConsoleTheme) { SettingsScreen(SettingsViewModel(), usage, hk, app) } }
-        for ((label, file) in listOf("Terminal ve oturum" to "session", "Backend" to "backend", "Yedekleme ve kullanım" to "data", "Hakkında" to "about")) {
-            rule.onNodeWithText(label).performScrollTo().performClick()
-            shot("settings-$file-dark")
-            rule.onNode(androidx.compose.ui.test.hasContentDescription("Geri")).performClick()
-            rule.waitForIdle()
+        shot("editor-host-dark", dialog = true)
+    }
+
+    @Test fun pairing() {
+        rule.setContent {
+            Shell(PocketConsoleTheme) {
+                PairingSheet(backendUrl = "", busy = false, error = null, onDismiss = {}, onScan = {}, onCode = { _, _ -> })
+            }
         }
+        Thread.sleep(400)
+        shot("sheet-pair-dark", dialog = true)
+    }
+
+    // Launcher ikonu: uyarlanabilir katmanlar yuvarlak-kare ve daire maskede.
+    // 108dp katmanın görünen 72dp'si ikon boyutuna oturur → 1.5x ölçek.
+    @Test fun launcherIcon() {
+        rule.setContent {
+            Row(
+                Modifier.fillMaxSize().background(Color(0xFF2B2F33)),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                listOf(RoundedCornerShape(30), CircleShape).forEach { shape ->
+                    Box(Modifier.size(120.dp).clip(shape).background(colorResource(dev.pocketagent.android.R.color.ic_launcher_background))) {
+                        Image(
+                            painterResource(dev.pocketagent.android.R.drawable.ic_launcher_foreground),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize().scale(1.5f),
+                        )
+                    }
+                }
+            }
+        }
+        shot("launcher-icon")
+    }
+
+    companion object {
+        const val DEMO =
+            "\u001B[38;5;114m~/src/pocket-agent\u001B[0m \u001B[1m❯\u001B[0m go test ./...\r\n" +
+                "ok   dev/pocketagent/host/gateway   0.41s\r\n" +
+                "ok   dev/pocketagent/host/session   0.12s\r\n" +
+                "ok   dev/pocketagent/host/tmux      0.08s\r\n" +
+                "\u001B[31m--- FAIL: TestWipeUser (0.02s)\u001B[0m\r\n" +
+                "    store_test.go:88: want 0 rows, got 1\r\n" +
+                "\u001B[31mFAIL\u001B[0m dev/pocketagent/backend/store  1.03s\r\n" +
+                "\r\n" +
+                "\u001B[38;5;114m~/src/pocket-agent\u001B[0m \u001B[1m❯\u001B[0m "
     }
 }
