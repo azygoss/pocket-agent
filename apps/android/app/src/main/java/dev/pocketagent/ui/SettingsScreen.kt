@@ -840,7 +840,11 @@ private fun UpdateCard(version: String) {
                 dev.pocketagent.net.UpdateChecker.installApk(context, dest)
             }.onFailure {
                 phase = UpdPhase.Available
-                err = "İndirme başarısız: ${it.message}"
+                err = "İndirme başarısız: " + when (it) {
+                    is java.net.UnknownHostException, is java.net.ConnectException, is java.net.SocketTimeoutException ->
+                        "internete bağlanılamadı."
+                    else -> it.message ?: "bilinmeyen hata."
+                } + " Tekrar dene."
             }
         }
     }

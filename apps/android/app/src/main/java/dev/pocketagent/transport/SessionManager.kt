@@ -166,6 +166,11 @@ class SessionManager(
     // her conn'in exec kanalından `tmux list-sessions` + registry taraması
     // (ölü registry dosyaları host'ta temizlenir). Yerelde açık olanlar
     // listede görünmez.
+    // Ağ geri geldi: kopmuş oturumlar beklemeden yeniden bağlanır.
+    fun onNetworkAvailable() {
+        _sessions.value.forEach { it.controller.nudge() }
+    }
+
     fun discoverRemote() {
         _sessions.value.groupBy { it.conn.id }.forEach { (connId, hs) ->
             val ctl = hs.firstOrNull { it.controller.state.value == ConnectionState.ACTIVE }

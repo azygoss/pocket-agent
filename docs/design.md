@@ -167,6 +167,14 @@ readable 640dp width. The terminal always uses the full width of its pane.
   terminal is visible; key haptics can be turned off.
 - Hardware keyboards: Ctrl+letter, Alt+letter (ESC prefix), Shift+Tab,
   Delete, arrows, Home/End and Page keys are mapped.
+- Multi-line paste goes through bracketed paste when the shell asks for it.
+  When it does not, every line would run as if Enter were pressed, so the
+  app shows the line count and the first lines and asks first.
+- When the phone's network comes back or changes, dropped sessions
+  reconnect at once instead of waiting out the backoff, including sessions
+  whose five retries ran out while offline. Sessions the user closed or
+  detached, auth and host-key failures, and connections waiting for a
+  fingerprint decision are left alone.
 
 ## Files
 
@@ -175,7 +183,9 @@ readable 640dp width. The terminal always uses the full width of its pane.
 - Sorting by name, modification time or size, folders always first.
 - Images (up to 10 MB) open in a viewer with pinch zoom and double-tap.
 - Text and diffs open in a virtualized, line-numbered reader. A grep hit
-  opens its file scrolled to the matching line, highlighted.
+  opens its file scrolled to the matching line, highlighted. The reader has
+  its own search: matching lines are tinted, the current one stronger, with
+  a counter and previous/next; back closes the search before the reader.
 - The listing belongs to the active session: switching to a session on
   another host resets the path and opens that host's home.
 - Files over 10 MB are skipped with a message instead of being shared cut
@@ -211,6 +221,11 @@ readable 640dp width. The terminal always uses the full width of its pane.
   banner shows them), and they clear when the approval is read in the app.
 - When a backend is set but notifications are off, Sessions says so: the
   first tap asks for the permission, later taps open the system settings.
+- Tapping an approval notification opens the waiting agent's terminal
+  directly once its session is restored or found on the host; if that
+  takes more than 10 seconds, the approval card on Sessions remains.
+- An in-app update that arrives shorter than its announced size is deleted
+  and reported, instead of reaching the installer as a broken package.
 
 ## Performance and energy
 

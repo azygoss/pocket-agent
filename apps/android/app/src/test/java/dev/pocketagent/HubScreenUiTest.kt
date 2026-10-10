@@ -259,4 +259,24 @@ class HubScreenUiTest {
         rule.onAllNodesWithText("192.168.1.40").assertCountEquals(2)
         rule.onNodeWithText("berk").assertExists()
     }
+
+    // Onay bildirimine dokunmak doğrudan agent'ın terminalini açar.
+    @Test fun approvalNotificationOpensAgentTerminal() {
+        val m = manager()
+        m.open(SavedConnection("sunucu", "h", 22, "u", "ram:password", id = "c1"), Secret.Password("pw"), forceNew = true, tmuxName = "pa-agent002")
+        val now = java.time.Instant.now()
+        val inbox = dev.pocketagent.ui.InboxViewModel().apply {
+            mergeRemote(listOf(dev.pocketagent.net.BackendEvent(
+                "e9", "h:1", "tmux:pa-agent002", "codex", "APPROVAL_REQUIRED", "apply_patch",
+                "d9", "1", now.toString(), now.plusSeconds(3600).toString(),
+            )))
+        }
+        val open = kotlinx.coroutines.flow.MutableStateFlow<String?>("e9")
+        var opened = false
+        rule.setContent { HubScreen(m, repo(), profiles(), inbox = inbox, openEvent = open, onOpenSession = { opened = true }) }
+        rule.waitUntil(3_000) { opened }
+        org.junit.Assert.assertNull(open.value)
+        org.junit.Assert.assertFalse(inbox.rows.single().unread)
+        m.closeAll()
+    }
 }

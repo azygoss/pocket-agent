@@ -45,4 +45,27 @@ class UpdateCheckerTest {
         val json = """{"tag_name":"v0.27.0","assets":[{"name":"src.zip","browser_download_url":"https://x/z"}]}"""
         assertNull(UpdateChecker.parseRelease(json))
     }
+
+    // Bağlantı erken kapanırsa yarım APK kurucuya gitmez: hata ve dosya silinir.
+    @Test fun truncatedDownloadFailsAndCleansUp() {
+        val ss = java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))
+        kotlin.concurrent.thread(isDaemon = true) {
+            runCatching {
+                ss.accept().use { sock ->
+                    val input = sock.getInputStream().bufferedReader()
+                    while (input.readLine()?.isNotEmpty() == true) { /* başlıkları oku */ }
+                    sock.getOutputStream().apply {
+                        write("HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\n".toByteArray())
+                        write(ByteArray(40))
+                        flush()
+                    }
+                }
+            }
+        }
+        val dest = java.io.File.createTempFile("upd", ".apk")
+        val r = runCatching { dev.pocketagent.net.UpdateChecker.download("http://127.0.0.1:${ss.localPort}/a.apk", dest) }
+        ss.close()
+        org.junit.Assert.assertTrue("yarım indirme hata vermeli", r.isFailure)
+        org.junit.Assert.assertFalse("yarım dosya silinmeli", dest.exists())
+    }
 }

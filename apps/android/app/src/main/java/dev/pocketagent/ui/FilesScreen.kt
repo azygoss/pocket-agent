@@ -87,9 +87,11 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,6 +119,7 @@ import dev.pocketagent.ui.theme.Code
 import dev.pocketagent.ui.theme.PillShape
 import dev.pocketagent.ui.theme.Space
 import dev.pocketagent.ui.theme.Tone
+import kotlinx.coroutines.launch
 
 // P15: aktif SSH oturumunun SFTP kanalı (ya da workspace gateway'i) üzerinden
 // uzak dosya gezgini. Backend içerik görmez; trafik SSH içinde kalır.
@@ -670,12 +673,33 @@ private fun TextViewer(
     val lines = remember(content) { content.removeSuffix("\n").lines() }
     val digits = lines.size.toString().length
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     LaunchedEffect(focusLine, lines) {
         val f = focusLine ?: return@LaunchedEffect
         if (f in 1..lines.size) listState.scrollToItem((f - 4).coerceAtLeast(0))
     }
+    // Metinde ara: eşleşen satırlar vurgulanır, ileri/geri ile gezilir;
+    // geri tuşu önce aramayı kapatır.
+    var searching by remember { mutableStateOf(false) }
+    var q by remember { mutableStateOf("") }
+    var cur by remember { mutableIntStateOf(0) }
+    val hits = remember(lines, q) {
+        if (q.length < 2) emptyList() else lines.indices.filter { lines[it].contains(q, ignoreCase = true) }
+    }
+    val hitSet = remember(hits) { hits.toHashSet() }
+    fun go(i: Int) {
+        if (hits.isEmpty()) return
+        cur = Math.floorMod(i, hits.size)
+        scope.launch { listState.scrollToItem((hits[cur] - 3).coerceAtLeast(0)) }
+    }
+    LaunchedEffect(hits) {
+        cur = 0
+        if (hits.isNotEmpty()) listState.scrollToItem((hits[0] - 3).coerceAtLeast(0))
+    }
+    fun closeSearch() { searching = false; q = "" }
     val style = MaterialTheme.typography.bodySmall.copy(fontFamily = Code, fontSize = 12.5.sp, lineHeight = 18.sp)
-    FullScreenDialog(onDismiss = onClose) {
+    FullScreenDialog(onDismiss = { if (searching) closeSearch() else onClose() }) {
+        BackHandler(enabled = searching) { closeSearch() }
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.navigationBars))) {
             PocketTopBar(
                 title,
@@ -690,7 +714,21 @@ private fun TextViewer(
                     )
                 },
             ) {
+                IconAction(Icons.Rounded.Search, "Metinde ara", { if (searching) closeSearch() else searching = true }, selected = searching)
                 IconAction(Icons.Rounded.ContentCopy, "İçeriği kopyala", onCopy)
+            }
+            if (searching) {
+                SearchBar(
+                    query = q,
+                    onQuery = { q = it },
+                    count = hits.size,
+                    index = cur,
+                    onPrev = { go(cur - 1) },
+                    onNext = { go(cur + 1) },
+                    onClose = ::closeSearch,
+                    placeholder = "Metinde ara",
+                    modifier = Modifier.padding(horizontal = Space.lg, vertical = Space.sm),
+                )
             }
             SelectionContainer(Modifier.weight(1f)) {
                 LazyColumn(
@@ -699,7 +737,11 @@ private fun TextViewer(
                     contentPadding = PaddingValues(top = Space.sm, bottom = Space.x3),
                 ) {
                     itemsIndexed(lines, contentType = { _, _ -> 0 }) { i, line ->
-                        val (bg, fg, bold) = lineLook(line, diff, focusLine == i + 1, t)
+                        val (bg, fg, bold) = when {
+                            searching && hits.getOrNull(cur) == i -> Triple(t.warn.soft, t.warn.onSoft, false)
+                            searching && i in hitSet -> Triple(t.busy.soft, t.busy.onSoft, false)
+                            else -> lineLook(line, diff, focusLine == i + 1, t)
+                        }
                         Row(Modifier.fillMaxWidth().background(bg).padding(end = Space.lg)) {
                             if (diff) {
                                 Spacer(Modifier.width(Space.lg))

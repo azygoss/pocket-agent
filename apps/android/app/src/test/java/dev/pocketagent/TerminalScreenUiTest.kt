@@ -220,5 +220,23 @@ class TerminalScreenUiTest {
         rule.waitUntil(3_000) { ups() >= 5 }
         m.closeAll()
     }
-}
 
+    // Kabuk bracketed paste açmadıysa çok satırlı yapıştırma her satırı
+    // komut olarak çalıştırabilir: önce sorulur, onaylanınca gider.
+    @Test fun multilinePasteAsksWhenShellCannotTellPaste() {
+        val connector = UiFakeConnector()
+        val m = manager(connector)
+        rule.setContent { TerminalScreen(m, SettingsViewModel(), {}) }
+        openActive(m)
+        val cm = org.robolectric.RuntimeEnvironment.getApplication().getSystemService(android.content.ClipboardManager::class.java)
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("t", "ls\nrm -rf build"))
+        rule.onNodeWithContentDescription("Yapıştır").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("2 satır yapıştırılsın mı?").assertExists()
+        fun pasted() = connector.last?.sent.orEmpty().filterIsInstance<TerminalInput.Text>().any { it.s.contains("rm -rf build") }
+        org.junit.Assert.assertFalse(pasted())
+        rule.onNodeWithText("Yapıştır").performClick()
+        rule.waitUntil(3_000) { pasted() }
+        m.closeAll()
+    }
+}

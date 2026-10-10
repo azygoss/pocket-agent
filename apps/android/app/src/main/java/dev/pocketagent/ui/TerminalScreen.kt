@@ -405,6 +405,7 @@ private fun ActiveTerminal(
     val context = androidx.compose.ui.platform.LocalContext.current
     val t = Tok
 
+    var pendingPaste by remember(handle.id) { mutableStateOf<String?>(null) }
     var menuOpen by remember(handle.id) { mutableStateOf(false) }
     var closing by remember(handle.id) { mutableStateOf(false) }
     var renaming by remember(handle.id) { mutableStateOf(false) }
@@ -535,11 +536,12 @@ private fun ActiveTerminal(
                 return
             }
         }
-        if (s.contains('\n')) {
-            val wrapped = if (vm.bracketedPaste) "\u001B[200~$s\u001B[201~" else s
-            sendText(wrapped)
-        } else {
-            sendText(s)
+        when {
+            !s.contains('\n') -> sendText(s)
+            vm.bracketedPaste -> sendText("\u001B[200~$s\u001B[201~")
+            // Kabuk yapıştırmayı ayırt etmiyor: her satır Enter'la yazılmış
+            // gibi çalışır. Göndermeden önce sorulur.
+            else -> pendingPaste = s
         }
     }
 
@@ -1131,6 +1133,18 @@ private fun ActiveTerminal(
             onSave = { n -> manager.rename(handle.id, n); renaming = false },
         )
     }
+    pendingPaste?.let { text ->
+        val lines = text.trimEnd('\n').lines()
+        ConfirmDialog(
+            title = "${lines.size} satır yapıştırılsın mı?",
+            message = "Bu kabuk yapıştırılan metni ayırt etmiyor; her satır Enter'a basılmış gibi komut olarak çalışabilir.\n\n" +
+                lines.take(3).joinToString("\n") { it.take(80) } + if (lines.size > 3) "\n…" else "",
+            confirmLabel = "Yapıştır",
+            onConfirm = { sendText(text); pendingPaste = null },
+            onDismiss = { pendingPaste = null },
+        )
+    }
+
     if (picking) {
         HostPickerSheet(
             title = "Yeni oturum",
@@ -1236,7 +1250,7 @@ private fun SessionTabs(
 }
 
 @Composable
-private fun SearchBar(
+internal fun SearchBar(
     query: String,
     onQuery: (String) -> Unit,
     count: Int,
@@ -1245,6 +1259,7 @@ private fun SearchBar(
     onNext: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    placeholder: String = "Scrollback'te ara",
 ) {
     val t = Tok
     val focus = remember { FocusRequester() }
@@ -1262,7 +1277,7 @@ private fun SearchBar(
         Spacer(Modifier.width(Space.md))
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (query.isEmpty()) {
-                Text("Scrollback'te ara", style = MaterialTheme.typography.bodyMedium, color = t.text3)
+                Text(placeholder, style = MaterialTheme.typography.bodyMedium, color = t.text3)
             }
             BasicTextField(
                 value = query,

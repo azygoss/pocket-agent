@@ -138,6 +138,7 @@ fun HubScreen(
     app: dev.pocketagent.android.App? = null,
     settings: SettingsViewModel? = null,
     pendingAdd: MutableStateFlow<SavedConnection?>? = null,
+    openEvent: MutableStateFlow<String?>? = null,
     showDock: Boolean = true,
     onOpenSession: () -> Unit,
     onOpenFiles: () -> Unit = {},
@@ -352,6 +353,25 @@ fun HubScreen(
     }.filter { it.second.tmux !in openTmux }
     val events = inbox?.rows.orEmpty()
     val pendingApprovals = events.filter { it.unread && isApproval(it.category) }
+
+    // Onay bildiriminden gelindi: olay ve agent'ın oturumu (açılışta geri
+    // yüklenen ya da host'ta keşfedilen) görününce terminaline geçilir.
+    // 10 sn içinde bulunamazsa Oturumlar'daki onay kartı yeterli.
+    val wanted = openEvent?.collectAsState()?.value
+    LaunchedEffect(wanted, events, sessionList, remote) {
+        val id = wanted ?: return@LaunchedEffect
+        val e = events.firstOrNull { it.eventId == id } ?: return@LaunchedEffect
+        val go = eventTarget(e) ?: return@LaunchedEffect
+        openEvent.value = null
+        inbox?.markRead(id)
+        app?.clearApprovalNotification()
+        go()
+    }
+    LaunchedEffect(wanted) {
+        if (wanted == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(10_000)
+        if (openEvent?.value == wanted) openEvent.value = null
+    }
     val hosts = remember(saved, query) {
         val sorted = saved.sortedByDescending { it.lastConnectedAt }
         if (query.isBlank()) sorted

@@ -92,6 +92,26 @@ class TerminalController(
     fun canReconnect(): Boolean =
         lastConn != null && (_state.value == ConnectionState.CLOSED || _state.value == ConnectionState.FAILED)
 
+    // Ağ geri geldi (ya da değişti): kopmuş oturum geri çekilme beklemeden
+    // hemen yeniden bağlanır, deneme sayacı sıfırlanır. Uçakta ya da asansörde
+    // beş deneme tükenmiş oturum da böylece kendiliğinden döner. Kullanıcının
+    // kapattığı/ayırdığı oturuma, kimlik ya da host anahtarı hatasına ve
+    // TOFU onayı bekleyen bağlantıya dokunulmaz.
+    @Synchronized
+    fun nudge(): Boolean {
+        val c = lastConn ?: return false
+        if (manualClose || !autoReconnectOnDrop || _pendingHostKey.value != null) return false
+        if (_state.value != ConnectionState.CLOSED && _state.value != ConnectionState.FAILED) return false
+        val f = _failure.value
+        if (f is TransportFailure.AuthFailed || f is TransportFailure.HostKeyChanged) return false
+        retryJob?.cancel()
+        retryJob = null
+        retryCount = 0
+        _retryAttempt.value = 0
+        doConnect(c, lastSecret, null, fresh = false)
+        return true
+    }
+
     // fresh=false: kopma/retry sonrası reattach — yerel buffer korunur
     // (tmux zaten pane'i yeniden çizer; scrollback silinmesin).
     private fun doConnect(

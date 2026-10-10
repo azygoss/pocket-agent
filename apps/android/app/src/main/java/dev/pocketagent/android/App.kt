@@ -22,6 +22,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 private const val APPROVAL_NOTIFICATION = 1001
+const val EXTRA_OPEN_EVENT = "dev.pocketagent.OPEN_EVENT"
 
 // Bildirilecek onaylar: inbox'ta henüz olmayan (uygulama yeniden açılınca
 // 24 saatlik geçmiş tekrar bildirilmesin) ve son 10 dakikada oluşanlar.
@@ -108,11 +109,13 @@ class App : Application() {
         nm.createNotificationChannel(
             android.app.NotificationChannel("agents", "Agent onayları", android.app.NotificationManager.IMPORTANCE_HIGH),
         )
-        val openApp = android.app.PendingIntent.getActivity(
-            this, 0, packageManager.getLaunchIntentForPackage(packageName),
-            android.app.PendingIntent.FLAG_IMMUTABLE,
-        )
         val last = approvals.last()
+        // Dokununca Oturumlar'a değil, onayı bekleyen agent'ın terminaline gider.
+        val openApp = android.app.PendingIntent.getActivity(
+            this, 0,
+            packageManager.getLaunchIntentForPackage(packageName)?.putExtra(EXTRA_OPEN_EVENT, last.eventId),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         val n = android.app.Notification.Builder(this, "agents")
             .setContentTitle(if (approvals.size == 1) "Agent onayı bekliyor" else "${approvals.size} agent onayı bekliyor")
             .setContentText(last.source.ifBlank { "agent" } + ": " + last.message.ifBlank { last.category })
@@ -145,6 +148,17 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Ağ geri gelince (Wi-Fi ↔ hücresel, uçak modu, asansör) kopmuş
+        // oturumlar geri çekilmeyi beklemeden yeniden bağlanır.
+        runCatching {
+            getSystemService(android.net.ConnectivityManager::class.java).registerDefaultNetworkCallback(
+                object : android.net.ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: android.net.Network) {
+                        appScope.launch { sessions.onNetworkAvailable() }
+                    }
+                },
+            )
+        }
         androidx.core.content.ContextCompat.registerReceiver(
             this,
             closeAllReceiver,

@@ -169,7 +169,7 @@ Details: [`docs/security/privacy.md`](docs/security/privacy.md),
   flows) are partially covered in CI via Robolectric
 - A production backend requires TLS + a domain; `network_security_config`
   only permits cleartext to localhost/emulator addresses
-- Current versions: Android `v0.39.0`, npm CLI `0.1.0` (`0.1.2` packaged, not yet on npm)
+- Current versions: Android `v0.40.0`, npm CLI `0.1.0` (`0.1.2` packaged, not yet on npm)
 
 ## Testing
 

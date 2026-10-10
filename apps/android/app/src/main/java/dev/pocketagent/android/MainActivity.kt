@@ -16,6 +16,8 @@ class MainActivity : ComponentActivity() {
     val deepLinkAction = MutableStateFlow<String?>(null)
     // pocketagent://add?host=…&user=… → Bağlantılar'da doldurulmuş diyalog.
     val addHostLink = MutableStateFlow<SavedConnection?>(null)
+    // Onay bildirimine dokunuldu: bu olayın agent'ının terminali açılır.
+    val openEvent = MutableStateFlow<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Edge-to-edge: içerik sistem çubuklarının altına çizilir; barlar
@@ -30,7 +32,7 @@ class MainActivity : ComponentActivity() {
         window.isNavigationBarContrastEnforced = false
         super.onCreate(savedInstanceState)
         handleIntent(intent)
-        setContent { PocketAgentApp(application as App, deepLinkAction, addHostLink) }
+        setContent { PocketAgentApp(application as App, deepLinkAction, addHostLink, openEvent) }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -39,6 +41,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(i: Intent?) {
+        i?.getStringExtra(EXTRA_OPEN_EVENT)?.let {
+            openEvent.value = it
+            // Yeniden yaratılan aktivite aynı olayı ikinci kez açmasın.
+            i.removeExtra(EXTRA_OPEN_EVENT)
+        }
         val uri = i?.dataString ?: return
         parseAddHostLink(uri)?.let { addHostLink.value = it; return }
         val link = parseDeepLink(uri) ?: return

@@ -94,8 +94,14 @@ object UpdateChecker {
                         done += n
                         if (total > 0) onProgress(done.toFloat() / total)
                     }
+                    // Bağlantı erken kapanırsa yarım APK kurucuya gitmesin
+                    // ("paket ayrıştırılamadı" yerine anlaşılır hata).
+                    if (total > 0 && done != total) throw java.io.IOException("indirme yarım kaldı ($done/$total bayt)")
                 }
             }
+        } catch (e: java.io.IOException) {
+            dest.delete()
+            throw e
         } finally {
             c.disconnect()
         }

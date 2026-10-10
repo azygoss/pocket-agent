@@ -357,6 +357,36 @@ class AutoRetryTest {
         c.disconnect()
     }
 
+    // Ağ geri gelince kopmuş oturum geri çekilmeyi beklemez; kullanıcının
+    // kapattığı oturuma ve kimlik hatasına dokunulmaz.
+    @Test fun networkReturnReconnectsWithoutWaitingForBackoff() = runBlocking {
+        pin()
+        val fc = RetryConnector(store)
+        val c = TerminalController(scope, fc, store)
+        c.retryBaseMs = 600_000 // geri çekilme beklenseydi test zaman aşımına düşerdi
+        c.connect(conn, Secret.Password("pw"))
+        awaitActive(c)
+        fc.transports.first().close()
+        withTimeout(10_000) { while (c.state.value == ConnectionState.ACTIVE) delay(20) }
+        assertTrue(c.nudge())
+        awaitActive(c, 5_000)
+        assertEquals(2, fc.opens.get())
+        assertEquals(0, c.retryAttempt.value)
+        c.disconnect()
+        assertFalse("kullanıcı kapattıysa ağ dönüşü bağlamaz", c.nudge())
+        assertEquals(2, fc.opens.get())
+    }
+
+    @Test fun networkReturnLeavesAuthFailureAlone() = runBlocking {
+        pin()
+        val fc = RetryConnector(store, failAuth = true)
+        val c = TerminalController(scope, fc, store)
+        c.connect(conn, Secret.Password("pw"))
+        withTimeout(10_000) { while (c.state.value != ConnectionState.FAILED) delay(20) }
+        assertFalse(c.nudge())
+        assertEquals(1, fc.opens.get())
+    }
+
     @Test fun manualDisconnectDoesNotRetry() = runBlocking {
         pin()
         val fc = RetryConnector(store)

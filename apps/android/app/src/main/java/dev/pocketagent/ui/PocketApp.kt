@@ -80,6 +80,7 @@ fun PocketAgentApp(
     app: App,
     deepLinkAction: MutableStateFlow<String?> = MutableStateFlow(null),
     addHostLink: MutableStateFlow<dev.pocketagent.transport.SavedConnection?> = MutableStateFlow(null),
+    openEvent: MutableStateFlow<String?> = MutableStateFlow(null),
 ) {
     val settings = remember { SettingsViewModel(app.settingsStore, app.appScope) }
     val usage = app.usage
@@ -169,6 +170,10 @@ fun PocketAgentApp(
     LaunchedEffect(Unit) {
         addHostLink.collect { c -> if (c != null) home() }
     }
+    // Onay bildirimi: Oturumlar olayı bulup agent'ın terminaline geçirir.
+    LaunchedEffect(Unit) {
+        openEvent.collect { id -> if (id != null) home() }
+    }
 
     // Çalışma alanından çıkınca tam ekran/arama sıfırlanır (sistem çubukları döner).
     LaunchedEffect(top) {
@@ -198,7 +203,9 @@ fun PocketAgentApp(
             ) {
                 notifPermLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             }
-            ContextCompat.startForegroundService(context, Intent(context, TerminalService::class.java))
+            // Uygulama arka plandayken başlatılamazsa (Android 12+) oturumlar
+            // yine çalışır; servis sonraki ön plan anında açılır.
+            runCatching { ContextCompat.startForegroundService(context, Intent(context, TerminalService::class.java)) }
             TerminalService.updateCount(context, activeCount)
         } else if (!anyActive) {
             context.stopService(Intent(context, TerminalService::class.java))
@@ -245,6 +252,7 @@ fun PocketAgentApp(
                             app = app,
                             settings = settings,
                             pendingAdd = addHostLink,
+                            openEvent = openEvent,
                             showDock = !twoPane,
                             onOpenSession = { home(); push(Route.Workspace) },
                             onOpenFiles = { home(); push(Route.Files) },

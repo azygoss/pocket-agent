@@ -6,6 +6,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performTextInput
 import androidx.room.Room
 import dev.pocketagent.data.AppDatabase
 import dev.pocketagent.data.ConnectionRepository
@@ -117,4 +119,38 @@ class ConnectionsFilesUiTest {
     @androidx.compose.runtime.Composable
     private fun hub(r: ConnectionRepository, p: ProfileRepository, m: SessionManager) =
         HubScreen(sessions = m, repo = r, profiles = p, onOpenSession = {})
+
+    // Okuyucuda arama: eşleşme sayısı görünür, ileri/geri gezilir.
+    @Test fun textViewerFindsInFile() {
+        val transport = SftpFakeTransport()
+        transport.files["/home/u/agent.log"] = (1..60).joinToString("\n") { if (it == 12 || it == 48) "ERROR needle $it" else "ok $it" }.toByteArray()
+        val m = SessionManager(CoroutineScope(Dispatchers.IO), TofuHostKeyStore(File.createTempFile("hostkeys", ".db"))) {
+            object : SshConnector {
+                override suspend fun open(conn: SavedConnection, secret: Secret?, size: TerminalSize): SshTransport {
+                    transport.openPty("xterm-256color", size)
+                    return transport
+                }
+            }
+        }
+        val ctl = m.open(SavedConnection("t", "h", 22, "u", "ram:password", id = "c1"), Secret.Password("pw"))
+        runBlocking {
+            kotlinx.coroutines.withTimeout(5_000) {
+                while (ctl.state.value != dev.pocketagent.transport.ConnectionState.ACTIVE) kotlinx.coroutines.delay(10)
+            }
+        }
+        val files = FilesViewModel(m, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), File.createTempFile("cache", null).parentFile!!)
+        rule.setContent { FilesScreen(files) }
+        rule.waitForIdle()
+        files.revealPath("/home/u/agent.log")
+        rule.waitUntil(5_000) { files.preview != null }
+        rule.onNodeWithContentDescription("Metinde ara").performClick()
+        rule.waitForIdle()
+        rule.onAllNodes(androidx.compose.ui.test.hasSetTextAction()).onLast().performTextInput("needle")
+        rule.waitForIdle()
+        rule.onNodeWithText("1/2").assertExists()
+        rule.onNodeWithContentDescription("Sonraki eşleşme").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("2/2").assertExists()
+        m.closeAll()
+    }
 }
