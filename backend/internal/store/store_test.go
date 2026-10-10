@@ -62,3 +62,37 @@ func TestWipeUser(t *testing.T) {
 		t.Fatal("wipe must remove events")
 	}
 }
+
+// Regresyon: event kimlikleri hash (sıralı değil) ve map sırası rastgele.
+// İstemci son gelen kimliği imleç yapınca, kimliği imleçten "küçük" yeni
+// olaylar hiç dönmüyordu (onaylar uygulama yeniden açılana dek görünmüyordu).
+// İmleç artık ekleme sırasını izler; liste eklenme sırasıyla döner.
+func TestEventsAfterFollowsInsertionOrder(t *testing.T) {
+	s := New()
+	now := time.Now()
+	put := func(id string) {
+		_ = s.PutEvent("t1", Event{EventID: id, TenantID: "t1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)})
+	}
+	put("event:f000")
+	put("event:9000")
+	first := s.GetEvents("t1", "")
+	if len(first) != 2 || first[0].EventID != "event:f000" || first[1].EventID != "event:9000" {
+		t.Fatalf("eklenme sırası bekleniyordu: %v", first)
+	}
+	cursor := first[len(first)-1].EventID
+	put("event:0001") // imleçten "küçük" kimlik
+	put("event:ffff")
+	next := s.GetEvents("t1", cursor)
+	if len(next) != 2 || next[0].EventID != "event:0001" || next[1].EventID != "event:ffff" {
+		t.Fatalf("imleçten sonra eklenen iki olay bekleniyordu: %v", next)
+	}
+	// Aynı olayın tekrar gönderilmesi (idempotent) sırasını değiştirmez.
+	put("event:f000")
+	if got := s.GetEvents("t1", "event:ffff"); len(got) != 0 {
+		t.Fatalf("tekrar gönderim yeni olay sayılmamalı: %v", got)
+	}
+	// Bilinmeyen/süresi dolmuş imleç: hepsi döner (istemci kimlikle ayıklar).
+	if got := s.GetEvents("t1", "event:gone"); len(got) != 4 {
+		t.Fatalf("bilinmeyen imleçte tümü bekleniyordu, %d geldi", len(got))
+	}
+}

@@ -3,6 +3,7 @@
 package store
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -21,6 +22,9 @@ type Event struct {
 	Revision   string
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
+	// Ekleme sırası: event kimlikleri hash olduğundan sıralanamaz; "after"
+	// imleci bununla çalışır. Kabloya çıkmaz.
+	Seq int64 `json:"-"`
 }
 
 type Pairing struct {
@@ -47,6 +51,7 @@ type Upload struct {
 
 type Store struct {
 	mu       sync.Mutex
+	seq      int64
 	events   map[string]Event
 	pairings map[string]Pairing
 	users    map[string]string // userID -> tenantID
@@ -76,10 +81,20 @@ func (s *Store) PutEvent(callerTenant string, e Event) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Aynı olayın tekrar gönderimi (idempotent) sırasını korur.
+	if old, ok := s.events[e.EventID]; ok {
+		e.Seq = old.Seq
+	} else {
+		s.seq++
+		e.Seq = s.seq
+	}
 	s.events[e.EventID] = e
 	return nil
 }
 
+// GetEvents: tenant'ın olayları eklenme sırasıyla. after, istemcinin aldığı
+// son olayın kimliğidir; ondan sonra eklenenler döner. Bilinmeyen ya da
+// süresi dolmuş imleçte hepsi döner (istemci kimlikle ayıklar).
 func (s *Store) GetEvents(callerTenant, after string) []Event {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -88,10 +103,12 @@ func (s *Store) GetEvents(callerTenant, after string) []Event {
 		if e.TenantID != callerTenant {
 			continue // tenant isolation: silently skip foreign rows
 		}
-		if after != "" && e.EventID <= after {
-			continue
-		}
 		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
+	if cur, ok := s.events[after]; ok && after != "" && cur.TenantID == callerTenant {
+		i := sort.Search(len(out), func(i int) bool { return out[i].Seq > cur.Seq })
+		out = out[i:]
 	}
 	return out
 }
