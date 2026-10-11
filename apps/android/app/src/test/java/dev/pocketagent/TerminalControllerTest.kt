@@ -387,6 +387,18 @@ class AutoRetryTest {
         assertEquals(1, fc.opens.get())
     }
 
+    // Oturum tmux'ta: fare açılır ki parmak kaydırması tmux geçmişini kaydırsın.
+    @Test fun tmuxSessionTurnsMouseOn() = runBlocking {
+        pin()
+        val fc = RetryConnector(store)
+        val c = TerminalController(scope, fc, store)
+        c.connect(conn, Secret.Password("pw"), tmuxName = "pa-mouse001")
+        awaitActive(c)
+        val boot = fc.transports.first().sent.filterIsInstance<TerminalInput.Text>().first().s
+        assertTrue(boot, boot.contains("tmux new-session -A -s 'pa-mouse001'") && boot.contains("set mouse on"))
+        c.disconnect()
+    }
+
     @Test fun manualDisconnectDoesNotRetry() = runBlocking {
         pin()
         val fc = RetryConnector(store)

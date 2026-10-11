@@ -12,6 +12,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeDown
 import dev.pocketagent.transport.ConnectionState
 import dev.pocketagent.transport.FakeSshTransport
 import dev.pocketagent.transport.SavedConnection
@@ -239,4 +241,47 @@ class TerminalScreenUiTest {
         rule.waitUntil(3_000) { pasted() }
         m.closeAll()
     }
+
+    // tmux oturumunda geçmiş telefonda değil tmux'ta: uzak taraf fare
+    // raporlaması açınca parmak kaydırması tekerlek olayına dönüşür (aşağı
+    // çekmek eskiye, yukarı itmek yeniye).
+    @Test fun swipeScrollsRemoteWhenMouseReportingIsOn() {
+        val connector = UiFakeConnector()
+        val m = manager(connector)
+        rule.setContent { TerminalScreen(m, SettingsViewModel(), {}) }
+        openActive(m)
+        // Sahte transport gönderileni geri yansıtır: fare + SGR kodlaması açılır.
+        m.active()!!.send(TerminalInput.Text("\u001B[?1000h\u001B[?1006h"))
+        rule.waitUntil(3_000) { m.active()!!.vm.mouseTracking.value }
+        rule.waitForIdle()
+        fun wheels(code: Int) = connector.last?.sent.orEmpty().filterIsInstance<TerminalInput.Text>().count { it.s.startsWith("\u001B[<$code;") }
+        rule.onNodeWithContentDescription("Terminal çıktısı").performTouchInput { swipeDown(startY = top + 20f, endY = bottom - 20f, durationMillis = 400) }
+        rule.waitUntil(3_000) { wheels(64) > 0 }
+        rule.onNodeWithContentDescription("Terminal çıktısı").performTouchInput { swipeUp(startY = bottom - 20f, endY = top + 20f, durationMillis = 400) }
+        rule.waitUntil(3_000) { wheels(65) > 0 }
+        m.closeAll()
+    }
+
+    // Geçmişte yukarıdayken yazılan tuştan önce tmux copy-mode kapatılır;
+    // yoksa tuş copy-mode komutu olur. Tuş ondan sonra gider.
+    @Test fun typingAfterScrollLeavesTmuxCopyModeFirst() {
+        val t = SftpFakeTransport()
+        val m = manager(object : SshConnector {
+            override suspend fun open(conn: SavedConnection, secret: Secret?, size: TerminalSize): SshTransport =
+                t.also { it.openPty("xterm-256color", size) }
+        })
+        rule.setContent { TerminalScreen(m, SettingsViewModel(), {}) }
+        val ctl = m.open(conn, Secret.Password("pw"), forceNew = true, tmuxName = "pa-scroll01")
+        rule.waitUntil(5_000) { ctl.state.value == ConnectionState.ACTIVE }
+        ctl.send(TerminalInput.Text("\u001B[?1000h\u001B[?1006h"))
+        rule.waitUntil(3_000) { ctl.vm.mouseTracking.value }
+        rule.waitForIdle()
+        rule.onNodeWithContentDescription("Terminal çıktısı").performTouchInput { swipeDown(startY = top + 20f, endY = bottom - 20f, durationMillis = 400) }
+        rule.waitUntil(3_000) { t.inner.sent.filterIsInstance<TerminalInput.Text>().any { it.s.startsWith("\u001B[<64;") } }
+        rule.onNodeWithText("esc").performClick()
+        rule.waitUntil(3_000) { t.execs.any { it.contains("send-keys -t 'pa-scroll01' -X cancel") } }
+        rule.waitUntil(3_000) { t.inner.sent.filterIsInstance<TerminalInput.Text>().any { it.s == "\u001B" } }
+        m.closeAll()
+    }
 }
+

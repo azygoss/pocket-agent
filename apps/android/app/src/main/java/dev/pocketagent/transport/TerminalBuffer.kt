@@ -152,6 +152,13 @@ class TerminalBuffer(
         private set
     var synchronizedOutput = false
         private set
+    // Fare raporlama (DECSET 1000/1002/1003; 1006 = SGR kodlaması). tmux
+    // `mouse on` ile ve fareli TUI'lerde açılır; parmak kaydırması tekerlek
+    // olayına çevrilir (UI katmanı).
+    private val mouseModes = HashSet<Int>()
+    val mouseTracking: Boolean get() = mouseModes.isNotEmpty()
+    var sgrMouse = false
+        private set
     private var wrapPending = false
     private var insertMode = false // IRM (CSI 4 h)
     private var originMode = false // DECOM (CSI ? 6 h) — CUP bölge-göreli
@@ -206,6 +213,8 @@ class TerminalBuffer(
         wrapPending = false
         pending = ""
         synchronizedOutput = false
+        mouseModes.clear()
+        sgrMouse = false
     }
 
     fun setScreenSize(newCols: Int, newRows: Int) {
@@ -414,6 +423,8 @@ class TerminalBuffer(
         originMode = false
         wrapPending = false
         synchronizedOutput = false
+        mouseModes.clear()
+        sgrMouse = false
     }
 
     // DECSRR (ESC [ ! p): ekran içeriği korunur; bölge/modlar normale döner.
@@ -592,6 +603,8 @@ class TerminalBuffer(
                 }
                 2004 -> bracketedPaste = final == 'h'
                 2026 -> synchronizedOutput = final == 'h'
+                1000, 1002, 1003 -> if (final == 'h') mouseModes.add(mode) else mouseModes.remove(mode)
+                1006 -> sgrMouse = final == 'h'
                 else -> {} // 1 (app cursor) vb: yoksay
             }
         }

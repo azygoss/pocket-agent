@@ -8,6 +8,23 @@ import org.junit.Test
 // TerminalBuffer v2 (ekran modeli). Not: PTY çıktısı gerçekte CRLF'dir
 // (ONLCR); LF tek başına yalnız aşağı iner, sütunu sıfırlamaz.
 class TerminalBufferTest {
+    // Fare raporlama modları (tmux `mouse on`, fareli TUI'ler) izlenir;
+    // kapatılınca ve tam sıfırlamada düşer.
+    @Test fun mouseReportingModesTracked() {
+        val b = TerminalBuffer()
+        assertFalse(b.mouseTracking)
+        b.feed("\u001B[?1000h\u001B[?1002h\u001B[?1006h")
+        assertTrue(b.mouseTracking)
+        assertTrue(b.sgrMouse)
+        b.feed("\u001B[?1002l")
+        assertTrue("1000 hâlâ açık", b.mouseTracking)
+        b.feed("\u001B[?1000l\u001B[?1006l")
+        assertFalse(b.mouseTracking)
+        assertFalse(b.sgrMouse)
+        b.feed("\u001B[?1003h\u001Bc")
+        assertFalse("RIS fareyi kapatır", b.mouseTracking)
+    }
+
     @Test fun plainLinesAndPartialLine() {
         val b = TerminalBuffer()
         b.feed("hello")

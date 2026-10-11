@@ -167,6 +167,20 @@ readable 640dp width. The terminal always uses the full width of its pane.
   terminal is visible; key haptics can be turned off.
 - Hardware keyboards: Ctrl+letter, Alt+letter (ESC prefix), Shift+Tab,
   Delete, arrows, Home/End and Page keys are mapped.
+- Scrollback in tmux sessions. tmux draws on the terminal's alternate
+  screen, so the history (a long Claude Code answer, for example) lives in
+  tmux, not on the phone. Sessions are started with `set mouse on`; when the
+  remote side asks for mouse reporting (DECSET 1000/1002/1003, SGR 1006),
+  a vertical swipe on the terminal becomes wheel events instead of local
+  scrolling: pulling down enters tmux copy-mode and goes back in history,
+  pushing up comes forward, and reaching the bottom leaves copy-mode. One
+  wheel step per five lines of finger travel (tmux scrolls five lines per
+  step), with a short fling. While scrolled up, a "Canlı görünüme dön"
+  button returns to the live view, and the first typed key first leaves
+  copy-mode (`tmux send-keys -X cancel` over the exec channel) so it reaches
+  the program instead of copy-mode; arrow and page keys pass through to move
+  within the history. Other mouse-aware programs (vim, htop) get the same
+  wheel events.
 - Multi-line paste goes through bracketed paste when the shell asks for it.
   When it does not, every line would run as if Enter were pressed, so the
   app shows the line count and the first lines and asks first.

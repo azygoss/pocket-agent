@@ -506,8 +506,54 @@ private fun ActiveTerminal(
     var matchCursor by remember(handle.id) { mutableIntStateOf(0) }
     val currentMatch = matches.getOrNull(matchCursor)
 
+    // tmux geçmişinde gezinme: oturum tmux'ta olduğu için uygulama ekranı
+    // alternatif ekrandadır ve geçmiş telefonda değil tmux'tadır. Fare
+    // raporlaması açıkken (oturumlarımız `set mouse on` ile açılır) parmak
+    // kaydırması tekerlek olayı olur; tmux copy-mode'a girip geçmişi kaydırır,
+    // en alta inince kendiliğinden çıkar. Yukarıdayken bir şey yazılırsa önce
+    // copy-mode kapatılır (yoksa tuşlar copy-mode komutu olurdu); ok ve sayfa
+    // tuşları copy-mode içinde gezinmek için olduğu gibi gider.
+    val mouseOn by vm.mouseTracking.collectAsState()
+    var tmuxScrolled by remember(handle.id) { mutableStateOf(false) }
+    val held = remember(handle.id) { ArrayDeque<String>() }
+    var leaving by remember(handle.id) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
     fun sendText(s: String) {
+        if ((tmuxScrolled && s !in NAV_KEYS) || leaving != null) {
+            held.addLast(s)
+            if (leaving == null) {
+                val tm = tmuxNames[handle.id]
+                val ex = controller.exec()
+                tmuxScrolled = false
+                leaving = scope.launch {
+                    if (tm != null && ex != null) {
+                        runCatching { ex.exec("tmux send-keys -t '$tm' -X cancel 2>/dev/null || :", 3_000) }
+                    }
+                    while (held.isNotEmpty()) controller.send(TerminalInput.Text(held.removeFirst()))
+                    leaving = null
+                }
+            }
+            return
+        }
         controller.send(TerminalInput.Text(s))
+    }
+
+    // Kaydırma bitince tmux'a sorulur: hâlâ copy-mode'da mı (en alta inince
+    // tmux kendiliğinden çıkar)? "Canlıya dön" düğmesi ve yazmadan önceki
+    // çıkış buna göre davranır.
+    fun refreshTmuxMode() {
+        val tm = tmuxNames[handle.id] ?: return
+        val ex = controller.exec() ?: return
+        scope.launch {
+            val out = runCatching { ex.exec("tmux display -p -t '$tm' '#{pane_in_mode}' 2>/dev/null", 3_000).second.trim() }.getOrNull()
+            if (out == "0") tmuxScrolled = false else if (out == "1") tmuxScrolled = true
+        }
+    }
+    fun backToLive() {
+        val tm = tmuxNames[handle.id] ?: return
+        val ex = controller.exec() ?: return
+        tmuxScrolled = false
+        scope.launch { runCatching { ex.exec("tmux send-keys -t '$tm' -X cancel 2>/dev/null || :", 3_000) } }
     }
 
     // Yeni oturum: tek host varsa doğrudan açılır, birden fazlaysa seçici,
@@ -666,6 +712,20 @@ private fun ActiveTerminal(
             if (controller.state.value == ConnectionState.ACTIVE) controller.send(TerminalInput.Resize(newSize))
         }
         ptySize = newSize
+    }
+
+    // Tekerlek olayı: SGR (1006) ya da eski X10 kodlaması, parmağın altındaki
+    // hücre konumuyla. up = eskiye (aşağı çekme).
+    fun wheel(up: Boolean, at: androidx.compose.ui.geometry.Offset) {
+        val padPx = with(density) { padH.toPx() }
+        val padVPx = with(density) { padV.toPx() }
+        val col = ((at.x - padPx) / charW).toInt().coerceIn(0, ptySize.cols - 1) + 1
+        val row = ((at.y - padVPx) / lineH).toInt().coerceIn(0, ptySize.rows - 1) + 1
+        val b = if (up) 64 else 65
+        val seq = if (vm.sgrMouse) "\u001B[<$b;$col;${row}M"
+        else "\u001B[M" + (32 + b).toChar() + (32 + col).coerceAtMost(255).toChar() + (32 + row).coerceAtMost(255).toChar()
+        controller.send(TerminalInput.Text(seq))
+        if (up && tmuxNames[handle.id] != null) tmuxScrolled = true
     }
 
     // Pinch-zoom geri bildirimi: ölçek değişince kısa süre ortada görünür.
@@ -839,7 +899,67 @@ private fun ActiveTerminal(
                                 zoomHud = true
                             }
                         }
-                    },
+                    }
+                    // Fare raporlaması açıkken tek parmak dikey kaydırma →
+                    // tekerlek olayları. tmux her olayda 5 satır kaydırır; adım
+                    // da 5 satır olduğundan içerik parmağı izler. Hızlı fırlatma
+                    // kısa süre devam eder; yeni dokunuş durdurur. Aşağı çekmek
+                    // eskiye gider. İki parmak (zoom) ve seçim jesti karışmaz.
+                    .then(
+                        if (mouseOn && connected) Modifier.pointerInput(lineH, charW) {
+                            val step = lineH * 5
+                            fun emit(acc0: Float, at: androidx.compose.ui.geometry.Offset): Float {
+                                var acc = acc0
+                                while (acc >= step) { wheel(up = true, at = at); acc -= step }
+                                while (acc <= -step) { wheel(up = false, at = at); acc += step }
+                                return acc
+                            }
+                            kotlinx.coroutines.coroutineScope {
+                                var fling: kotlinx.coroutines.Job? = null
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    fling?.cancel()
+                                    val tracker = androidx.compose.ui.input.pointer.util.VelocityTracker()
+                                    tracker.addPosition(down.uptimeMillis, down.position)
+                                    var acc = 0f
+                                    var dragging = false
+                                    var at = down.position
+                                    while (true) {
+                                        val ev = awaitPointerEvent()
+                                        if (ev.changes.count { it.pressed } > 1) { dragging = false; break }
+                                        val c = ev.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (c.isConsumed) { dragging = false; break }
+                                        tracker.addPosition(c.uptimeMillis, c.position)
+                                        at = c.position
+                                        if (!c.pressed) break
+                                        acc += c.position.y - c.previousPosition.y
+                                        if (!dragging) {
+                                            if (kotlin.math.abs(acc) < viewConfiguration.touchSlop) continue
+                                            dragging = true
+                                            acc = 0f
+                                        }
+                                        c.consume()
+                                        acc = emit(acc, at)
+                                    }
+                                    val v0 = if (dragging) tracker.calculateVelocity().y else 0f
+                                    if (kotlin.math.abs(v0) > 800f) {
+                                        fling = launch {
+                                            var v = v0
+                                            var a = 0f
+                                            while (kotlin.math.abs(v) > 250f) {
+                                                a = emit(a + v * 0.016f, at)
+                                                v *= 0.95f
+                                                kotlinx.coroutines.delay(16)
+                                            }
+                                            refreshTmuxMode()
+                                        }
+                                    } else if (dragging) {
+                                        refreshTmuxMode()
+                                    }
+                                }
+                            }
+                        } else Modifier,
+                    ),
             ) {
                 // Görünmez yakalayıcı: IME + donanım klavyesi buraya akar.
                 BasicTextField(
@@ -929,6 +1049,8 @@ private fun ActiveTerminal(
                             state = listState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(horizontal = padH, vertical = padV),
+                            // Fare raporlaması açıkken kaydırma uzak tarafa gider.
+                            userScrollEnabled = !mouseOn,
                         ) {
                             itemsIndexed(lines, contentType = { _, _ -> 0 }) { idx, line ->
                                 val isMatch = currentMatch == idx
@@ -986,6 +1108,18 @@ private fun ActiveTerminal(
                             },
                             tint = t.text,
                         )
+                    }
+                }
+
+                // tmux geçmişinde yukarıdayken: tek dokunuşla canlı görünüme dön.
+                if (tmuxScrolled && mouseOn) {
+                    Surface(
+                        color = t.raised,
+                        shape = CircleShape,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, t.line),
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                    ) {
+                        IconAction(Icons.Rounded.KeyboardArrowDown, "Canlı görünüme dön", { backToLive() }, tint = t.text)
                     }
                 }
 
@@ -1513,6 +1647,12 @@ private fun IconKeyCap(
 private fun KeySep() {
     Box(Modifier.padding(horizontal = 5.dp).width(1.dp).height(22.dp).background(Tok.line))
 }
+
+// copy-mode içinde gezinmeye yarayan tuşlar (oklar, sayfa, home/end).
+private val NAV_KEYS = setOf(
+    "\u001B[A", "\u001B[B", "\u001B[C", "\u001B[D",
+    "\u001B[5~", "\u001B[6~", "\u001B[H", "\u001B[F",
+)
 
 private fun failureTitle(f: TransportFailure): String = when (f) {
     is TransportFailure.AuthFailed -> "Kimlik doğrulama reddedildi"

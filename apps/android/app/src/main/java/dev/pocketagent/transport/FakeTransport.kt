@@ -76,6 +76,11 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     // Alt-screen durumu (vim/htop/less/tmux): resize kararı buradan okunur.
     private val _altScreen = MutableStateFlow(false)
     val altScreen: StateFlow<Boolean> = _altScreen
+    // Uzak taraf fare raporlaması istedi (tmux mouse, fareli TUI): kaydırma
+    // jesti yerel scrollback yerine tekerlek olayı gönderir.
+    private val _mouseTracking = MutableStateFlow(false)
+    val mouseTracking: StateFlow<Boolean> = _mouseTracking
+    val sgrMouse: Boolean get() = buffer.sgrMouse
 
     init {
         buffer.onTitle = { _windowTitle.value = it }
@@ -126,6 +131,7 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
         _lines.value = snap
         _cursor.value = buffer.cursorPosition()
         _altScreen.value = buffer.altScreenActive
+        _mouseTracking.value = buffer.mouseTracking
     }
 
     // Sync kapanışı gelmeden takılı kalırsa (zombie TUI/resize) dışarıdan
@@ -150,7 +156,10 @@ class TerminalViewModel(val session: SessionId, private val maxLines: Int = 50_0
     }
 
     fun setBadge(t: TerminalTransport) { badge = t.name }
-    fun clear() { buffer.clear(); pendingBytes = ByteArray(0); _lines.value = emptyList(); _cursor.value = null; _altScreen.value = false }
+    fun clear() {
+        buffer.clear(); pendingBytes = ByteArray(0); _lines.value = emptyList(); _cursor.value = null
+        _altScreen.value = false; _mouseTracking.value = false
+    }
 
     // Viewport ölçüsü değişti: buffer yeniden boyutlanır (üstten taşan satırlar
     // scrollback'e gider); PTY resize'ı UI katmanında transport'a gönderilir.

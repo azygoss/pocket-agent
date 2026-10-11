@@ -150,8 +150,12 @@ class TerminalController(
                 val wrapsInTmux = explicit?.startsWith("tmux") != true
                 val startupCmds = buildList {
                     add("clear")
+                    // `set mouse on`: tmux uygulamanın ekranını alternatif ekrana
+                    // aldığı için geçmiş telefonda değil tmux'ta durur; fare
+                    // açıkken parmak kaydırması tekerlek olayıyla tmux
+                    // geçmişini (copy-mode) kaydırır. Yalnız bu oturumda.
                     if (wrapsInTmux) tmuxName?.let {
-                        add("tmux new-session -A -s '$it' \\; set status off 2>/dev/null || :")
+                        add("tmux new-session -A -s '$it' \\; set status off \\; set mouse on 2>/dev/null || :")
                     }
                     explicit?.let { add(it) }
                 }
