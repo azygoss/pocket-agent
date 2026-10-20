@@ -25,8 +25,7 @@ Kurulum:
 
 Eşleştirme:
   pair [--backend url] [--host h] [--yes] QR + XXXX-XXXX kodu üret; telefonun anahtarını onayla
-       [--port n] [--user u] [--host-keys glob] [--enroll-token t]
-       [--port n] [--user u] [--png f]
+       [--port n] [--user u] [--png f] [--host-keys glob] [--enroll-token t]
   unpair <kod|deviceId>                  Eşleştirme anahtarını authorized_keys'ten kaldır
   host setup|list|revoke|enable-ssh      Host tarafı eşleştirme yardımcıları
 
