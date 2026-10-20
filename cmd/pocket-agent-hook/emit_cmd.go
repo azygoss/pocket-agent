@@ -41,15 +41,13 @@ func hostID() string {
 	return "host:" + hn
 }
 
-func tenant() string {
-	if t := os.Getenv("POCKET_TENANT"); t != "" {
+// hostToken: backend bearer token'ı (pair/register ile alınır).
+func hostToken() string {
+	if t := os.Getenv("POCKET_HOST_TOKEN"); t != "" {
 		return t
 	}
 	cfg, _ := cfgLoad()
-	if cfg.Tenant != "" {
-		return cfg.Tenant
-	}
-	return "default"
+	return cfg.HostToken
 }
 
 var emitBus = hooks.New()
@@ -75,7 +73,7 @@ func emitEvent(source, category, sourceID, session, message string) error {
 	}
 	if nudgeDaemon() != nil {
 		// Daemon ayakta değilse doğrudan post — olay kaybolmaz.
-		_ = emit.Post(nil, backendURL(), tenant(), hostID(), s)
+		_ = emit.Post(nil, backendURL(), hostToken(), hostID(), s)
 	}
 	return nil
 }
@@ -240,7 +238,7 @@ func flushJournal(dir string) {
 	if _, err := f.Seek(off, 0); err != nil {
 		return
 	}
-	cfgB, cfgT, cfgH := backendURL(), tenant(), hostID()
+	cfgB, cfgT, cfgH := backendURL(), hostToken(), hostID()
 	client := &http.Client{Timeout: 8 * time.Second}
 	r := bufio.NewReader(f)
 	save := func() {

@@ -32,16 +32,16 @@ func TestPostToBackend(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		gotTenant = r.Header.Get("X-Tenant")
+		gotTenant = r.Header.Get("Authorization")
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		w.WriteHeader(202)
 	}))
 	defer srv.Close()
 	s := Build("host:x", "codex", "task_complete", "t1", "s1", "done", time.Now())
-	if err := Post(nil, srv.URL+"/", "acme", "host:x", s); err != nil {
+	if err := Post(nil, srv.URL+"/", "pah_acme", "host:x", s); err != nil {
 		t.Fatal(err)
 	}
-	if gotPath != "/v1/hosts/host:x/events" || gotTenant != "acme" {
+	if gotPath != "/v1/hosts/host:x/events" || gotTenant != "Bearer pah_acme" {
 		t.Fatalf("path/tenant: %s %s", gotPath, gotTenant)
 	}
 	if gotBody["event_id"] != s.EventID {
@@ -57,5 +57,19 @@ func TestPostErrorStatuses(t *testing.T) {
 	s := Build("h", "claude", "error", "e", "s", "m", time.Now())
 	if err := Post(nil, srv.URL, "t", "h", s); err == nil {
 		t.Fatal("400 hata dönmeli")
+	}
+}
+
+func TestPostUnauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(401)
+	}))
+	defer srv.Close()
+	s := Build("h", "claude", "error", "e", "s", "m", time.Now())
+	if err := Post(nil, srv.URL, "pah_bad", "h", s); err != ErrUnauthorized {
+		t.Fatalf("401 => ErrUnauthorized, got %v", err)
+	}
+	if err := Post(nil, srv.URL, "", "h", s); err != ErrUnauthorized {
+		t.Fatalf("empty token => ErrUnauthorized, got %v", err)
 	}
 }

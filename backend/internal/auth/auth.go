@@ -18,15 +18,17 @@ func Mint(prefix string) (token, storedHash string, err error) {
 	}
 	secret := base64.RawURLEncoding.EncodeToString(b)
 	token = prefix + "_" + secret
+	return token, Hash(token), nil
+}
+
+// Hash is the only form a token is ever stored or looked up in.
+func Hash(token string) string {
 	h := sha256.Sum256([]byte(token))
-	storedHash = fmt.Sprintf("sha256:%x", h)
-	return token, storedHash, nil
+	return fmt.Sprintf("sha256:%x", h)
 }
 
 func Verify(token, storedHash string) bool {
-	h := sha256.Sum256([]byte(token))
-	candidate := fmt.Sprintf("sha256:%x", h)
-	return subtle.ConstantTimeCompare([]byte(candidate), []byte(storedHash)) == 1
+	return subtle.ConstantTimeCompare([]byte(Hash(token)), []byte(storedHash)) == 1
 }
 
 var ErrTenantEscape = errors.New("tenant mismatch")

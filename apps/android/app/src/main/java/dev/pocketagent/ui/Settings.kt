@@ -23,7 +23,7 @@ class SettingsViewModel(
         private set
     var backendUrl by mutableStateOf("")
         private set
-    var tenantToken by mutableStateOf("")
+    var backendToken by mutableStateOf("")
         private set
 
     var autoReconnect by mutableStateOf(false)
@@ -54,7 +54,7 @@ class SettingsViewModel(
                     autoReconnectOnDrop = p.autoReconnectOnDrop
                     theme = AppTheme(p.themeId, p.fontId, p.fontScale.coerceIn(0.8f, 2.0f))
                     backendUrl = p.backendUrl
-                    tenantToken = p.tenantToken
+                    backendToken = p.backendToken
                     snippets = p.snippets
                     keepScreenOn = p.keepScreenOn
                     keyHaptics = p.keyHaptics
@@ -99,9 +99,9 @@ class SettingsViewModel(
         persist()
     }
 
-    fun setBackend(url: String, tenant: String) {
+    fun setBackend(url: String, token: String) {
         backendUrl = url.trim()
-        tenantToken = tenant.trim()
+        backendToken = token.trim()
         persist()
     }
 
@@ -142,13 +142,13 @@ class SettingsViewModel(
         }.filter { it.first.isNotBlank() && it.second.isNotBlank() }
 
     val backendConfigured: Boolean
-        get() = backendUrl.isNotBlank() && tenantToken.isNotBlank()
+        get() = backendUrl.isNotBlank() && backendToken.isNotBlank()
 
     private fun persist() {
         val s = store ?: return
         val sc = scope ?: return
         val snap = PersistedSettings(
-            theme.fontScale, backendUrl, tenantToken, autoReconnect, autoReconnectOnDrop,
+            theme.fontScale, backendUrl, backendToken, autoReconnect, autoReconnectOnDrop,
             theme.themeId, theme.fontId, snippets, keepScreenOn, keyHaptics,
         )
         sc.launch { s.save(snap) }

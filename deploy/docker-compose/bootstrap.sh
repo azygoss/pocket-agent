@@ -21,9 +21,11 @@ if [ ! -f .env ]; then
     read -r -p "Domain (örn. api.example.com; boş bırakırsan $suggest): " domain
     domain=${domain:-$suggest}
     pass=$(openssl rand -hex 16 2>/dev/null || head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    enroll=$(openssl rand -hex 16 2>/dev/null || head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')
     cat > .env <<EOF
 POSTGRES_PASSWORD=$pass
 DOMAIN=$domain
+POCKET_ENROLL_TOKEN=$enroll
 EOF
     chmod 600 .env
     echo "  .env yazıldı (POSTGRES_PASSWORD üretildi, DOMAIN=$domain)"
@@ -31,6 +33,11 @@ else
     echo ".env mevcut — atlanıyor"
 fi
 
+# Host kaydı enroll token'ı olmadan herkese açık olur: eski .env'lere ekle.
+if ! grep -q '^POCKET_ENROLL_TOKEN=.' .env; then
+    echo "POCKET_ENROLL_TOKEN=$(openssl rand -hex 16 2>/dev/null || head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> .env
+    echo "  POCKET_ENROLL_TOKEN üretildi (.env)"
+fi
 if grep -q 'change-me' .env; then
     echo "uyarı: .env'de varsayılan parola duruyor — production'da değiştir" >&2
 fi
@@ -54,11 +61,11 @@ done
 cat <<EOF
 
 Kurulum tamam. Sıradaki adımlar:
-  1) Host'ta:  pocket-agent set tenant "\$(openssl rand -hex 10)"
+  1) Host'ta:  POCKET_ENROLL_TOKEN=$(grep '^POCKET_ENROLL_TOKEN=' .env | cut -d= -f2) \\
                pocket-agent onboard --backend https://$domain
-  2) Uygulamada Ayarlar → Backend: adres https://$domain, tenant token =
-     host'taki tenant (pocket-agent host list).
-  3) Oturumlar → QR simgesi → kodu gir ya da QR'ı tara (pocket-agent pair).
+  2) Telefonda: Oturumlar → QR simgesi → kodu gir ya da QR'ı tara.
+     Telefon kendi SSH anahtarını üretir; host'ta cihazı onayla.
+     Backend token'ı eşlemeyle otomatik gelir.
 
 Yedekleme: ./backup.sh   Geri yükleme: ./restore.sh <dosya>   Doğrulama: ./verify-backup.sh
 EOF

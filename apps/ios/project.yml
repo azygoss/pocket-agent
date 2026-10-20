@@ -1,0 +1,127 @@
+name: PocketAgent
+options:
+  bundleIdPrefix: dev.pocketagent
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: tr
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Release: Config/Release.xcconfig
+packages:
+  Citadel:
+    url: https://github.com/orlandos-nl/Citadel.git
+    exactVersion: 0.11.1
+  swift-nio-ssh:
+    url: https://github.com/Joannis/swift-nio-ssh.git
+    exactVersion: 0.3.5
+  swift-nio:
+    url: https://github.com/apple/swift-nio.git
+    from: 2.81.0
+  swift-crypto:
+    url: https://github.com/apple/swift-crypto.git
+    from: 3.12.3
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm.git
+    exactVersion: 1.10.1
+targets:
+  PocketAgent:
+    type: application
+    platform: iOS
+    sources:
+      - path: PocketAgent
+    info:
+      path: PocketAgent/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Pocket Agent
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        UIAppFonts:
+          - ibm_plex_sans_regular.ttf
+          - ibm_plex_sans_medium.ttf
+          - ibm_plex_sans_semibold.ttf
+          - ibm_plex_sans_bold.ttf
+          - ibm_plex_mono_regular.ttf
+          - ibm_plex_mono_bold.ttf
+          - jetbrains_mono_regular.ttf
+          - jetbrains_mono_bold.ttf
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSCameraUsageDescription: Eşleştirme QR kodunu taramak için kamera kullanılır. Görüntü cihazdan çıkmaz.
+        NSLocalNetworkUsageDescription: Yerel ağdaki host'una SSH ile bağlanmak ve kendi backend'ine erişmek için.
+        NSFaceIDUsageDescription: Uygulama kilidini açmak için Face ID kullanılır.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.pocketagent.pair
+            CFBundleURLSchemes: [pocketagent]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(POCKET_BUNDLE_ID)
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+        ENABLE_PREVIEWS: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        CODE_SIGN_STYLE: Automatic
+        # Simulator: ad-hoc "sign to run locally" so Keychain entitlements exist.
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+    dependencies:
+      - package: Citadel
+      - package: swift-nio-ssh
+        product: NIOSSH
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-crypto
+        product: Crypto
+      - package: SwiftTerm
+  PocketAgentTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [PocketAgentTests]
+    dependencies:
+      - target: PocketAgent
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(POCKET_BUNDLE_ID).tests
+        GENERATE_INFOPLIST_FILE: YES
+  PocketAgentUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [PocketAgentUITests]
+    dependencies:
+      - target: PocketAgent
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(POCKET_BUNDLE_ID).uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: PocketAgent
+schemes:
+  PocketAgent:
+    build:
+      targets:
+        PocketAgent: all
+        PocketAgentTests: [test]
+        PocketAgentUITests: [test]
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - PocketAgentTests
+        - PocketAgentUITests
+    archive:
+      config: Release

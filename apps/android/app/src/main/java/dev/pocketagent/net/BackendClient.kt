@@ -68,7 +68,8 @@ fun backendProblem(e: Throwable): String {
 
 class BackendClient(
     private val baseUrl: String,
-    private val tenant: String,
+    // Cihaza özgü bearer token (eşlemede verilir; sunucuda yalnız hash'i).
+    private val token: String,
     private val timeoutMs: Int = 8_000,
 ) {
     private fun conn(path: String, method: String = "GET"): HttpURLConnection {
@@ -76,7 +77,7 @@ class BackendClient(
         c.requestMethod = method
         c.connectTimeout = timeoutMs
         c.readTimeout = timeoutMs
-        c.setRequestProperty("X-Tenant", tenant)
+        if (token.isNotBlank()) c.setRequestProperty("Authorization", "Bearer $token")
         c.setRequestProperty("Accept", "application/json")
         return c
     }
@@ -86,7 +87,15 @@ class BackendClient(
     // null = erişilebilir; değilse okunur neden.
     fun check(): String? = try {
         val code = conn("/v1/healthz").responseCode
-        if (code == 200) null else "Backend HTTP $code döndü. Adres doğru mu?"
+        when {
+            code != 200 -> "Backend HTTP $code döndü. Adres doğru mu?"
+            token.isBlank() -> null
+            else -> when (val w = conn("/v1/whoami").responseCode) {
+                200 -> null
+                401 -> "Cihaz token'ı geçersiz veya iptal edilmiş — host'ta pocket-agent pair ile yeniden eşle."
+                else -> "Backend HTTP $w döndü."
+            }
+        }
     } catch (e: Exception) {
         backendProblem(e)
     }
@@ -94,6 +103,7 @@ class BackendClient(
     fun events(after: String? = null): List<BackendEvent> {
         val path = if (after.isNullOrEmpty()) "/v1/events" else "/v1/events?after=$after"
         val c = conn(path)
+        if (c.responseCode == 401) throw IllegalStateException("Cihaz token'ı geçersiz — yeniden eşle")
         require(c.responseCode == 200) { "events ${c.responseCode}" }
         val body = BufferedReader(InputStreamReader(c.inputStream)).readText()
         return parseEvents(body)
@@ -107,7 +117,6 @@ class BackendClient(
         val payload = JSONObject()
             .put("digest", digest)
             .put("revision", revision)
-            .put("device", device)
             .toString()
         OutputStreamWriter(c.outputStream).use { it.write(payload) }
         return c.responseCode

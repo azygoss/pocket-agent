@@ -17,6 +17,10 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://pocket:${POSTGRES_PASSWORD:-change-me}@db:5432/pocket?sslmode=disable
+      # Boş bırakılırsa host kaydı açık olur; internete açık backend'de ayarla.
+      POCKET_ENROLL_TOKEN: ${POCKET_ENROLL_TOKEN:-}
+      # Caddy arkasında: rate limit için istemci IP'si X-Forwarded-For'dan.
+      POCKET_TRUST_PROXY: "1"
     # Yalnız Caddy (aynı ağ) ve host erişir; dışarıya düz HTTP açılmaz.
     ports:
       - "127.0.0.1:8080:8080"

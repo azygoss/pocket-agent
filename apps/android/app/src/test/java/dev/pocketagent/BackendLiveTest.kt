@@ -20,9 +20,32 @@ class BackendLiveTest {
     @Test fun eventsAndApprovalCas() {
         val base = System.getenv("PA_LIVE_BACKEND") ?: ""
         assumeTrue("set PA_LIVE_BACKEND to run", base.isNotBlank())
-        val tenant = "t-android-${System.currentTimeMillis()}"
-        val c = BackendClient(base, tenant)
+        fun http(method: String, path: String, token: String?, body: String?): Pair<Int, String> {
+            val conn = java.net.URL("$base$path").openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = method
+            conn.setRequestProperty("Content-Type", "application/json")
+            if (token != null) conn.setRequestProperty("Authorization", "Bearer $token")
+            if (body != null) {
+                conn.doOutput = true
+                conn.outputStream.use { it.write(body.toByteArray()) }
+            }
+            val code = conn.responseCode
+            val text = (if (code < 400) conn.inputStream else conn.errorStream)?.bufferedReader()?.readText() ?: ""
+            return code to text
+        }
+        // Host kaydı → host token; eşleme → cihaz token'ı (anahtarsız).
+        val (rc, reg) = http("POST", "/v1/hosts/register", null, """{"host_id":"h_test"}""")
+        assertEquals(201, rc)
+        val hostToken = org.json.JSONObject(reg).getString("host_token")
+        val code = "LIVE" + (2000 + (System.currentTimeMillis() % 7000)).toString().map { "ABCDEFGHJK"[it - '0'] }.joinToString("")
+        assertEquals(201, http("POST", "/v1/pairing-sessions", hostToken, """{"code":"$code","payload":"{\"ssh_host\":\"h\",\"ssh_user\":\"u\"}"}""").first)
+        val key = dev.pocketagent.security.KeyGen.ed25519("live")
+        val r = dev.pocketagent.net.PairingClient.claim(base, code, "dev-1", "Live", key.publicOpenSsh)
+        assertEquals(200, http("POST", "/v1/pairing-sessions/$code/complete", hostToken, """{"approved":true}""").first)
+        val c = BackendClient(base, r.deviceToken)
         assertTrue("healthz", c.health())
+        assertNull(c.check())
+        assertNotNull(BackendClient(base, "pad_forged").check())
 
         // Host tarafı: whitelist'e uygun iki event gönder (curl eşdeğeri).
         val post = { id: String ->
@@ -35,7 +58,7 @@ class BackendLiveTest {
             val conn = java.net.URL("$base/v1/hosts/h_test/events").openConnection() as java.net.HttpURLConnection
             conn.requestMethod = "POST"
             conn.doOutput = true
-            conn.setRequestProperty("X-Tenant", tenant)
+            conn.setRequestProperty("Authorization", "Bearer $hostToken")
             conn.setRequestProperty("Content-Type", "application/json")
             conn.outputStream.use { it.write(body.toByteArray()) }
             conn.responseCode
@@ -55,9 +78,10 @@ class BackendLiveTest {
 
         // CAS: ilk karar kazanır, ikinci 409.
         assertEquals(202, c.approvalAction("event:live-a", "d-event:live-a", "1", "dev-1"))
-        assertEquals(409, c.approvalAction("event:live-a", "d-event:live-a", "1", "dev-2"))
+        assertEquals(409, c.approvalAction("event:live-a", "other", "1", "dev-1"))
 
-        // Başka tenant bu olayları göremez (izolasyon).
-        assertTrue(BackendClient(base, "t-baska").events().isEmpty())
+        // Başka tenant'ın host'u bu olayları göremez (izolasyon).
+        val other = org.json.JSONObject(http("POST", "/v1/hosts/register", null, """{"host_id":"h2"}""").second).getString("host_token")
+        assertTrue(BackendClient(base, other).events().isEmpty())
     }
 }

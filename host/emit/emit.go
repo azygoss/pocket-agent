@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Package emit: journal'daki agent_event kayıtlarını backend'e postlar.
 // P12/P13 zincirinin eksik halkası: hook -> emit -> journal -> daemon -> POST
-// /v1/hosts/{hostId}/events (X-Tenant). Yalnız özet alanları gider — protocol
+// /v1/hosts/{hostId}/events (Authorization: Bearer <host token>). Yalnız özet alanları gider — protocol
 // ValidateEventSummary'nin whitelist'iyle birebir aynı şema.
 package emit
 
@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -69,16 +70,24 @@ func Build(hostID, source, category, sourceEventID, session, message string, now
 	}
 }
 
-// Post: tek özeti backend'e gönderir. 202 => nil; 4xx => kalıcı hata
-// (flusher offset'i ilerletir, zehirli kayıt kuyruğu tıkamaz).
-func Post(client *http.Client, backend, tenant, hostID string, s Summary) error {
+// ErrUnauthorized: host token yok/geçersiz. Kayıt zehirli değil — flusher
+// offset'i ilerletmez, token düzelince (pocket-agent pair) olaylar gider.
+var ErrUnauthorized = errors.New("host token missing or rejected — run: pocket-agent pair")
+
+// Post: tek özeti backend'e gönderir. 202 => nil; 401/403 => ErrUnauthorized;
+// diğer 4xx => kalıcı hata (flusher offset'i ilerletir, zehirli kayıt
+// kuyruğu tıkamaz).
+func Post(client *http.Client, backend, token, hostID string, s Summary) error {
+	if token == "" {
+		return ErrUnauthorized
+	}
 	body, _ := json.Marshal(s)
 	u := strings.TrimRight(backend, "/") + "/v1/hosts/" + url.PathEscape(hostID) + "/events"
 	req, err := http.NewRequest("POST", u, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
-	req.Header.Set("X-Tenant", tenant)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	if client == nil {
 		client = &http.Client{Timeout: 8 * time.Second}
@@ -90,6 +99,9 @@ func Post(client *http.Client, backend, tenant, hostID string, s Summary) error 
 	defer resp.Body.Close()
 	if resp.StatusCode == 202 {
 		return nil
+	}
+	if resp.StatusCode == 401 || resp.StatusCode == 403 {
+		return ErrUnauthorized
 	}
 	return fmt.Errorf("backend %s", resp.Status)
 }

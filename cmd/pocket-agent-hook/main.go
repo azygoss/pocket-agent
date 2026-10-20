@@ -333,7 +333,7 @@ func gatewayDiff(dir, kind string) (string, error) { return gateway.GitDiff(dir,
 
 func cmdSet(args []string) {
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: set <key> <value>  (keys: backend_url, host_id, tenant)")
+		fmt.Fprintln(os.Stderr, "usage: set <key> <value>  (keys: backend_url, host_id)")
 		os.Exit(2)
 	}
 	p := config.DefaultPath()
@@ -343,8 +343,6 @@ func cmdSet(args []string) {
 		c.BackendURL = args[1]
 	case "host_id":
 		c.HostID = args[1]
-	case "tenant":
-		c.Tenant = args[1]
 	default:
 		fmt.Fprintln(os.Stderr, "unknown key")
 		os.Exit(2)

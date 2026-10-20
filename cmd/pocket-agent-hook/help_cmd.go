@@ -24,8 +24,8 @@ Kurulum:
   service install-gateway                Gateway user unit'i (root = cwd)
 
 Eşleştirme:
-  pair [--backend url] [--host h]        QR + XXXX-XXXX kodu üret (5dk, tek kullanım)
-       [--port n] [--user u] [--png f]
+  pair [--backend url] [--host h] [--yes] QR + XXXX-XXXX kodu üret; telefonun anahtarını onayla
+       [--port n] [--user u] [--png f] [--host-keys glob] [--enroll-token t]
   unpair <kod|deviceId>                  Eşleştirme anahtarını authorized_keys'ten kaldır
   host setup|list|revoke|enable-ssh      Host tarafı eşleştirme yardımcıları
 
@@ -47,8 +47,7 @@ Tanı:
   service status [--json]                Unit durumları
 
 Yapılandırma:
-  set <key> <value>                      backend_url | host_id | tenant
-                                           (tenant = uygulamadaki tenant token, varsayılan "default")
+  set <key> <value>                      backend_url | host_id
   completion bash|zsh|fish               Kabuk tamamlama script'i üret
 
 Diğer:
@@ -79,7 +78,7 @@ var subCommands = map[string][]string{
 	"gateway":    {"serve"},
 	"hooks":      {"install", "uninstall"},
 	"servers":    {"kill"},
-	"set":        {"backend_url", "host_id", "tenant"},
+	"set":        {"backend_url", "host_id"},
 	"completion": {"bash", "zsh", "fish"},
 	"diff":       {"staged", "unstaged", "untracked", "working", "last"},
 }

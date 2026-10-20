@@ -25,6 +25,7 @@ class PairingParseTest {
         val (backend, code) = PairingClient.parseQr("pa1|http://h:8080|fqat-r6dw|extra", "")!!
         assertEquals("http://h:8080", backend)
         assertEquals("FQAT-R6DW", code)
+        assertEquals("http://h:8080" to "ABCD-EF23", PairingClient.parseQr("pa2|http://h:8080|ABCDEF23|u", ""))
     }
 
     @Test fun manualCodeParsesWithFallbackBackend() {
@@ -40,7 +41,8 @@ class PairingParseTest {
     }
 }
 
-// P04 uçtan uca CANLI test: host CLI pair → backend claim → SSH connect.
+// P04 uçtan uca CANLI test: host CLI pair → cihaz anahtarı üretir → public
+// key ile claim → host onaylar (--yes) → cihaz anahtarıyla SSH connect.
 // Env: PA_LIVE_SSH=1 PA_LIVE_PAIR_BIN=/tmp/pa-hook PA_LIVE_BACKEND=... PA_LIVE_USER=pa-dev
 // POCKET_HOME=/home/pa-dev (CLI marker'ı gerçek authorized_keys'e yazar; test temizler).
 @org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
@@ -52,18 +54,26 @@ class PairingLiveTest {
         assumeTrue(File(bin).exists() && System.getenv("PA_LIVE_SSH") == "1")
 
         // 1) host: pair (QR payload + backend session + authorized_keys marker)
-        val p = ProcessBuilder(bin, "pair", "--backend", backend, "--host", "127.0.0.1", "--user", usr)
+        val p = ProcessBuilder(bin, "pair", "--backend", backend, "--host", "127.0.0.1", "--user", usr, "--yes")
             .redirectErrorStream(true)
             .start()
-        val out = p.inputStream.bufferedReader().readText()
-        p.waitFor()
-        val code = Regex("Kod: ([A-Z0-9]{4}-[A-Z0-9]{4})").find(out)?.groupValues?.get(1)
+        val reader = p.inputStream.bufferedReader()
+        val out = StringBuilder()
+        var code: String? = null
+        while (code == null) {
+            val line = reader.readLine() ?: break
+            out.appendLine(line)
+            code = Regex("Kod: ([A-Z0-9]{4}-[A-Z0-9]{4})").find(line)?.groupValues?.get(1)
+        }
         assertNotNull("pair çıktısında kod yok:\n$out", code)
 
-        // 2) telefon: claim → payload
-        val r = PairingClient.claim(backend, code!!, "live-test-device")
+        // 2) telefon: anahtar cihazda üretilir, yalnız public key gider
+        val key = dev.pocketagent.security.KeyGen.ed25519("live-test")
+        val r = PairingClient.claim(backend, code!!, "live-test-device", "Live", key.publicOpenSsh)
         assertEquals(usr, r.sshUser)
-        assertTrue(r.privateKeyPem.contains("BEGIN OPENSSH PRIVATE KEY"))
+        assertTrue(r.deviceToken.startsWith("pad_"))
+        PairingClient.awaitApproval(backend, code, r.deviceToken, timeoutMs = 15_000, pollMs = 300)
+        p.waitFor()
 
         // 3) payload anahtarıyla SSH bağlan (TOFU pin gerekli)
         val store = TofuHostKeyStore(File.createTempFile("kh-pair", ".db"))
@@ -72,7 +82,7 @@ class PairingLiveTest {
         val c = TerminalController(scope, connector, store)
         c.connect(
             SavedConnection("pair", "127.0.0.1", 22, usr, "keystore", id = "pair-1"),
-            Secret.PemKey(r.privateKeyPem),
+            Secret.PemKey(key.privatePem),
         )
         // Bilinmeyen host-key diyaloğu düşerse pinle ve tekrar dene
         withTimeout(5000) {
@@ -87,7 +97,7 @@ class PairingLiveTest {
 
         // 4) ikinci cihaz aynı kodu alamaz (tek-kullanım)
         try {
-            PairingClient.claim(backend, code, "another-device")
+            PairingClient.claim(backend, code, "another-device", "Other", key.publicOpenSsh)
             fail("ikinci claim 409 beklerdi")
         } catch (e: PairingClient.FailureException) {
             assertTrue(e.failure is PairingClient.Failure.AlreadyClaimed)

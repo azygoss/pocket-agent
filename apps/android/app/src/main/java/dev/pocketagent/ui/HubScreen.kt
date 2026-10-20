@@ -203,16 +203,13 @@ fun HubScreen(
         }.onFailure { notify("Dosya okunamadı: ${it.message}") }
     }
 
-    // Eşleşme başarılı olunca backend ayarı boşsa host'unkiyle doldurulur;
-    // aynı backend'de tenant elle değiştirilmemişse host'un tenant'ı alınır.
-    // Başka bir backend ayarlıysa dokunulmaz (kullanıcının bilinçli seçimi).
-    fun adoptBackend(url: String, tenant: String?) {
+    // Eşleşme başarılı olunca backend ayarı boşsa ya da aynı backend'se bu
+    // cihazın yeni token'ı yazılır. Başka bir backend ayarlıysa dokunulmaz
+    // (kullanıcının bilinçli seçimi).
+    fun adoptBackend(url: String, deviceToken: String) {
         val s = settings ?: return
         val cur = s.backendUrl.trimEnd('/')
-        when {
-            cur.isEmpty() -> s.setBackend(url, tenant ?: s.tenantToken.ifBlank { "default" })
-            cur == url.trimEnd('/') && tenant != null && s.tenantToken in setOf("", "default") -> s.setBackend(url, tenant)
-        }
+        if (cur.isEmpty() || cur == url.trimEnd('/')) s.setBackend(url, deviceToken)
     }
     val startPair: (String, String) -> Unit = { backend, code ->
         pairClaim(backend, code, app, repo, sessions, scope, onConnected = { showPair = false; onOpenSession() },

@@ -1,0 +1,7 @@
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+build/
+DerivedData/
+Config/Signing.local.xcconfig
+*.ipa
+*.xcarchive
