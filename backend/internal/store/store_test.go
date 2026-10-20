@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -29,6 +30,11 @@ func freshPG(t *testing.T, url string) *PG {
 	pg, err := OpenPostgres(ctx, url)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The schema is wiped per test: refuse anything but a test database.
+	var db string
+	if err := pg.pool.QueryRow(ctx, `SELECT current_database()`).Scan(&db); err != nil || !strings.Contains(db, "test") {
+		t.Fatalf("PA_TEST_DATABASE_URL must point at a disposable *test* database (got %q)", db)
 	}
 	if _, err := pg.pool.Exec(ctx, `DROP SCHEMA public CASCADE; CREATE SCHEMA public;`); err != nil {
 		t.Fatal(err)
@@ -106,25 +112,34 @@ func TestPairingRace(t *testing.T) {
 		if err != nil || p.State != "CLAIMED" || p.Payload == "" {
 			t.Fatalf("claim: %+v %v", p, err)
 		}
-		// same device retry: idempotent, previous token replaced
-		c1b := claim("device:1")
-		if _, err := s.ClaimPairing("ABCD2345", c1b, now); err != nil {
-			t.Fatal("same claim must be idempotent")
-		}
 		if _, ok := s.LookupToken(c1.TokenHash); ok {
-			t.Fatal("retried claim must revoke the earlier device token")
+			t.Fatal("claim token must not authenticate before host approval")
 		}
-		if tok, ok := s.LookupToken(c1b.TokenHash); !ok || tok.TenantID != "t1" || tok.Kind != KindDevice || tok.SubjectID != "device:1" {
-			t.Fatalf("device token not stored: %+v", tok)
+		if len(s.ListDevices("t1")) != 0 {
+			t.Fatal("claim must not enroll a device before approval")
+		}
+		// same device retry: idempotent, pending token replaced
+		c1b := claim("device:1")
+		if p, err := s.ClaimPairing("ABCD2345", c1b, now); err != nil || p.TokenHash != c1b.TokenHash {
+			t.Fatal("same claim must be idempotent")
 		}
 		if _, err := s.ClaimPairing("ABCD2345", claim("device:2"), now); err != ErrConflict {
 			t.Fatalf("different second claim must conflict: %v", err)
 		}
-		if err := s.FinishPairing("t2", "ABCD2345", true); err != ErrNotFound {
+		if err := s.FinishPairing("t2", "host:x", "ABCD2345", true, now); err != ErrNotFound {
 			t.Fatalf("foreign tenant must not finish: %v", err)
 		}
-		if err := s.FinishPairing("t1", "ABCD2345", true); err != nil {
+		if err := s.FinishPairing("t1", "host:other", "ABCD2345", true, now); err != ErrNotFound {
+			t.Fatalf("another host of the tenant must not finish: %v", err)
+		}
+		if err := s.FinishPairing("t1", "host:x", "ABCD2345", true, now); err != nil {
 			t.Fatal(err)
+		}
+		if _, ok := s.LookupToken(c1.TokenHash); ok {
+			t.Fatal("superseded claim token must stay invalid")
+		}
+		if tok, ok := s.LookupToken(c1b.TokenHash); !ok || tok.TenantID != "t1" || tok.Kind != KindDevice || tok.SubjectID != "device:1" {
+			t.Fatalf("approval must activate the device token: %+v", tok)
 		}
 		got, _ := s.GetPairing("ABCD2345")
 		if got.State != "CONSUMED" || got.Payload != "" || got.DevicePublicKey != c1b.PublicKey {
@@ -148,7 +163,7 @@ func TestPairingRejectAndExpiry(t *testing.T) {
 		if _, err := s.ClaimPairing("REJECT22", c, now); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.FinishPairing("t1", "REJECT22", false); err != nil {
+		if err := s.FinishPairing("t1", "h", "REJECT22", false, now); err != nil {
 			t.Fatal(err)
 		}
 		if _, ok := s.LookupToken(c.TokenHash); ok {
@@ -169,6 +184,24 @@ func TestPairingRejectAndExpiry(t *testing.T) {
 		}
 		if err := s.CreatePairing(Pairing{Code: "EXPIRE22", TenantID: "t1", HostID: "h", ExpiresAt: now.Add(time.Minute)}); err != nil {
 			t.Fatalf("expired code may be reused: %v", err)
+		}
+		// A claimed code past its approval window can no longer be approved
+		// and is swept to EXPIRED.
+		_ = s.CreatePairing(Pairing{Code: "LATE2222", TenantID: "t1", HostID: "h", ExpiresAt: now.Add(time.Minute)})
+		late := claim("device:l")
+		late.ApproveBy = now.Add(time.Minute)
+		if _, err := s.ClaimPairing("LATE2222", late, now); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.FinishPairing("t1", "h", "LATE2222", true, now.Add(2*time.Minute)); err != ErrExpired {
+			t.Fatalf("late approval must fail: %v", err)
+		}
+		s.SweepTTL(now.Add(2 * time.Minute))
+		if p, _ := s.GetPairing("LATE2222"); p.State != "EXPIRED" {
+			t.Fatalf("sweep must expire the stale claim: %+v", p)
+		}
+		if _, ok := s.LookupToken(late.TokenHash); ok {
+			t.Fatal("expired claim must not yield a token")
 		}
 		if _, err := s.ClaimPairing("NOPE2222", claim("d"), now); err != ErrNotFound {
 			t.Fatalf("unknown: %v", err)

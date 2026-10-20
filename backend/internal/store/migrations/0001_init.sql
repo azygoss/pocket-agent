@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS pairing_sessions (
   claimed_by TEXT NOT NULL DEFAULT '',
   device_label TEXT NOT NULL DEFAULT '',
   device_public_key TEXT NOT NULL DEFAULT '',
+  token_hash TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at TIMESTAMPTZ NOT NULL
 );

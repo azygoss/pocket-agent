@@ -155,7 +155,11 @@ func TestKeylessPairingFlow(t *testing.T) {
 		t.Fatalf("device view: %s", dv)
 	}
 	// Device cannot complete; host can.
-	if code, _ := h.do("POST", "/v1/pairing-sessions/ABCD2345/complete", devTok, `{"approved":true}`); code != 403 {
+	// Before approval the claim token is not a bearer token at all.
+	if code, _ := h.do("GET", "/v1/events", devTok, ""); code != 401 {
+		t.Fatalf("unapproved claimant must not read events: %d", code)
+	}
+	if code, _ := h.do("POST", "/v1/pairing-sessions/ABCD2345/complete", devTok, `{"approved":true}`); code != 401 {
 		t.Fatalf("device complete: %d", code)
 	}
 	if code, _ := h.do("POST", "/v1/pairing-sessions/ABCD2345/complete", hostTok, `{"approved":true}`); code != 200 {
@@ -225,7 +229,7 @@ func TestCrossTenantIsolation(t *testing.T) {
 	if _, hosts := h.do("GET", "/v1/hosts", tokB, ""); strings.Contains(hosts, "host:a") {
 		t.Fatal("tenant B must not list tenant A hosts")
 	}
-	if code, _ := h.do("DELETE", "/v1/hosts/host:a", tokB, ""); code != 404 {
+	if code, _ := h.do("DELETE", "/v1/hosts/host:a", tokB, ""); code != 403 {
 		t.Fatalf("cross-tenant delete: %d", code)
 	}
 	h.do("POST", "/v1/pairing-sessions", tokA, `{"code":"PQRS2345"}`)
@@ -257,7 +261,10 @@ func TestPostEventWhitelist(t *testing.T) {
 	h := newHarness(t)
 	_, tok := h.register("host:h")
 	bad := `{"event_id":"event:2","transcript":"SECRET","opaque_host_id":"h","opaque_session_id":"s","source":"codex","category":"ERROR","message":"x","request_digest":"d","revision":"1","created_at":"2026-09-03T12:00:00Z","expires_at":"2026-09-03T13:00:00Z"}`
-	code, body := h.do("POST", "/v1/hosts/h/events", tok, bad)
+	if code, _ := h.do("POST", "/v1/hosts/someone-else/events", tok, evOK); code != 403 {
+		t.Fatalf("host must not post as another host: %d", code)
+	}
+	code, body := h.do("POST", "/v1/hosts/host:h/events", tok, bad)
 	if code != 400 {
 		t.Fatalf("forbidden field must be 400, got %d", code)
 	}

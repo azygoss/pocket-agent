@@ -228,7 +228,7 @@ func (p *PG) CreatePairing(pr Pairing) error {
 		VALUES ($1,$2,$3,$4,$5,$6)
 		ON CONFLICT (code) DO UPDATE SET tenant_id=EXCLUDED.tenant_id, host_id=EXCLUDED.host_id,
 			payload=EXCLUDED.payload, state=EXCLUDED.state, expires_at=EXCLUDED.expires_at,
-			claimed_by='', device_label='', device_public_key='', created_at=now()
+			claimed_by='', device_label='', device_public_key='', token_hash='', created_at=now()
 		WHERE pairing_sessions.state='EXPIRED'`,
 		pr.Code, pr.TenantID, pr.HostID, pr.Payload, pr.State, pr.ExpiresAt)
 	if err != nil {
@@ -240,11 +240,11 @@ func (p *PG) CreatePairing(pr Pairing) error {
 	return nil
 }
 
-const pairingCols = `code, tenant_id, host_id, payload, state, claimed_by, device_label, device_public_key, expires_at`
+const pairingCols = `code, tenant_id, host_id, payload, state, claimed_by, device_label, device_public_key, token_hash, expires_at`
 
 func scanPairing(row pgx.Row) (Pairing, error) {
 	var pr Pairing
-	err := row.Scan(&pr.Code, &pr.TenantID, &pr.HostID, &pr.Payload, &pr.State, &pr.ClaimedBy, &pr.DeviceLabel, &pr.DevicePublicKey, &pr.ExpiresAt)
+	err := row.Scan(&pr.Code, &pr.TenantID, &pr.HostID, &pr.Payload, &pr.State, &pr.ClaimedBy, &pr.DeviceLabel, &pr.DevicePublicKey, &pr.TokenHash, &pr.ExpiresAt)
 	return pr, err
 }
 
@@ -265,27 +265,15 @@ func (p *PG) ClaimPairing(code string, c Claim, now time.Time) (Pairing, error) 
 		if err != nil {
 			return err
 		}
-		switch {
-		case pr.State == "PENDING" && now.After(pr.ExpiresAt), pr.State == "EXPIRED":
-			return ErrExpired
-		case pr.State == "CLAIMED" && pr.ClaimedBy == c.DeviceID:
-		case pr.State != "PENDING":
-			return ErrConflict
-		}
-		pr.State, pr.ClaimedBy, pr.DeviceLabel, pr.DevicePublicKey = "CLAIMED", c.DeviceID, c.Label, c.PublicKey
-		if _, err := tx.Exec(ctx, `UPDATE pairing_sessions SET state='CLAIMED', claimed_by=$2, device_label=$3, device_public_key=$4 WHERE code=$1`,
-			code, c.DeviceID, c.Label, c.PublicKey); err != nil {
+		if err := claimable(pr, c, now); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO devices(tenant_id, id, label, public_key) VALUES ($1,$2,$3,$4)
-			ON CONFLICT (tenant_id, id) DO UPDATE SET label=EXCLUDED.label, public_key=EXCLUDED.public_key`,
-			pr.TenantID, c.DeviceID, c.Label, c.PublicKey); err != nil {
-			return err
+		pr.State, pr.ClaimedBy, pr.DeviceLabel, pr.DevicePublicKey, pr.TokenHash = "CLAIMED", c.DeviceID, c.Label, c.PublicKey, c.TokenHash
+		if !c.ApproveBy.IsZero() {
+			pr.ExpiresAt = c.ApproveBy
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM tokens WHERE tenant_id=$1 AND kind=$2 AND subject_id=$3`, pr.TenantID, KindDevice, c.DeviceID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO tokens(hash, tenant_id, kind, subject_id) VALUES ($1,$2,$3,$4)`, c.TokenHash, pr.TenantID, KindDevice, c.DeviceID); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE pairing_sessions SET state='CLAIMED', claimed_by=$2, device_label=$3, device_public_key=$4, token_hash=$5, expires_at=$6 WHERE code=$1`,
+			code, c.DeviceID, c.Label, c.PublicKey, c.TokenHash, pr.ExpiresAt); err != nil {
 			return err
 		}
 		out = pr
@@ -294,9 +282,9 @@ func (p *PG) ClaimPairing(code string, c Claim, now time.Time) (Pairing, error) 
 	return out, err
 }
 
-func (p *PG) FinishPairing(tenant, code string, approved bool) error {
+func (p *PG) FinishPairing(tenant, hostID, code string, approved bool, now time.Time) error {
 	return p.inTx(func(ctx context.Context, tx pgx.Tx) error {
-		pr, err := scanPairing(tx.QueryRow(ctx, `SELECT `+pairingCols+` FROM pairing_sessions WHERE code=$1 AND tenant_id=$2 FOR UPDATE`, code, tenant))
+		pr, err := scanPairing(tx.QueryRow(ctx, `SELECT `+pairingCols+` FROM pairing_sessions WHERE code=$1 AND tenant_id=$2 AND host_id=$3 FOR UPDATE`, code, tenant, hostID))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -306,13 +294,21 @@ func (p *PG) FinishPairing(tenant, code string, approved bool) error {
 		if pr.State != "CLAIMED" {
 			return ErrConflict
 		}
-		state := "CONSUMED"
-		if !approved {
-			state = "REJECTED"
-			if _, err := tx.Exec(ctx, `DELETE FROM devices WHERE tenant_id=$1 AND id=$2`, tenant, pr.ClaimedBy); err != nil {
+		if now.After(pr.ExpiresAt) {
+			return ErrExpired
+		}
+		state := "REJECTED"
+		if approved {
+			state = "CONSUMED"
+			if _, err := tx.Exec(ctx, `INSERT INTO devices(tenant_id, id, label, public_key) VALUES ($1,$2,$3,$4)
+				ON CONFLICT (tenant_id, id) DO UPDATE SET label=EXCLUDED.label, public_key=EXCLUDED.public_key`,
+				tenant, pr.ClaimedBy, pr.DeviceLabel, pr.DevicePublicKey); err != nil {
 				return err
 			}
 			if _, err := tx.Exec(ctx, `DELETE FROM tokens WHERE tenant_id=$1 AND kind=$2 AND subject_id=$3`, tenant, KindDevice, pr.ClaimedBy); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO tokens(hash, tenant_id, kind, subject_id) VALUES ($1,$2,$3,$4)`, pr.TokenHash, tenant, KindDevice, pr.ClaimedBy); err != nil {
 				return err
 			}
 		}
@@ -433,7 +429,7 @@ func (p *PG) SweepTTL(now time.Time) (events, pairings int) {
 	if tag, err := p.exec(`DELETE FROM agent_events WHERE expires_at <= $1`, now); err == nil {
 		events = int(tag.RowsAffected())
 	}
-	if tag, err := p.exec(`UPDATE pairing_sessions SET state='EXPIRED', payload='' WHERE state='PENDING' AND expires_at <= $1`, now); err == nil {
+	if tag, err := p.exec(`UPDATE pairing_sessions SET state='EXPIRED', payload='' WHERE state IN ('PENDING','CLAIMED') AND expires_at <= $1`, now); err == nil {
 		pairings = int(tag.RowsAffected())
 	}
 	// Finished/expired pairings are kept a day for audit, then dropped.

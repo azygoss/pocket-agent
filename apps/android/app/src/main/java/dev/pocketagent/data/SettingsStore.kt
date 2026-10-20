@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.first
 
 // P10/P13: görünüm + backend bağlantı tercihleri DataStore'da kalıcı.
 // backendToken: eşlemede verilen cihaz bearer token'ı (Authorization header).
+// DataStore'a yazılmaz; Keystore anahtarıyla şifreli SecretStore'da durur.
 data class PersistedSettings(
     val fontScale: Float = 1f,
     val backendUrl: String = "",
@@ -37,10 +38,15 @@ interface SettingsStore {
 
 private val Context.prefs by preferencesDataStore(name = "settings")
 
-class DataStoreSettingsStore(private val context: Context) : SettingsStore {
+class DataStoreSettingsStore(
+    private val context: Context,
+    private val secrets: dev.pocketagent.security.SecretStore =
+        dev.pocketagent.security.KeystoreSecretStore(java.io.File(context.filesDir, "secrets")),
+) : SettingsStore {
+    private val tokenSecretId = "backend-token"
+
     private val fontKey = floatPreferencesKey("font_scale")
     private val urlKey = stringPreferencesKey("backend_url")
-    private val tokenKey = stringPreferencesKey("backend_token")
     private val autoReconnectKey = booleanPreferencesKey("auto_reconnect")
     private val autoReconnectDropKey = booleanPreferencesKey("auto_reconnect_drop")
     private val themeIdKey = stringPreferencesKey("theme_id")
@@ -55,7 +61,7 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
         return PersistedSettings(
             fontScale = p[fontKey] ?: 1f,
             backendUrl = p[urlKey] ?: "",
-            backendToken = p[tokenKey] ?: "",
+            backendToken = (secrets.load(tokenSecretId) as? dev.pocketagent.transport.Secret.Password)?.value ?: "",
             autoReconnect = p[autoReconnectKey] ?: false,
             autoReconnectOnDrop = p[autoReconnectDropKey] ?: true,
             themeId = p[themeIdKey] ?: "pocket",
@@ -67,10 +73,14 @@ class DataStoreSettingsStore(private val context: Context) : SettingsStore {
     }
 
     override suspend fun save(s: PersistedSettings) {
+        if (s.backendToken.isBlank()) {
+            secrets.delete(tokenSecretId)
+        } else {
+            secrets.save(tokenSecretId, dev.pocketagent.transport.Secret.Password(s.backendToken))
+        }
         context.prefs.edit {
             it[fontKey] = s.fontScale
             it[urlKey] = s.backendUrl
-            it[tokenKey] = s.backendToken
             it[autoReconnectKey] = s.autoReconnect
             it[autoReconnectDropKey] = s.autoReconnectOnDrop
             it[themeIdKey] = s.themeId

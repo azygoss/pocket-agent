@@ -416,9 +416,9 @@ fun PairingSheet(
             PocketTextField(
                 code,
                 { v ->
-                    // QR içeriği ("pa1|…") yapıştırıldıysa doğrudan eşle.
+                    // QR içeriği ("pa2|…", eski "pa1|…") yapıştırıldıysa doğrudan eşle.
                     val raw = v.trim()
-                    if (raw.startsWith("pa1|")) {
+                    if (raw.startsWith("pa1|") || raw.startsWith("pa2|")) {
                         code = ""
                         onCode(backend.ifBlank { backendUrl }, raw)
                     } else {

@@ -112,10 +112,8 @@ func ensureHostToken(backend, enroll string, force bool) (string, error) {
 	case code != 201 || out.HostToken == "":
 		return "", fmt.Errorf("host kaydı başarısız: HTTP %d", code)
 	}
-	c.HostToken, c.TokenBackend = out.HostToken, backend
-	if c.BackendURL == "" {
-		c.BackendURL = backend
-	}
+	// The token only works on this backend, so events must follow it.
+	c.HostToken, c.TokenBackend, c.BackendURL = out.HostToken, backend, backend
 	if err := config.Save(p, c); err != nil {
 		return "", err
 	}
@@ -293,8 +291,13 @@ func runPair(o pairOpts, in io.Reader, out io.Writer) error {
 		return fmt.Errorf("authorized_keys: %w", err)
 	}
 	if err := finishPair(o.backend, token, code, true); err != nil {
-		_, _ = pairing.RevokeAuthorizedKey(ak, marker)
-		return err
+		// The request may have committed even though the response was lost:
+		// keep the key if the backend already says CONSUMED.
+		var st claimView
+		if c, e := apiCall("GET", o.backend, "/v1/pairing-sessions/"+strings.ReplaceAll(code, "-", ""), token, nil, &st); e != nil || c != 200 || st.State != "CONSUMED" {
+			_, _ = pairing.RevokeAuthorizedKey(ak, marker)
+			return err
+		}
 	}
 	fmt.Fprintf(out, "  ✓ %s eşleşti. Erişimi kaldırmak için: pocket-agent unpair %s\n", name, code)
 	return nil

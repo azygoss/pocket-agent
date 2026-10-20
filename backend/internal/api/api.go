@@ -111,12 +111,12 @@ func (s *Server) routes() *http.ServeMux {
 	m.HandleFunc("GET /v1/whoami", s.authed(s.handleWhoami, any...))
 	m.HandleFunc("POST /v1/pairing-sessions", s.authed(s.handlePairCreate, store.KindHost))
 	m.HandleFunc("POST /v1/pairing-sessions/{code}/claim", s.handlePairClaim)
-	m.HandleFunc("GET /v1/pairing-sessions/{code}", s.authed(s.handlePairGet, any...))
+	m.HandleFunc("GET /v1/pairing-sessions/{code}", s.handlePairGet)
 	m.HandleFunc("POST /v1/pairing-sessions/{code}/complete", s.authed(s.handlePairComplete, store.KindHost))
 	m.HandleFunc("GET /v1/devices", s.authed(s.handleDeviceList, any...))
 	m.HandleFunc("DELETE /v1/devices/{deviceId}", s.authed(s.handleDeviceDel, any...))
 	m.HandleFunc("GET /v1/hosts", s.authed(s.handleHostList, any...))
-	m.HandleFunc("DELETE /v1/hosts/{hostId}", s.authed(s.handleHostDel, any...))
+	m.HandleFunc("DELETE /v1/hosts/{hostId}", s.authed(s.handleHostDel, store.KindHost))
 	m.HandleFunc("GET /v1/usages", s.authed(s.handleUsages, any...))
 	m.HandleFunc("POST /v1/uploads", s.authed(s.handleUploadCreate, any...))
 	m.HandleFunc("GET /i/{shortCode}", s.handleUploadGet)
@@ -198,6 +198,10 @@ func (s *Server) handleWhoami(w http.ResponseWriter, _ *http.Request, p principa
 
 func (s *Server) handlePostEvent(w http.ResponseWriter, r *http.Request, p principal) {
 	s.nEvents.Add(1)
+	if r.PathValue("hostId") != p.Subject {
+		http.Error(w, "host token does not match path", 403)
+		return
+	}
 	var raw json.RawMessage
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err := dec.Decode(&raw); err != nil {
@@ -330,7 +334,8 @@ func (s *Server) handlePairClaim(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", 500)
 		return
 	}
-	pr, err := s.Store.ClaimPairing(NormalizeCode(r.PathValue("code")), store.Claim{DeviceID: v.DeviceID, Label: v.DeviceName, PublicKey: pub, TokenHash: hash}, time.Now())
+	now := time.Now()
+	pr, err := s.Store.ClaimPairing(NormalizeCode(r.PathValue("code")), store.Claim{DeviceID: v.DeviceID, Label: v.DeviceName, PublicKey: pub, TokenHash: hash, ApproveBy: now.Add(pairingTTL)}, now)
 	switch {
 	case errors.Is(err, store.ErrConflict):
 		http.Error(w, "already claimed by another device", 409)
@@ -363,21 +368,35 @@ func normalizePublicKey(s string) (string, error) {
 	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(k))), nil
 }
 
-func (s *Server) handlePairGet(w http.ResponseWriter, r *http.Request, p principal) {
+// handlePairGet: the opening host sees the claim (device + public key); the
+// claimant polls with the token it got at claim, which is not yet a valid
+// bearer token (approval activates it), so it is matched against the
+// pairing's own token hash.
+func (s *Server) handlePairGet(w http.ResponseWriter, r *http.Request) {
 	pr, ok := s.Store.GetPairing(NormalizeCode(r.PathValue("code")))
 	state := pr.State
-	if ok && state == "PENDING" && time.Now().After(pr.ExpiresAt) {
+	if ok && (state == "PENDING" || state == "CLAIMED") && time.Now().After(pr.ExpiresAt) {
 		state = "EXPIRED"
 	}
+	tok := bearer(r)
+	if tok == "" {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="pocket-agent"`)
+		http.Error(w, "unauthorized", 401)
+		return
+	}
+	p, _ := s.principalOf(r)
 	switch {
-	case ok && p.Kind == store.KindHost && pr.TenantID == p.Tenant:
+	case ok && p.Kind == store.KindHost && pr.TenantID == p.Tenant && pr.HostID == p.Subject:
 		writeJSON(w, 200, map[string]any{
 			"code": pr.Code, "state": state, "device_id": pr.ClaimedBy,
 			"device_name": pr.DeviceLabel, "public_key": pr.DevicePublicKey,
 			"expires_in": int(time.Until(pr.ExpiresAt).Seconds()),
 		})
-	case ok && p.Kind == store.KindDevice && pr.TenantID == p.Tenant && pr.ClaimedBy == p.Subject:
+	case ok && pr.TokenHash != "" && auth.Verify(tok, pr.TokenHash):
 		writeJSON(w, 200, map[string]any{"code": pr.Code, "state": state})
+	case p.Tenant == "":
+		w.Header().Set("WWW-Authenticate", `Bearer realm="pocket-agent"`)
+		http.Error(w, "unauthorized", 401)
 	default:
 		http.Error(w, "not found", 404) // no cross-tenant existence oracle
 	}
@@ -391,10 +410,12 @@ func (s *Server) handlePairComplete(w http.ResponseWriter, r *http.Request, p pr
 		http.Error(w, "bad request", 400)
 		return
 	}
-	err := s.Store.FinishPairing(p.Tenant, NormalizeCode(r.PathValue("code")), v.Approved)
+	err := s.Store.FinishPairing(p.Tenant, p.Subject, NormalizeCode(r.PathValue("code")), v.Approved, time.Now())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		http.Error(w, "not found", 404)
+	case errors.Is(err, store.ErrExpired):
+		http.Error(w, "approval window expired", 410)
 	case errors.Is(err, store.ErrConflict):
 		http.Error(w, "pairing is not awaiting approval", 409)
 	case err != nil:
@@ -424,7 +445,12 @@ func (s *Server) handleHostList(w http.ResponseWriter, _ *http.Request, p princi
 	writeJSON(w, 200, s.Store.ListHosts(p.Tenant))
 }
 
+// A host may only deregister itself; devices cannot revoke host access.
 func (s *Server) handleHostDel(w http.ResponseWriter, r *http.Request, p principal) {
+	if r.PathValue("hostId") != p.Subject {
+		http.Error(w, "forbidden", 403)
+		return
+	}
 	if err := s.Store.RemoveHost(p.Tenant, r.PathValue("hostId")); err != nil {
 		http.Error(w, "not found", 404)
 		return
@@ -510,8 +536,11 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) clientIP(r *http.Request) string {
 	if s.TrustProxy {
+		// The trusted proxy appends the peer it saw; earlier entries are
+		// client-controlled, so only the last one is used.
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			return strings.TrimSpace(strings.Split(xff, ",")[0])
+			parts := strings.Split(xff, ",")
+			return strings.TrimSpace(parts[len(parts)-1])
 		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

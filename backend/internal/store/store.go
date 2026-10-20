@@ -44,7 +44,11 @@ type Pairing struct {
 	ClaimedBy       string
 	DeviceLabel     string
 	DevicePublicKey string
-	ExpiresAt       time.Time
+	// Hash of the device token handed out at claim. It only becomes a
+	// usable bearer token once the host approves (FinishPairing); until
+	// then it merely lets the claimant poll this pairing's state.
+	TokenHash string
+	ExpiresAt time.Time
 }
 
 type Upload struct {
@@ -81,6 +85,8 @@ type Claim struct {
 	Label     string
 	PublicKey string
 	TokenHash string // device token minted for this claim
+	// ApproveBy: host must approve before this; zero keeps the code's TTL.
+	ApproveBy time.Time
 }
 
 var (
@@ -112,7 +118,7 @@ type Backend interface {
 	ClaimPairing(code string, c Claim, now time.Time) (Pairing, error)
 	// FinishPairing moves CLAIMED → CONSUMED (approved) or REJECTED. A
 	// rejected claim loses its device and tokens.
-	FinishPairing(tenant, code string, approved bool) error
+	FinishPairing(tenant, hostID, code string, approved bool, now time.Time) error
 
 	PutEvent(tenant string, e Event) error
 	GetEvents(tenant, after string) []Event
@@ -282,7 +288,7 @@ func (s *Store) SweepTTL(now time.Time) (events, pairings int) {
 		}
 	}
 	for c, p := range s.pairings {
-		if !p.ExpiresAt.After(now) && p.State == "PENDING" {
+		if !p.ExpiresAt.After(now) && (p.State == "PENDING" || p.State == "CLAIMED") {
 			p.State, p.Payload = "EXPIRED", ""
 			s.pairings[c] = p
 			pairings++
@@ -338,42 +344,59 @@ func (s *Store) ClaimPairing(code string, c Claim, now time.Time) (Pairing, erro
 	if !ok {
 		return Pairing{}, ErrNotFound
 	}
-	switch {
-	case p.State == "PENDING" && now.After(p.ExpiresAt), p.State == "EXPIRED":
-		return Pairing{}, ErrExpired
-	case p.State == "CLAIMED" && p.ClaimedBy == c.DeviceID:
-		// retry after a lost response: replace the token below
-	case p.State != "PENDING":
-		return Pairing{}, ErrConflict
+	if err := claimable(p, c, now); err != nil {
+		return Pairing{}, err
 	}
-	p.State, p.ClaimedBy, p.DeviceLabel, p.DevicePublicKey = "CLAIMED", c.DeviceID, c.Label, c.PublicKey
+	p.State, p.ClaimedBy, p.DeviceLabel, p.DevicePublicKey, p.TokenHash = "CLAIMED", c.DeviceID, c.Label, c.PublicKey, c.TokenHash
+	if !c.ApproveBy.IsZero() {
+		p.ExpiresAt = c.ApproveBy
+	}
 	s.pairings[code] = p
-	if s.devices[p.TenantID] == nil {
-		s.devices[p.TenantID] = map[string]Device{}
-	}
-	s.devices[p.TenantID][c.DeviceID] = Device{ID: c.DeviceID, Label: c.Label, PublicKey: c.PublicKey}
-	s.revokeLocked(p.TenantID, KindDevice, c.DeviceID)
-	s.tokens[c.TokenHash] = Token{Hash: c.TokenHash, TenantID: p.TenantID, Kind: KindDevice, SubjectID: c.DeviceID}
 	return p, nil
 }
 
-func (s *Store) FinishPairing(tenant, code string, approved bool) error {
+// claimable: PENDING codes may be claimed; a CLAIMED code only by the same
+// device retrying after a lost response (its pending token is replaced).
+// Nothing touches devices/tokens before the host approves.
+func claimable(p Pairing, c Claim, now time.Time) error {
+	switch {
+	case p.State == "EXPIRED", (p.State == "PENDING" || p.State == "CLAIMED") && now.After(p.ExpiresAt):
+		return ErrExpired
+	case p.State == "CLAIMED" && p.ClaimedBy == c.DeviceID:
+		return nil
+	case p.State != "PENDING":
+		return ErrConflict
+	}
+	return nil
+}
+
+// FinishPairing: only the host that opened the code may decide, and only
+// before the approval deadline. Approval enrolls the device and activates
+// its token (replacing any earlier token of that device).
+func (s *Store) FinishPairing(tenant, hostID, code string, approved bool, now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.pairings[code]
-	if !ok || p.TenantID != tenant {
+	if !ok || p.TenantID != tenant || p.HostID != hostID {
 		return ErrNotFound
 	}
 	if p.State != "CLAIMED" {
 		return ErrConflict
 	}
+	if now.After(p.ExpiresAt) {
+		return ErrExpired
+	}
 	p.Payload = ""
 	if approved {
 		p.State = "CONSUMED"
+		if s.devices[tenant] == nil {
+			s.devices[tenant] = map[string]Device{}
+		}
+		s.devices[tenant][p.ClaimedBy] = Device{ID: p.ClaimedBy, Label: p.DeviceLabel, PublicKey: p.DevicePublicKey}
+		s.revokeLocked(tenant, KindDevice, p.ClaimedBy)
+		s.tokens[p.TokenHash] = Token{Hash: p.TokenHash, TenantID: tenant, Kind: KindDevice, SubjectID: p.ClaimedBy}
 	} else {
 		p.State = "REJECTED"
-		delete(s.devices[tenant], p.ClaimedBy)
-		s.revokeLocked(tenant, KindDevice, p.ClaimedBy)
 	}
 	s.pairings[code] = p
 	return nil
@@ -449,6 +472,9 @@ func (s *Store) PutUpload(tenant string, u Upload) error {
 	defer s.mu.Unlock()
 	if k, ok := s.byShort[u.ShortCode]; ok && k != key(tenant, u.ID) {
 		return ErrConflict
+	}
+	if old, ok := s.uploads[key(tenant, u.ID)]; ok && old.ShortCode != u.ShortCode {
+		delete(s.byShort, old.ShortCode)
 	}
 	s.uploads[key(tenant, u.ID)] = u
 	s.byShort[u.ShortCode] = key(tenant, u.ID)
