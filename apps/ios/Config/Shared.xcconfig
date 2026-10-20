@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Sürüm ve kimlik: App Store Connect'teki kayıtla eşleşmeli.
+MARKETING_VERSION = 1.0.0
+CURRENT_PROJECT_VERSION = 1
+POCKET_BUNDLE_ID = dev.pocketagent.ios
+// İmzalama: Apple Developer Team ID'ni Config/Signing.local.xcconfig içine
+// DEVELOPMENT_TEAM = XXXXXXXXXX olarak yaz (git'e girmez).
+DEVELOPMENT_TEAM =
+#include? "Signing.local.xcconfig"

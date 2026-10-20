@@ -39,3 +39,15 @@ jobs:
       - name: lint + unit (emülatör yok; connectedTest atlanır)
         working-directory: apps/android
         run: ./gradlew :app:lintDebug :app:testDebugUnitTest
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: build + unit tests (Simulator, unsigned)
+        working-directory: apps/ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          dest=$(xcrun simctl list devices available -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if 'iPhone' in x['name']))")
+          xcodebuild test -project PocketAgent.xcodeproj -scheme PocketAgent -destination "id=$dest" \
+            -only-testing:PocketAgentTests CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO

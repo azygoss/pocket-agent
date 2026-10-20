@@ -1,0 +1,778 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		15C565866CA3614DCD0E6D90 /* Crypto in Frameworks */ = {isa = PBXBuildFile; productRef = 2F3B744B7C8FAB63CF3CA780 /* Crypto */; };
+		3D9BA499EABF19968E9A52EC /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 3CE9BC443E57826A98FFFAB1 /* SwiftTerm */; };
+		55AC7CD55FDD67D8528986A3 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2D200A4C100BE742B333300 /* WelcomeView.swift */; };
+		57C1DC11C546586740332354 /* DeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C8CC0DFEEC5AC767BDB51D8 /* DeviceIdentity.swift */; };
+		5A1ACC3EBBD6B1FA4BB93A13 /* PocketAgentUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33984E964C55A97F1B1F00CB /* PocketAgentUITests.swift */; };
+		68CE88090F772DC1852044BD /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 140CF9BD4E7C56C313474F83 /* NIOCore */; };
+		707BA182D960453649FBD239 /* HostsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BAF3CCA0C131465873B54AE /* HostsView.swift */; };
+		769951F42405C4766C75FC77 /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D152642A35566777105E7E5E /* PairingView.swift */; };
+		76D2AB6200CF70C15D8431F1 /* PairingLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B8CD9F53BB049F42BC6190 /* PairingLink.swift */; };
+		77275CB264713D063C4BEDA5 /* TerminalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61C189D357DFCE532794634 /* TerminalScreen.swift */; };
+		77D8A2622D6AAD280E0F00F0 /* CoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E20FE65FDD30D5F1C890A99 /* CoreTests.swift */; };
+		7FEBBFA1D0EBC49F848F8DE0 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BF5952ECA7DF8181B486092 /* Models.swift */; };
+		83C8E1E5DAE72E3B5F02A665 /* TerminalSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D3AD5BBE52F5FFB6122234 /* TerminalSession.swift */; };
+		A23CD64B2F21C8B7C7768EDB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B14B7CA12E8A34265F002E07 /* PrivacyInfo.xcprivacy */; };
+		B091CBB3B088B4CA0ABE0520 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E06610F4FF5A35D5D9D672FD /* AppModel.swift */; };
+		B09E6F4C6BF330F0D9DFED93 /* PocketAgentApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD8FB6BCCD59245B35EC8206 /* PocketAgentApp.swift */; };
+		B568E1921714538CFF10015F /* BackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 884942195545A46C3D6F37C3 /* BackendClient.swift */; };
+		D4CEFC6AD253DDC49CC57AF1 /* SSHConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45F7A9D2BE694A39A58AAC89 /* SSHConnection.swift */; };
+		DB6AE59CC9F8F453297D647A /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 0BB0AB1F558966394AA5171B /* Citadel */; };
+		E5F01A2AAD45DA290D04C7B0 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = C8F758F14BB972DF0595AE87 /* NIOSSH */; };
+		EB4BA347C0BA21795C6941CC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7FDB3779313550EFC3CDB14E /* Assets.xcassets */; };
+		F0EA7E496CE86EF8D882FBE0 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39EA570087C4AAF171C9E18E /* Keychain.swift */; };
+		F7637FF85A625B7EE82CFECA /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F930214E9D1C000C24FD6AA8 /* SettingsView.swift */; };
+		F9F063A77FD05CE2A7DBFDAC /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 798191B938A4B3A5A21DD829 /* Theme.swift */; };
+		FC6A6EAC71BF38AF082F69F1 /* InboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE236F57BE6333B120D173F6 /* InboxView.swift */; };
+		FE6CA63AB49F34018CED228C /* FilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BF361506D38505EFD997599 /* FilesView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		410A25F4FAB0D130DC3B52CD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8195E6DC41FEFBEAC1016EFC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9CD94193A95764321AF71ABE;
+			remoteInfo = PocketAgent;
+		};
+		A3ECA9F9CB1229FA2DAD0D93 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8195E6DC41FEFBEAC1016EFC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9CD94193A95764321AF71ABE;
+			remoteInfo = PocketAgent;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0BF5952ECA7DF8181B486092 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		31B8CD9F53BB049F42BC6190 /* PairingLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingLink.swift; sourceTree = "<group>"; };
+		33984E964C55A97F1B1F00CB /* PocketAgentUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketAgentUITests.swift; sourceTree = "<group>"; };
+		39EA570087C4AAF171C9E18E /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		3C8CC0DFEEC5AC767BDB51D8 /* DeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentity.swift; sourceTree = "<group>"; };
+		45F7A9D2BE694A39A58AAC89 /* SSHConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHConnection.swift; sourceTree = "<group>"; };
+		5E20FE65FDD30D5F1C890A99 /* CoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreTests.swift; sourceTree = "<group>"; };
+		6B4DD87A59FF19E9F26C2D32 /* PocketAgentUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PocketAgentUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		6BAF3CCA0C131465873B54AE /* HostsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostsView.swift; sourceTree = "<group>"; };
+		798191B938A4B3A5A21DD829 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		7FDB3779313550EFC3CDB14E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		80D40F33E48BC0D97B9647E8 /* PocketAgentTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PocketAgentTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		884942195545A46C3D6F37C3 /* BackendClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendClient.swift; sourceTree = "<group>"; };
+		8BF361506D38505EFD997599 /* FilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesView.swift; sourceTree = "<group>"; };
+		A1D3AD5BBE52F5FFB6122234 /* TerminalSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSession.swift; sourceTree = "<group>"; };
+		AD8FB6BCCD59245B35EC8206 /* PocketAgentApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketAgentApp.swift; sourceTree = "<group>"; };
+		B14B7CA12E8A34265F002E07 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		C1B9ED0EA79C8F62CBA70B3A /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		C665F785846C7EF4BFDF68CC /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		D152642A35566777105E7E5E /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
+		D2D200A4C100BE742B333300 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		E06610F4FF5A35D5D9D672FD /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		E901918E882C6D22A1FA4148 /* PocketAgent.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PocketAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F59648D76D829C269B95DDA5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		F61C189D357DFCE532794634 /* TerminalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalScreen.swift; sourceTree = "<group>"; };
+		F930214E9D1C000C24FD6AA8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		FE236F57BE6333B120D173F6 /* InboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		50105D989524B55EE3326337 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DB6AE59CC9F8F453297D647A /* Citadel in Frameworks */,
+				E5F01A2AAD45DA290D04C7B0 /* NIOSSH in Frameworks */,
+				68CE88090F772DC1852044BD /* NIOCore in Frameworks */,
+				15C565866CA3614DCD0E6D90 /* Crypto in Frameworks */,
+				3D9BA499EABF19968E9A52EC /* SwiftTerm in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0839A23ECA0668C5CCE68A80 /* PocketAgentTests */ = {
+			isa = PBXGroup;
+			children = (
+				5E20FE65FDD30D5F1C890A99 /* CoreTests.swift */,
+			);
+			path = PocketAgentTests;
+			sourceTree = "<group>";
+		};
+		1198D779610F6B27A6B189F0 /* PocketAgent */ = {
+			isa = PBXGroup;
+			children = (
+				8205017D08EB8789C56CD4C9 /* App */,
+				3AB4D56364BA347ED4C35970 /* Core */,
+				E3CF3AD820796774D6B2DABC /* Features */,
+				BB7813230A5E3413F804D562 /* Resources */,
+			);
+			path = PocketAgent;
+			sourceTree = "<group>";
+		};
+		170FEACD63AEF4C915EEACDC /* Terminal */ = {
+			isa = PBXGroup;
+			children = (
+				F61C189D357DFCE532794634 /* TerminalScreen.swift */,
+			);
+			path = Terminal;
+			sourceTree = "<group>";
+		};
+		17333BB2BCABD571149DFE93 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				F930214E9D1C000C24FD6AA8 /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		1E301514F1B12DC5F20EAE47 /* PocketAgentUITests */ = {
+			isa = PBXGroup;
+			children = (
+				33984E964C55A97F1B1F00CB /* PocketAgentUITests.swift */,
+			);
+			path = PocketAgentUITests;
+			sourceTree = "<group>";
+		};
+		311D6055625FB44BC8ADBDFC /* Inbox */ = {
+			isa = PBXGroup;
+			children = (
+				FE236F57BE6333B120D173F6 /* InboxView.swift */,
+			);
+			path = Inbox;
+			sourceTree = "<group>";
+		};
+		351C204C251670F4FF4D2045 /* Pairing */ = {
+			isa = PBXGroup;
+			children = (
+				D152642A35566777105E7E5E /* PairingView.swift */,
+				D2D200A4C100BE742B333300 /* WelcomeView.swift */,
+			);
+			path = Pairing;
+			sourceTree = "<group>";
+		};
+		3AB4D56364BA347ED4C35970 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				E06610F4FF5A35D5D9D672FD /* AppModel.swift */,
+				884942195545A46C3D6F37C3 /* BackendClient.swift */,
+				3C8CC0DFEEC5AC767BDB51D8 /* DeviceIdentity.swift */,
+				39EA570087C4AAF171C9E18E /* Keychain.swift */,
+				0BF5952ECA7DF8181B486092 /* Models.swift */,
+				31B8CD9F53BB049F42BC6190 /* PairingLink.swift */,
+				45F7A9D2BE694A39A58AAC89 /* SSHConnection.swift */,
+				A1D3AD5BBE52F5FFB6122234 /* TerminalSession.swift */,
+				798191B938A4B3A5A21DD829 /* Theme.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		5D695D0E583F9F4E6BC0201C = {
+			isa = PBXGroup;
+			children = (
+				6858C76116501E2224E0213D /* Config */,
+				1198D779610F6B27A6B189F0 /* PocketAgent */,
+				0839A23ECA0668C5CCE68A80 /* PocketAgentTests */,
+				1E301514F1B12DC5F20EAE47 /* PocketAgentUITests */,
+				BAC2CBC1659C78F25D37FF6F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		67B987289252A2282A948954 /* Files */ = {
+			isa = PBXGroup;
+			children = (
+				8BF361506D38505EFD997599 /* FilesView.swift */,
+			);
+			path = Files;
+			sourceTree = "<group>";
+		};
+		6858C76116501E2224E0213D /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				C1B9ED0EA79C8F62CBA70B3A /* Debug.xcconfig */,
+				C665F785846C7EF4BFDF68CC /* Release.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		8205017D08EB8789C56CD4C9 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				AD8FB6BCCD59245B35EC8206 /* PocketAgentApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		9559A99F75C1E185B6CD0B35 /* Hosts */ = {
+			isa = PBXGroup;
+			children = (
+				6BAF3CCA0C131465873B54AE /* HostsView.swift */,
+			);
+			path = Hosts;
+			sourceTree = "<group>";
+		};
+		BAC2CBC1659C78F25D37FF6F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E901918E882C6D22A1FA4148 /* PocketAgent.app */,
+				80D40F33E48BC0D97B9647E8 /* PocketAgentTests.xctest */,
+				6B4DD87A59FF19E9F26C2D32 /* PocketAgentUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		BB7813230A5E3413F804D562 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				7FDB3779313550EFC3CDB14E /* Assets.xcassets */,
+				F59648D76D829C269B95DDA5 /* Info.plist */,
+				B14B7CA12E8A34265F002E07 /* PrivacyInfo.xcprivacy */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		E3CF3AD820796774D6B2DABC /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				67B987289252A2282A948954 /* Files */,
+				9559A99F75C1E185B6CD0B35 /* Hosts */,
+				311D6055625FB44BC8ADBDFC /* Inbox */,
+				351C204C251670F4FF4D2045 /* Pairing */,
+				17333BB2BCABD571149DFE93 /* Settings */,
+				170FEACD63AEF4C915EEACDC /* Terminal */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0BE5F64EA364BAD37363091C /* PocketAgentTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E7F5EAFAEB13D43FB5019A9E /* Build configuration list for PBXNativeTarget "PocketAgentTests" */;
+			buildPhases = (
+				F43EE1E5776DED88488F5472 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F74E2315F8123F09CFAA667C /* PBXTargetDependency */,
+			);
+			name = PocketAgentTests;
+			packageProductDependencies = (
+			);
+			productName = PocketAgentTests;
+			productReference = 80D40F33E48BC0D97B9647E8 /* PocketAgentTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		4E57B0E5737BC8FCF8777C1C /* PocketAgentUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D07362AEFC0761D6A8265349 /* Build configuration list for PBXNativeTarget "PocketAgentUITests" */;
+			buildPhases = (
+				2B764C67CAF5FC0E6D162756 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8237826533912A12FB1597B6 /* PBXTargetDependency */,
+			);
+			name = PocketAgentUITests;
+			packageProductDependencies = (
+			);
+			productName = PocketAgentUITests;
+			productReference = 6B4DD87A59FF19E9F26C2D32 /* PocketAgentUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		9CD94193A95764321AF71ABE /* PocketAgent */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BEE8F7E091B2912613B482B2 /* Build configuration list for PBXNativeTarget "PocketAgent" */;
+			buildPhases = (
+				9B11857713AA500D58245F89 /* Sources */,
+				ACE7D8E630E175740EDDBCC0 /* Resources */,
+				50105D989524B55EE3326337 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PocketAgent;
+			packageProductDependencies = (
+				0BB0AB1F558966394AA5171B /* Citadel */,
+				C8F758F14BB972DF0595AE87 /* NIOSSH */,
+				140CF9BD4E7C56C313474F83 /* NIOCore */,
+				2F3B744B7C8FAB63CF3CA780 /* Crypto */,
+				3CE9BC443E57826A98FFFAB1 /* SwiftTerm */,
+			);
+			productName = PocketAgent;
+			productReference = E901918E882C6D22A1FA4148 /* PocketAgent.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8195E6DC41FEFBEAC1016EFC /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					0BE5F64EA364BAD37363091C = {
+						DevelopmentTeam = "";
+					};
+					4E57B0E5737BC8FCF8777C1C = {
+						DevelopmentTeam = "";
+						TestTargetID = 9CD94193A95764321AF71ABE;
+					};
+					9CD94193A95764321AF71ABE = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = B934AB503F0D47B705AB1B12 /* Build configuration list for PBXProject "PocketAgent" */;
+			developmentRegion = tr;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				tr,
+			);
+			mainGroup = 5D695D0E583F9F4E6BC0201C;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F49895DBC2C04569217BABA7 /* XCRemoteSwiftPackageReference "Citadel" */,
+				85515CBCDFB3F209B330AB23 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				CEEE3961753E928C4486ADF2 /* XCRemoteSwiftPackageReference "swift-crypto" */,
+				F5069463D31257EA45219BE4 /* XCRemoteSwiftPackageReference "swift-nio" */,
+				E7306B4AF5F683B44E43620A /* XCRemoteSwiftPackageReference "swift-nio-ssh" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = BAC2CBC1659C78F25D37FF6F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9CD94193A95764321AF71ABE /* PocketAgent */,
+				0BE5F64EA364BAD37363091C /* PocketAgentTests */,
+				4E57B0E5737BC8FCF8777C1C /* PocketAgentUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		ACE7D8E630E175740EDDBCC0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EB4BA347C0BA21795C6941CC /* Assets.xcassets in Resources */,
+				A23CD64B2F21C8B7C7768EDB /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2B764C67CAF5FC0E6D162756 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A1ACC3EBBD6B1FA4BB93A13 /* PocketAgentUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9B11857713AA500D58245F89 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B091CBB3B088B4CA0ABE0520 /* AppModel.swift in Sources */,
+				B568E1921714538CFF10015F /* BackendClient.swift in Sources */,
+				57C1DC11C546586740332354 /* DeviceIdentity.swift in Sources */,
+				FE6CA63AB49F34018CED228C /* FilesView.swift in Sources */,
+				707BA182D960453649FBD239 /* HostsView.swift in Sources */,
+				FC6A6EAC71BF38AF082F69F1 /* InboxView.swift in Sources */,
+				F0EA7E496CE86EF8D882FBE0 /* Keychain.swift in Sources */,
+				7FEBBFA1D0EBC49F848F8DE0 /* Models.swift in Sources */,
+				76D2AB6200CF70C15D8431F1 /* PairingLink.swift in Sources */,
+				769951F42405C4766C75FC77 /* PairingView.swift in Sources */,
+				B09E6F4C6BF330F0D9DFED93 /* PocketAgentApp.swift in Sources */,
+				D4CEFC6AD253DDC49CC57AF1 /* SSHConnection.swift in Sources */,
+				F7637FF85A625B7EE82CFECA /* SettingsView.swift in Sources */,
+				77275CB264713D063C4BEDA5 /* TerminalScreen.swift in Sources */,
+				83C8E1E5DAE72E3B5F02A665 /* TerminalSession.swift in Sources */,
+				F9F063A77FD05CE2A7DBFDAC /* Theme.swift in Sources */,
+				55AC7CD55FDD67D8528986A3 /* WelcomeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F43EE1E5776DED88488F5472 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				77D8A2622D6AAD280E0F00F0 /* CoreTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		8237826533912A12FB1597B6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9CD94193A95764321AF71ABE /* PocketAgent */;
+			targetProxy = 410A25F4FAB0D130DC3B52CD /* PBXContainerItemProxy */;
+		};
+		F74E2315F8123F09CFAA667C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9CD94193A95764321AF71ABE /* PocketAgent */;
+			targetProxy = A3ECA9F9CB1229FA2DAD0D93 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		06991F016E5861F5293D55A8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(POCKET_BUNDLE_ID).tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PocketAgent.app/PocketAgent";
+			};
+			name = Release;
+		};
+		23E4B034B13EA700EAFCD39C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = PocketAgent/Resources/Info.plist;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(POCKET_BUNDLE_ID)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		27718D85BA6E892C86B6B1A2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(POCKET_BUNDLE_ID).uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = PocketAgent;
+			};
+			name = Release;
+		};
+		2DA6F37052011CC535476342 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = C1B9ED0EA79C8F62CBA70B3A /* Debug.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		7D80D408E272990FA7225031 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = C665F785846C7EF4BFDF68CC /* Release.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		B0360D814C3E4D1DC454D09E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(POCKET_BUNDLE_ID).tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PocketAgent.app/PocketAgent";
+			};
+			name = Debug;
+		};
+		DE06670504D2B0CB38A2EE8C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = PocketAgent/Resources/Info.plist;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(POCKET_BUNDLE_ID)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F15E33FA1A5B0B9EA912B87B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(POCKET_BUNDLE_ID).uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = PocketAgent;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B934AB503F0D47B705AB1B12 /* Build configuration list for PBXProject "PocketAgent" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2DA6F37052011CC535476342 /* Debug */,
+				7D80D408E272990FA7225031 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BEE8F7E091B2912613B482B2 /* Build configuration list for PBXNativeTarget "PocketAgent" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DE06670504D2B0CB38A2EE8C /* Debug */,
+				23E4B034B13EA700EAFCD39C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D07362AEFC0761D6A8265349 /* Build configuration list for PBXNativeTarget "PocketAgentUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F15E33FA1A5B0B9EA912B87B /* Debug */,
+				27718D85BA6E892C86B6B1A2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E7F5EAFAEB13D43FB5019A9E /* Build configuration list for PBXNativeTarget "PocketAgentTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B0360D814C3E4D1DC454D09E /* Debug */,
+				06991F016E5861F5293D55A8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		85515CBCDFB3F209B330AB23 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
+			requirement = {
+				kind = exactVersion;
+				version = 1.10.1;
+			};
+		};
+		CEEE3961753E928C4486ADF2 /* XCRemoteSwiftPackageReference "swift-crypto" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-crypto.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.12.3;
+			};
+		};
+		E7306B4AF5F683B44E43620A /* XCRemoteSwiftPackageReference "swift-nio-ssh" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Joannis/swift-nio-ssh.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.3.5;
+			};
+		};
+		F49895DBC2C04569217BABA7 /* XCRemoteSwiftPackageReference "Citadel" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/orlandos-nl/Citadel.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.11.1;
+			};
+		};
+		F5069463D31257EA45219BE4 /* XCRemoteSwiftPackageReference "swift-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.81.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0BB0AB1F558966394AA5171B /* Citadel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F49895DBC2C04569217BABA7 /* XCRemoteSwiftPackageReference "Citadel" */;
+			productName = Citadel;
+		};
+		140CF9BD4E7C56C313474F83 /* NIOCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F5069463D31257EA45219BE4 /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOCore;
+		};
+		2F3B744B7C8FAB63CF3CA780 /* Crypto */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CEEE3961753E928C4486ADF2 /* XCRemoteSwiftPackageReference "swift-crypto" */;
+			productName = Crypto;
+		};
+		3CE9BC443E57826A98FFFAB1 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 85515CBCDFB3F209B330AB23 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+		C8F758F14BB972DF0595AE87 /* NIOSSH */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E7306B4AF5F683B44E43620A /* XCRemoteSwiftPackageReference "swift-nio-ssh" */;
+			productName = NIOSSH;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 8195E6DC41FEFBEAC1016EFC /* Project object */;
+}
