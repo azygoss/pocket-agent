@@ -114,6 +114,10 @@ func ensureHostToken(backend, enroll string, force bool) (string, error) {
 	}
 	// The token only works on this backend, so events must follow it.
 	c.HostToken, c.TokenBackend, c.BackendURL = out.HostToken, backend, backend
+	// Pin the id the token was issued for: events are only accepted for it.
+	if c.HostID == "" {
+		c.HostID = hostID()
+	}
 	if err := config.Save(p, c); err != nil {
 		return "", err
 	}
