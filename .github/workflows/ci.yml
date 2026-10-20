@@ -3,6 +3,15 @@ on: [push, pull_request]
 jobs:
   gates:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: pocket, POSTGRES_PASSWORD: pocket, POSTGRES_DB: pocket_test }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U pocket" --health-interval 2s --health-timeout 5s --health-retries 15
+    env:
+      PA_TEST_DATABASE_URL: postgres://pocket:pocket@127.0.0.1:5432/pocket_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -19,6 +28,7 @@ jobs:
           ./tests/security/canary.sh
           go vet ./...
           go test ./... -v
+          ./tests/e2e/keyless-pair.sh
   android:
     runs-on: ubuntu-latest
     steps:

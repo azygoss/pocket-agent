@@ -48,7 +48,12 @@ Android app ──SSH/PTY+SFTP──► Host (sshd + tmux + gateway :loopback)
 | Approval request + decision metadata | File contents, diffs, chat |
 | Pairing claim, tenant boundary | SSH keys, gateway token |
 
-The backend stores summaries with a 24-hour TTL; tokens are stored hash-only.
+The backend stores summaries with a 24-hour TTL in PostgreSQL (`DATABASE_URL`;
+in-memory only when unset); tokens are stored hash-only. Every API call carries
+a bearer token: hosts get one at registration, each phone gets its own when it
+claims a pairing code. Pairing is keyless: the phone generates its SSH key pair
+locally and sends only the public key; the host shows the device and key
+fingerprint, and authorizes it in `authorized_keys` after you confirm.
 
 ## Quick install
 

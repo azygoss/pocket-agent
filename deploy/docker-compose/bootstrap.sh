@@ -54,11 +54,11 @@ done
 cat <<EOF
 
 Kurulum tamam. Sıradaki adımlar:
-  1) Host'ta:  pocket-agent set tenant "\$(openssl rand -hex 10)"
-               pocket-agent onboard --backend https://$domain
-  2) Uygulamada Ayarlar → Backend: adres https://$domain, tenant token =
-     host'taki tenant (pocket-agent host list).
-  3) Oturumlar → QR simgesi → kodu gir ya da QR'ı tara (pocket-agent pair).
+  1) Host'ta:  pocket-agent onboard --backend https://$domain
+     (POCKET_ENROLL_TOKEN ayarladıysan: --enroll-token <değer> ile pair)
+  2) Telefonda: Oturumlar → QR simgesi → kodu gir ya da QR'ı tara.
+     Telefon kendi SSH anahtarını üretir; host'ta cihazı onayla.
+     Backend token'ı eşlemeyle otomatik gelir.
 
 Yedekleme: ./backup.sh   Geri yükleme: ./restore.sh <dosya>   Doğrulama: ./verify-backup.sh
 EOF

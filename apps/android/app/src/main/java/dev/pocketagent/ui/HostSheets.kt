@@ -461,13 +461,18 @@ internal fun pairClaim(
     onConnected: () -> Unit,
     onBusy: (Boolean) -> Unit,
     onError: (String) -> Unit,
-    onPaired: (backend: String, tenant: String?) -> Unit = { _, _ -> },
+    onPaired: (backend: String, deviceToken: String) -> Unit = { _, _ -> },
 ) {
     val deviceId = app?.deviceId ?: "device:unknown"
     scope.launch(kotlinx.coroutines.Dispatchers.IO) {
         onBusy(true)
         try {
-            val r = dev.pocketagent.net.PairingClient.claim(backend, code, deviceId)
+            // Anahtar çifti cihazda üretilir; backend'e yalnız public key gider.
+            val key = dev.pocketagent.security.KeyGen.ed25519("pocket-agent@" + android.os.Build.MODEL)
+            val r = dev.pocketagent.net.PairingClient.claim(
+                backend, code, deviceId, android.os.Build.MODEL ?: "Android", key.publicOpenSsh,
+            )
+            dev.pocketagent.net.PairingClient.awaitApproval(backend, code, r.deviceToken)
             // Aynı host'u yeniden eşlemek ikinci kayıt açmaz: yeni anahtar
             // mevcut kayda yazılır (ad ve geçmiş korunur).
             val existing = repo.items.value.firstOrNull {
@@ -480,11 +485,11 @@ internal fun pairClaim(
                 user = r.sshUser,
                 credentialRef = "keystore",
             )).copy(credentialRef = "keystore")
-            val secret = Secret.PemKey(r.privateKeyPem)
+            val secret = Secret.PemKey(key.privatePem)
             val id = repo.upsert(conn, secret, remember = true)
             sessions.open(conn.copy(id = id), secret)
             launch(kotlinx.coroutines.Dispatchers.Main) {
-                onPaired(backend, r.tenant)
+                onPaired(backend, r.deviceToken)
                 onConnected()
             }
         } catch (e: dev.pocketagent.net.PairingClient.FailureException) {

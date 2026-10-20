@@ -518,7 +518,7 @@ private fun SessionContent(settings: SettingsViewModel) {
 @Composable
 private fun BackendContent(settings: SettingsViewModel, app: App) {
     var url by remember { mutableStateOf(settings.backendUrl) }
-    var tenant by remember { mutableStateOf(settings.tenantToken) }
+    var tenant by remember { mutableStateOf(settings.backendToken) }
     var showTenant by remember { mutableStateOf(false) }
     var urlError by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
@@ -530,13 +530,13 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
     val t = Tok
 
     // Şema yoksa https:// eklenir; uzak http:// telefonda çalışmadığı için
-    // kaydedilmez. Boş tenant, host CLI'ın varsayılanı "default" olur.
+    // kaydedilmez. Token'ı kodla eşleme doldurur; elle girmek gerekmez.
     fun valid(): Pair<String, String>? {
         val (u, err) = dev.pocketagent.net.normalizeBackendUrl(url)
         url = u
         urlError = err
         if (err != null) return null
-        val tn = tenant.trim().ifEmpty { if (u.isEmpty()) "" else "default" }
+        val tn = tenant.trim()
         tenant = tn
         return u to tn
     }
@@ -582,9 +582,9 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
             )
             PocketTextField(
                 tenant, { tenant = it },
-                label = "Tenant token",
+                label = "Cihaz token'ı",
                 mono = true,
-                helper = "Host'taki tenant ile aynı olmalı. Boşsa \"default\". Kodla eşleme bunu host'tan alır (CLI 0.1.2+).",
+                helper = "Kodla eşleme bunu otomatik doldurur. Geçersizse host'ta pocket-agent pair ile yeniden eşle.",
                 visualTransformation = if (showTenant) VisualTransformation.None else PasswordVisualTransformation(),
                 trailing = {
                     IconAction(
@@ -617,7 +617,7 @@ private fun BackendContent(settings: SettingsViewModel, app: App) {
                     Banner(
                         Status.Live,
                         "Backend erişilebilir",
-                        body = if (url != settings.backendUrl || tenant != settings.tenantToken) "Kullanmak için Kaydet'e bas." else null,
+                        body = if (url != settings.backendUrl || tenant != settings.backendToken) "Kullanmak için Kaydet'e bas." else null,
                     )
                 } else {
                     Banner(Status.Error, "Backend'e ulaşılamadı", body = reason)

@@ -123,9 +123,14 @@ func ensureHostToken(backend, enroll string, force bool) (string, error) {
 	return out.HostToken, nil
 }
 
-func hostKeyFingerprints() []string {
+// glob: sshd host public keys (default /etc/ssh/ssh_host_*_key.pub; custom
+// sshd configs pass --host-keys).
+func hostKeyFingerprints(glob string) []string {
 	var out []string
-	matches, _ := filepath.Glob("/etc/ssh/ssh_host_*_key.pub")
+	if glob == "" {
+		glob = "/etc/ssh/ssh_host_*_key.pub"
+	}
+	matches, _ := filepath.Glob(glob)
 	for _, m := range matches {
 		b, err := os.ReadFile(m)
 		if err != nil {
@@ -148,6 +153,7 @@ type pairOpts struct {
 	port                             int
 	yes                              bool
 	ttl                              time.Duration
+	hostKeys                         string
 }
 
 func cmdPair(args []string) {
@@ -173,6 +179,8 @@ func cmdPair(args []string) {
 			o.png = next()
 		case "--enroll-token":
 			o.enroll = next()
+		case "--host-keys":
+			o.hostKeys = next()
 		case "--yes", "-y":
 			o.yes = true
 		}
@@ -198,7 +206,7 @@ func runPair(o pairOpts, in io.Reader, out io.Writer) error {
 		return err
 	}
 	hn, _ := os.Hostname()
-	payload, _ := json.Marshal(pairPayload{SSHHost: o.host, SSHPort: o.port, SSHUser: o.user, HostKeys: hostKeyFingerprints(), HostName: hn})
+	payload, _ := json.Marshal(pairPayload{SSHHost: o.host, SSHPort: o.port, SSHUser: o.user, HostKeys: hostKeyFingerprints(o.hostKeys), HostName: hn})
 	code := pairCode()
 	create := func() (int, error) {
 		return apiCall("POST", o.backend, "/v1/pairing-sessions", token, map[string]string{"code": code, "payload": string(payload)}, nil)

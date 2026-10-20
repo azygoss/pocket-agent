@@ -187,8 +187,8 @@ fun PocketAgentApp(
     }
 
     // Backend ayarı değişince client'ı yeniden kur, poller'ı başlat.
-    LaunchedEffect(settings.backendUrl, settings.tenantToken) {
-        app.configureBackend(settings.backendUrl, settings.tenantToken)
+    LaunchedEffect(settings.backendUrl, settings.backendToken) {
+        app.configureBackend(settings.backendUrl, settings.backendToken)
         if (settings.backendConfigured) app.eventSync.start() else app.eventSync.stop()
     }
 

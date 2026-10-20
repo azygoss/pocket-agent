@@ -131,8 +131,8 @@ class App : Application() {
         (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager).cancel(APPROVAL_NOTIFICATION)
     }
 
-    fun configureBackend(url: String, tenant: String) {
-        backendClient = if (url.isNotBlank() && tenant.isNotBlank()) BackendClient(url, tenant) else null
+    fun configureBackend(url: String, token: String) {
+        backendClient = if (url.isNotBlank() && token.isNotBlank()) BackendClient(url, token) else null
         // Ayar düzelince beklemeden dene (önceki hatanın 5dk geri çekilmesini kes).
         eventSync.syncNow()
     }

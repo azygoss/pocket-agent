@@ -40,7 +40,7 @@ class BackupTest {
     }
 
     @Test fun secretsNeverExported() {
-        val json = Backup.export(listOf(conn("x")), PersistedSettings(tenantToken = "s3cret-token"))
+        val json = Backup.export(listOf(conn("x")), PersistedSettings(backendToken = "s3cret-token"))
         assertFalse(json.contains("s3cret-token"))
         // auth alanı "password" etiketi taşır ama secret DEĞERİ asla girmez
         assertFalse(json.contains("secret", ignoreCase = true))

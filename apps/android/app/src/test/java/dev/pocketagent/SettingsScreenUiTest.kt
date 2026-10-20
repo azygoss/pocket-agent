@@ -81,7 +81,7 @@ class SettingsScreenUiTest {
         org.junit.Assert.assertTrue(vm.keepScreenOn)
     }
 
-    // Şemasız adres https:// ile kaydedilir, boş tenant "default" olur; uzak
+    // Şemasız adres https:// ile kaydedilir, token elle girilmezse boş kalır; uzak
     // http:// adres (telefonda çalışmaz) kaydedilmez, alanın altında söylenir.
     @Test fun backendAddressIsNormalizedAndCleartextRefused() {
         val vm = SettingsViewModel()
@@ -99,7 +99,7 @@ class SettingsScreenUiTest {
         rule.onNodeWithText("Kaydet").performScrollTo().performClick()
         rule.waitForIdle()
         org.junit.Assert.assertEquals("https://agent.example.com", vm.backendUrl)
-        org.junit.Assert.assertEquals("default", vm.tenantToken)
+        org.junit.Assert.assertEquals("", vm.backendToken)
     }
 
     @Test fun autoReconnectOnDropDefaultsOn() {
