@@ -3,7 +3,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
-    @AppStorage("appearance") private var appearance = 0
+    @AppStorage("appearance") private var appearance = 2
     @AppStorage("terminalFontSize") private var fontSize = 13.0
     @State private var copied = false
     @State private var confirmRegenerate = false
@@ -17,76 +17,106 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    if let id = model.identity {
-                        LabeledContent("Tür", value: "Ed25519 · Keychain")
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Parmak izi").font(.caption).foregroundStyle(.secondary)
-                            Text(id.fingerprint).font(.caption.monospaced()).textSelection(.enabled)
-                                .accessibilityIdentifier("deviceFingerprint")
-                        }
-                        Button(copied ? "Kopyalandı" : "Public key'i kopyala") {
-                            UIPasteboard.general.string = id.publicKeyOpenSSH
-                            copied = true
-                        }
-                        Button("Yeni anahtar üret", role: .destructive) { confirmRegenerate = true }
-                    } else {
-                        ErrorBanner(message: model.identityError ?? "Anahtar yüklenemedi")
-                    }
-                } header: { Text("Cihaz anahtarı") } footer: {
-                    Text("Özel anahtar yalnız bu cihazın Keychain'inde; yedeklere ve iCloud'a girmez.")
-                }
-
-                Section("Backend'ler") {
-                    if model.accounts.isEmpty {
-                        Text("Kodla eşleme backend'i otomatik ekler.").foregroundStyle(.secondary)
-                    }
-                    ForEach(model.accounts) { a in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(a.displayHost).font(.headline)
-                                Spacer()
-                                if let c = checks[a.url] {
-                                    Text(c).font(.caption.bold()).foregroundStyle(c == "Geçerli" ? .green : .orange)
+            PocketScreen {
+                VStack(spacing: 0) {
+                    PocketTopBar("Ayarlar")
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: PA.Space.xl) {
+                            group("Kişiselleştirme") {
+                                SettingsRow(icon: "paintpalette", tone: .violet, title: "Görünüm",
+                                            subtitle: ["Sistem", "Açık", "Koyu"][appearance]) {
+                                    Picker("", selection: $appearance) {
+                                        Text("Sistem").tag(0); Text("Açık").tag(1); Text("Koyu").tag(2)
+                                    }.pickerStyle(.menu).tint(PA.text2)
+                                }
+                                InsetDivider()
+                                SettingsRow(icon: "textformat.size", tone: .busy, title: "Terminal yazı boyutu",
+                                            subtitle: "\(Int(fontSize)) pt · JetBrains Mono") {
+                                    Stepper("", value: $fontSize, in: 8...24, step: 1).labelsHidden()
                                 }
                             }
-                            Text(a.url).font(.caption.monospaced()).foregroundStyle(.secondary)
+                            group("Bağlantı") {
+                                deviceKey
+                                InsetDivider()
+                                if model.accounts.isEmpty {
+                                    SettingsRow(icon: "antenna.radiowaves.left.and.right", tone: .neutral, title: "Backend",
+                                                subtitle: "Kodla eşleme backend'i otomatik ekler") { EmptyView() }
+                                }
+                                ForEach(model.accounts) { a in
+                                    SettingsRow(icon: "antenna.radiowaves.left.and.right", tone: .accent, title: a.displayHost,
+                                                subtitle: a.url, subtitleMono: true) {
+                                        if let c = checks[a.url] {
+                                            StatusChip(text: c, tone: c == "Geçerli" ? .live : .warn)
+                                        } else {
+                                            ProgressView().tint(PA.accent)
+                                        }
+                                    }
+                                    .contextMenu { Button("Backend'i kaldır", role: .destructive) { model.removeAccount(a) } }
+                                    .task { await check(a) }
+                                }
+                                InsetDivider()
+                                SettingsRow(icon: "key.horizontal", tone: .warn, title: "Bilinen host anahtarları",
+                                            subtitle: "\(model.hosts.filter { !$0.pinnedHostKeys.isEmpty }.count) anahtar pinli") { EmptyView() }
+                            }
+                            group("Uygulama") {
+                                SettingsRow(icon: "lock.shield", tone: .live, title: "Gizlilik",
+                                            subtitle: "Terminal içeriği backend'e gitmez; yalnız 24 saatlik ajan olay özetleri. Analitik yok.") { EmptyView() }
+                                InsetDivider()
+                                Link(destination: URL(string: "https://github.com/azygoss/pocket-agent")!) {
+                                    SettingsRow(icon: "chevron.left.forwardslash.chevron.right", tone: .neutral, title: "Kaynak kod",
+                                                subtitle: "GPL-3.0 · github.com/azygoss/pocket-agent") { Image(systemName: "arrow.up.right").foregroundStyle(PA.text2) }
+                                }
+                                InsetDivider()
+                                NavigationLink { LicensesView() } label: {
+                                    SettingsRow(icon: "info.circle", tone: .neutral, title: "Hakkında",
+                                                subtitle: "Sürüm \(version) · açık kaynak lisansları") { Chevron() }
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        .swipeActions { Button("Kaldır", role: .destructive) { model.removeAccount(a) } }
-                        .task { await check(a) }
+                        .screenPadding().padding(.bottom, PA.Space.x3)
                     }
-                }
-
-                Section("Görünüm") {
-                    Picker("Tema", selection: $appearance) {
-                        Text("Sistem").tag(0)
-                        Text("Açık").tag(1)
-                        Text("Koyu").tag(2)
-                    }
-                    Stepper(value: $fontSize, in: 8...24, step: 1) {
-                        LabeledContent("Terminal yazı boyutu", value: "\(Int(fontSize)) pt")
-                    }
-                }
-
-                Section("Gizlilik") {
-                    Label("Terminal içeriği backend'e hiç gitmez; yalnız ajan olay özetleri (24 saat).", systemImage: "lock.shield")
-                    Label("Analitik veya izleme yok.", systemImage: "eye.slash")
-                }
-                .font(.footnote)
-
-                Section("Hakkında") {
-                    LabeledContent("Sürüm", value: version)
-                    Link("Kaynak kod (GPL-3.0)", destination: URL(string: "https://github.com/azygoss/pocket-agent")!)
-                    NavigationLink("Açık kaynak lisansları") { LicensesView() }
                 }
             }
-            .navigationTitle("Ayarlar")
             .confirmationDialog("Yeni anahtar üretilsin mi?", isPresented: $confirmRegenerate, titleVisibility: .visible) {
                 Button("Üret", role: .destructive) { try? model.regenerateKey() }
             } message: {
                 Text("Eski anahtar silinir; tüm host'ları yeniden eşlemen gerekir.")
             }
+        }
+        .tint(PA.accent)
+    }
+
+    @ViewBuilder private var deviceKey: some View {
+        if let id = model.identity {
+            VStack(alignment: .leading, spacing: PA.Space.md) {
+                SettingsRow(icon: "key.fill", tone: .accent, title: "Cihaz anahtarı", subtitle: "Ed25519 · Keychain · yedeklere girmez") { EmptyView() }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Parmak izi").font(PAFont.labelSmall).foregroundStyle(PA.text2)
+                    Text(id.fingerprint).font(PAFont.mono(12.5)).foregroundStyle(PA.text).textSelection(.enabled)
+                        .accessibilityIdentifier("deviceFingerprint")
+                }
+                .padding(PA.Space.md).frame(maxWidth: .infinity, alignment: .leading)
+                .background(PA.raised, in: RoundedRectangle(cornerRadius: PA.Radius.field, style: .continuous))
+                .padding(.horizontal, PA.Space.lg)
+                HStack(spacing: PA.Space.sm) {
+                    Button(copied ? "Kopyalandı" : "Public key'i kopyala") {
+                        UIPasteboard.general.string = id.publicKeyOpenSSH
+                        copied = true
+                    }.buttonStyle(.tonal)
+                    Button("Yeni anahtar üret") { confirmRegenerate = true }.buttonStyle(TonalButtonStyle(tone: .danger))
+                }
+                .padding(.horizontal, PA.Space.lg).padding(.bottom, PA.Space.md)
+            }
+        } else {
+            ErrorBanner(message: model.identityError ?? "Anahtar yüklenemedi").padding(PA.Space.sm)
+        }
+    }
+
+    private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(spacing: PA.Space.xs) {
+            SectionHeader(title)
+            VStack(spacing: 0) { content() }.padding(.vertical, PA.Space.xs).pocketCard()
         }
     }
 
@@ -102,22 +132,57 @@ struct SettingsView: View {
     }
 }
 
+struct SettingsRow<Trailing: View>: View {
+    var icon: String
+    var tone: Tone
+    var title: String
+    var subtitle: String?
+    var subtitleMono = false
+    @ViewBuilder var trailing: Trailing
+    var body: some View {
+        HStack(spacing: PA.Space.md) {
+            IconTile(icon: icon, tone: tone, size: 40)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(PAFont.titleMedium).foregroundStyle(PA.text)
+                if let subtitle {
+                    Text(subtitle).font(subtitleMono ? PAFont.mono(12) : PAFont.bodySmall).foregroundStyle(PA.text2).lineLimit(3)
+                }
+            }
+            Spacer(minLength: PA.Space.sm)
+            trailing
+        }
+        .padding(.horizontal, PA.Space.lg).padding(.vertical, PA.Space.md)
+        .frame(minHeight: 56)
+        .contentShape(Rectangle())
+    }
+}
+
 struct LicensesView: View {
-    private let items: [(String, String)] = [
-        ("Citadel", "MIT · SSH istemcisi, SFTP"),
-        ("SwiftNIO / SwiftNIO SSH", "Apache-2.0"),
-        ("swift-crypto", "Apache-2.0"),
-        ("SwiftTerm", "MIT · terminal emülatörü"),
-        ("BigInt", "MIT"),
-        ("swift-log", "Apache-2.0"),
+    @Environment(\.dismiss) private var dismiss
+    private let items: [(String, String, String)] = [
+        ("Citadel", "MIT · SSH istemcisi, SFTP", "lock"),
+        ("SwiftNIO / SwiftNIO SSH", "Apache-2.0", "network"),
+        ("swift-crypto", "Apache-2.0", "key"),
+        ("SwiftTerm", "MIT · terminal emülatörü", "terminal"),
+        ("BigInt", "MIT", "number"),
+        ("swift-log", "Apache-2.0", "doc.text"),
+        ("IBM Plex, JetBrains Mono", "OFL-1.1 · yazı tipleri", "textformat"),
     ]
     var body: some View {
-        List(items, id: \.0) { item in
-            VStack(alignment: .leading) {
-                Text(item.0).font(.headline)
-                Text(item.1).font(.caption).foregroundStyle(.secondary)
+        PocketScreen {
+            VStack(spacing: 0) {
+                PocketTopBar("Lisanslar", subtitle: "Açık kaynak bileşenler", back: { dismiss() })
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                            SettingsRow(icon: item.2, tone: .neutral, title: item.0, subtitle: item.1) { EmptyView() }
+                            if i < items.count - 1 { InsetDivider() }
+                        }
+                    }
+                    .padding(.vertical, PA.Space.xs).pocketCard()
+                    .screenPadding().padding(.bottom, PA.Space.x3)
+                }
             }
         }
-        .navigationTitle("Lisanslar")
     }
 }

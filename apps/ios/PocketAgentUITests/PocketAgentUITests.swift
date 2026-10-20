@@ -107,18 +107,20 @@ final class PocketAgentUITests: XCTestCase {
         tmux.tap()
         XCTAssertTrue(app.descendants(matching: .any)["key-esc"].waitForExistence(timeout: 15))
         sleep(4)
+        app.descendants(matching: .any)["terminal"].firstMatch.tap()
+        sleep(1)
         app.typeText("echo ios-e2e-ok > \(e2eDir)/typed.txt\n")
         sleep(2)
         attach(app, "06-terminal")
         XCTAssertEqual(read("typed.txt", timeout: 10), "ios-e2e-ok")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.buttons["back"].firstMatch.tap()
 
         // 5) SFTP: open files, navigate to /tmp/pa-e2e, preview a file.
         app.descendants(matching: .any)["openFiles"].tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'file-'")).firstMatch.waitForExistence(timeout: 15))
         attach(app, "07-files")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.buttons["back"].firstMatch.tap()
+        app.buttons["back"].firstMatch.tap()
 
         // 6) Inbox shows the approval the script posted; approve it.
         app.tabBars.buttons["Gelen"].tap()

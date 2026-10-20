@@ -38,6 +38,15 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
         ITSAppUsesNonExemptEncryption: false
+        UIAppFonts:
+          - ibm_plex_sans_regular.ttf
+          - ibm_plex_sans_medium.ttf
+          - ibm_plex_sans_semibold.ttf
+          - ibm_plex_sans_bold.ttf
+          - ibm_plex_mono_regular.ttf
+          - ibm_plex_mono_bold.ttf
+          - jetbrains_mono_regular.ttf
+          - jetbrains_mono_bold.ttf
         UILaunchScreen:
           UIColorName: LaunchBackground
         UIApplicationSceneManifest:

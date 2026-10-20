@@ -46,6 +46,17 @@
 	<string>Uygulama kilidini açmak için Face ID kullanılır.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Yerel ağdaki host'una SSH ile bağlanmak ve kendi backend'ine erişmek için.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>ibm_plex_sans_regular.ttf</string>
+		<string>ibm_plex_sans_medium.ttf</string>
+		<string>ibm_plex_sans_semibold.ttf</string>
+		<string>ibm_plex_sans_bold.ttf</string>
+		<string>ibm_plex_mono_regular.ttf</string>
+		<string>ibm_plex_mono_bold.ttf</string>
+		<string>jetbrains_mono_regular.ttf</string>
+		<string>jetbrains_mono_bold.ttf</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

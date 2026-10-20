@@ -21,30 +21,22 @@ struct PairingView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    if let step {
-                        progressView(step)
-                    } else {
-                        Picker("Yöntem", selection: $mode) {
-                            Text("QR tara").tag(0)
-                            Text("Kod gir").tag(1)
+            PocketScreen {
+                VStack(spacing: 0) {
+                    PocketTopBar("Host eşle", subtitle: "QR tara ya da kodu yaz", back: { task?.cancel(); dismiss() })
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: PA.Space.lg) {
+                            if let step {
+                                progressView(step)
+                            } else {
+                                modePicker
+                                if mode == 0 { qrSection } else { codeSection }
+                            }
+                            if let error { ErrorBanner(message: error) }
+                            howItWorks
                         }
-                        .pickerStyle(.segmented)
-                        if mode == 0 { qrSection } else { codeSection }
+                        .screenPadding().padding(.bottom, PA.Space.x3)
                     }
-                    if let error {
-                        ErrorBanner(message: error, retry: step == nil ? nil : nil)
-                    }
-                    howItWorks
-                }
-                .padding(20)
-            }
-            .navigationTitle("Host eşle")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Kapat") { task?.cancel(); dismiss() }
                 }
             }
             .onAppear {
@@ -57,30 +49,46 @@ struct PairingView: View {
             .onChange(of: photo) { _, item in Task { await decodePhoto(item) } }
             .hostKeyPrompt(active: true)
         }
+        .tint(PA.accent)
         .onAppear { model.pairingSheetVisible = true }
         .onDisappear { model.pairingSheetVisible = false }
     }
 
+    private var modePicker: some View {
+        HStack(spacing: PA.Space.xs) {
+            modeChip("QR tara", icon: "qrcode.viewfinder", tag: 0)
+            modeChip("Kod gir", icon: "number", tag: 1)
+        }
+        .padding(PA.Space.xs)
+        .background(PA.card, in: Capsule())
+    }
+    private func modeChip(_ title: String, icon: String, tag: Int) -> some View {
+        Button { withAnimation(.snappy) { mode = tag } } label: {
+            Label(title, systemImage: icon).font(PAFont.labelLarge)
+                .foregroundStyle(mode == tag ? PA.onAccent : PA.text)
+                .frame(maxWidth: .infinity).frame(height: 40)
+                .background(mode == tag ? PA.accent : Color.clear, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("pairMode-\(tag)")
+    }
+
     private var qrSection: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: PA.Space.md) {
             if scannerAvailable {
                 QRScanner { text in
                     if let t = PairingLink.parse(text, fallbackBackend: backend) { start(t) }
                 }
                 .frame(height: 320)
-                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: PA.Radius.card, style: .continuous))
             } else {
-                Card {
-                    VStack(spacing: 10) {
-                        Image(systemName: "camera.metering.unknown").font(.largeTitle).foregroundStyle(.secondary)
-                        Text("Bu cihazda kamera tarayıcı yok.").font(.headline)
-                        Text("QR'ın ekran görüntüsünü seç ya da kodu elle gir.").font(.subheadline).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity)
-                }
+                EmptyState(icon: "camera.metering.unknown", title: "Kamera tarayıcı yok",
+                           message: "QR'ın ekran görüntüsünü seç ya da kodu elle gir.")
+                    .pocketCard()
             }
             PhotosPicker(selection: $photo, matching: .images) {
                 Label("Fotoğraflardan QR seç", systemImage: "photo.on.rectangle").frame(maxWidth: .infinity)
-            }.buttonStyle(.bordered)
+            }.buttonStyle(.outline)
             Button {
                 if let s = UIPasteboard.general.string, let t = PairingLink.parse(s, fallbackBackend: backend) {
                     start(t)
@@ -89,92 +97,99 @@ struct PairingView: View {
                 }
             } label: {
                 Label("Panodan yapıştır", systemImage: "doc.on.clipboard").frame(maxWidth: .infinity)
-            }.buttonStyle(.bordered)
+            }.buttonStyle(.outline)
         }
     }
 
     private var codeSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Backend adresi").font(.subheadline.weight(.semibold))
-            TextField("https://agent.ornek.com", text: $backend)
-                .textFieldStyle(.roundedBorder).keyboardType(.URL)
-                .textInputAutocapitalization(.never).autocorrectionDisabled()
-                .font(.body.monospaced())
-                .accessibilityIdentifier("backendField")
-            Text("Eşleme kodu").font(.subheadline.weight(.semibold))
-            TextField("XXXX-XXXX", text: $code)
-                .textFieldStyle(.roundedBorder)
-                .textInputAutocapitalization(.characters).autocorrectionDisabled()
-                .font(.title2.monospaced().weight(.semibold)).multilineTextAlignment(.center)
-                .accessibilityIdentifier("codeField")
-                .onChange(of: code) { _, v in
-                    let clean = v.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(8)
-                    let formatted = clean.count > 4 ? clean.prefix(4) + "-" + clean.dropFirst(4) : Substring(clean)
-                    if formatted != v { code = String(formatted) }
+        PocketCard {
+            VStack(alignment: .leading, spacing: PA.Space.md) {
+                Text("Backend adresi").font(PAFont.labelMedium).foregroundStyle(PA.text2)
+                PocketField(placeholder: "https://agent.ornek.com", text: $backend, mono: true, icon: "network")
+                    .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .accessibilityIdentifier("backendField")
+                Text("Eşleme kodu").font(PAFont.labelMedium).foregroundStyle(PA.text2).padding(.top, PA.Space.xs)
+                TextField("XXXX-XXXX", text: $code)
+                    .font(PAFont.mono(26, .bold)).foregroundStyle(PA.text).multilineTextAlignment(.center)
+                    .textInputAutocapitalization(.characters).autocorrectionDisabled()
+                    .frame(height: 64)
+                    .background(PA.raised, in: RoundedRectangle(cornerRadius: PA.Radius.field, style: .continuous))
+                    .accessibilityIdentifier("codeField")
+                    .onChange(of: code) { _, v in
+                        let clean = v.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(8)
+                        let formatted = clean.count > 4 ? clean.prefix(4) + "-" + clean.dropFirst(4) : Substring(clean)
+                        if formatted != v { code = String(formatted) }
+                    }
+                Button {
+                    let (b, err) = PairingLink.normalizeBackend(backend)
+                    if let err { error = err; return }
+                    guard let c = PairingLink.normalize(code) else { error = "Kod 8 karakter olmalı (XXXX-XXXX)."; return }
+                    start(.init(backend: b, code: c))
+                } label: {
+                    Label("Eşle", systemImage: "link").frame(maxWidth: .infinity)
                 }
-            Button {
-                let (b, err) = PairingLink.normalizeBackend(backend)
-                if let err { error = err; return }
-                guard let c = PairingLink.normalize(code) else { error = "Kod 8 karakter olmalı (XXXX-XXXX)."; return }
-                start(.init(backend: b, code: c))
-            } label: {
-                Label("Eşle", systemImage: "link").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
+                .buttonStyle(.primary)
+                .disabled(PairingLink.normalize(code) == nil || backend.isEmpty)
+                .accessibilityIdentifier("submitPair")
             }
-            .buttonStyle(.borderedProminent).controlSize(.large)
-            .disabled(PairingLink.normalize(code) == nil || backend.isEmpty)
-            .accessibilityIdentifier("submitPair")
         }
     }
 
     private func progressView(_ step: AppModel.PairStep) -> some View {
-        Card(padding: 22) {
-            VStack(alignment: .leading, spacing: 18) {
+        PocketCard(padding: PA.Space.xl) {
+            VStack(alignment: .leading, spacing: PA.Space.lg) {
                 row("Kod doğrulanıyor, public key gönderiliyor", done: step != .claiming, active: step == .claiming)
                 let waiting: Bool = { if case .waitingApproval = step { return true }; return false }()
                 row("Host'ta onay bekleniyor", done: step == .connecting || step == .done, active: waiting)
                 if case let .waitingApproval(fp) = step {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Host terminalinde bu parmak izini karşılaştır ve onayla:").font(.footnote).foregroundStyle(.secondary)
-                        Text(fp).font(.footnote.monospaced()).textSelection(.enabled)
-                            .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.background.tertiary, in: RoundedRectangle(cornerRadius: 10))
+                        Text("Host terminalinde bu parmak izini karşılaştır ve onayla:").font(PAFont.bodySmall).foregroundStyle(PA.text2)
+                        Text(fp).font(PAFont.mono(12.5)).foregroundStyle(PA.text).textSelection(.enabled)
+                            .padding(PA.Space.md).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(PA.raised, in: RoundedRectangle(cornerRadius: PA.Radius.key, style: .continuous))
                             .accessibilityIdentifier("pairFingerprint")
                     }
                 }
                 row("SSH bağlantısı kuruluyor", done: step == .done, active: step == .connecting)
                 if step == .done {
-                    Label("Eşleşti", systemImage: "checkmark.circle.fill").font(.title3.bold()).foregroundStyle(.green)
-                        .accessibilityIdentifier("pairDone")
+                    StatusChip(text: "Eşleşti", tone: .live).accessibilityIdentifier("pairDone")
                 }
             }
         }
     }
 
     private func row(_ text: String, done: Bool, active: Bool) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: PA.Space.md) {
             ZStack {
                 if done {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(PA.live)
                 } else if active {
-                    ProgressView()
+                    ProgressView().tint(PA.accent)
                 } else {
-                    Image(systemName: "circle").foregroundStyle(.tertiary)
+                    StatusDot(color: PA.text2, size: 10, hollow: true)
                 }
             }.frame(width: 24)
-            Text(text).foregroundStyle(done || active ? .primary : .secondary)
+            Text(text).font(PAFont.bodyMedium).foregroundStyle(done || active ? PA.text : PA.text2)
         }
     }
 
     private var howItWorks: some View {
-        DisclosureGroup("Nasıl çalışır?") {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("1. Host'ta `pocket-agent pair` çalıştır; QR ve XXXX-XXXX kodu çıkar (5 dk geçerli).")
-                Text("2. Telefon kendi Ed25519 anahtarını Keychain'de üretir ve backend'e yalnız public key'i gönderir.")
-                Text("3. Host cihaz adını ve anahtar parmak izini gösterir; onaylarsan authorized_keys'e eklenir.")
-                Text("4. Uygulama bu cihaza özgü backend token'ını alır; özel anahtar hiçbir yere gitmez.")
-            }.font(.footnote).foregroundStyle(.secondary).padding(.top, 6)
+        PocketCard {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: PA.Space.sm) {
+                    Text("1. Host'ta `pocket-agent pair` çalıştır; QR ve XXXX-XXXX kodu çıkar (5 dk geçerli).")
+                    Text("2. Telefon kendi Ed25519 anahtarını Keychain'de üretir ve backend'e yalnız public key'i gönderir.")
+                    Text("3. Host cihaz adını ve anahtar parmak izini gösterir; onaylarsan authorized_keys'e eklenir.")
+                    Text("4. Uygulama bu cihaza özgü backend token'ını alır; özel anahtar hiçbir yere gitmez.")
+                }.font(PAFont.bodySmall).foregroundStyle(PA.text2).padding(.top, PA.Space.sm)
+            } label: {
+                HStack(spacing: PA.Space.md) {
+                    IconTile(icon: "questionmark", tone: .neutral, size: 32)
+                    Text("Nasıl çalışır?").font(PAFont.titleMedium).foregroundStyle(PA.text)
+                }
+            }
+            .tint(PA.text2)
         }
-        .padding(.top, 8)
     }
 
     private func start(_ target: PairingLink.Target) {
@@ -242,34 +257,35 @@ struct QRScanner: UIViewControllerRepresentable {
 struct HostKeyPromptView: View {
     let prompt: AppModel.HostKeyPrompt
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "lock.shield.fill").font(.system(size: 54)).foregroundStyle(.orange)
-            Text("Yeni host anahtarı").font(.title2.bold())
-            Text("\(prompt.host.address) ilk kez görülüyor. Parmak izini host'ta `ssh-keygen -lf /etc/ssh/ssh_host_\(prompt.keyType.replacingOccurrences(of: "ssh-", with: ""))_key.pub` ile karşılaştır.")
-                .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(prompt.keyType).font(.caption.bold()).foregroundStyle(.secondary)
-                Text(prompt.fingerprint).font(.callout.monospaced()).textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("hostKeyFingerprint")
+        ZStack {
+            PA.bg.ignoresSafeArea()
+            VStack(spacing: PA.Space.xl) {
+                IconTile(icon: "lock.shield.fill", tone: .warn, size: 64)
+                Text("Yeni host anahtarı").font(PAFont.titleLarge).foregroundStyle(PA.text)
+                Text("\(prompt.host.address) ilk kez görülüyor. Parmak izini host'ta `ssh-keygen -lf /etc/ssh/ssh_host_\(prompt.keyType.replacingOccurrences(of: "ssh-", with: ""))_key.pub` ile karşılaştır.")
+                    .font(PAFont.bodyMedium).foregroundStyle(PA.text2).multilineTextAlignment(.center)
+                VStack(alignment: .leading, spacing: 6) {
+                    Tag(text: prompt.keyType, tone: .neutral)
+                    Text(prompt.fingerprint).font(PAFont.mono(13)).foregroundStyle(PA.text).textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("hostKeyFingerprint")
+                }
+                .padding(PA.Space.lg).frame(maxWidth: .infinity, alignment: .leading)
+                .background(PA.card, in: RoundedRectangle(cornerRadius: PA.Radius.card, style: .continuous))
+                HStack(spacing: PA.Space.md) {
+                    Button { prompt.respond(false) } label: { Text("Vazgeç").frame(maxWidth: .infinity) }
+                        .buttonStyle(.outline)
+                    Button { prompt.respond(true) } label: { Text("Güven ve bağlan").frame(maxWidth: .infinity) }
+                        .buttonStyle(.primary)
+                        .accessibilityIdentifier("trustHostKey")
+                }
             }
-            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
-            HStack(spacing: 12) {
-                Button(role: .cancel) { prompt.respond(false) } label: {
-                    Text("Vazgeç").frame(maxWidth: .infinity)
-                }.buttonStyle(.bordered).controlSize(.large)
-                Button { prompt.respond(true) } label: {
-                    Text("Güven ve bağlan").frame(maxWidth: .infinity)
-                }.buttonStyle(.borderedProminent).controlSize(.large)
-                .accessibilityIdentifier("trustHostKey")
-            }
+            .padding(PA.Space.xxl)
         }
-        .padding(24)
         .presentationDetents([.medium, .large])
+        .presentationCornerRadius(PA.Radius.sheet)
     }
 }
-
 extension View {
     /// Presents the TOFU host-key prompt from this view when `active`.
     func hostKeyPrompt(active: Bool) -> some View { modifier(HostKeyPromptModifier(active: active)) }

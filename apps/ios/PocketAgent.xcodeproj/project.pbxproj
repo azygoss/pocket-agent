@@ -7,11 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		001E50A256722972226F544D /* jetbrains_mono_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7DC29857EBA72DD4C9DC751E /* jetbrains_mono_regular.ttf */; };
+		0ADAC86E8B5EA139B9DACB10 /* ibm_plex_mono_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2D79A98962CCC3ED3F0FAD31 /* ibm_plex_mono_bold.ttf */; };
 		15C565866CA3614DCD0E6D90 /* Crypto in Frameworks */ = {isa = PBXBuildFile; productRef = 2F3B744B7C8FAB63CF3CA780 /* Crypto */; };
+		316564860EE7D777D9CB68C0 /* ibm_plex_sans_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4C407BC6908A40CAC7199AC0 /* ibm_plex_sans_regular.ttf */; };
 		3D9BA499EABF19968E9A52EC /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 3CE9BC443E57826A98FFFAB1 /* SwiftTerm */; };
 		55AC7CD55FDD67D8528986A3 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2D200A4C100BE742B333300 /* WelcomeView.swift */; };
 		57C1DC11C546586740332354 /* DeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C8CC0DFEEC5AC767BDB51D8 /* DeviceIdentity.swift */; };
+		5A122E04831CC4A00F1C6E1F /* ibm_plex_sans_medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4D85EFA7D608CD4A6C139789 /* ibm_plex_sans_medium.ttf */; };
 		5A1ACC3EBBD6B1FA4BB93A13 /* PocketAgentUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33984E964C55A97F1B1F00CB /* PocketAgentUITests.swift */; };
+		63CAD20774F13021F0F9471D /* ibm_plex_sans_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = BCD778D152CEAE003B3EAD87 /* ibm_plex_sans_bold.ttf */; };
 		68CE88090F772DC1852044BD /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 140CF9BD4E7C56C313474F83 /* NIOCore */; };
 		707BA182D960453649FBD239 /* HostsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BAF3CCA0C131465873B54AE /* HostsView.swift */; };
 		769951F42405C4766C75FC77 /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D152642A35566777105E7E5E /* PairingView.swift */; };
@@ -20,6 +25,8 @@
 		77D8A2622D6AAD280E0F00F0 /* CoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E20FE65FDD30D5F1C890A99 /* CoreTests.swift */; };
 		7FEBBFA1D0EBC49F848F8DE0 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BF5952ECA7DF8181B486092 /* Models.swift */; };
 		83C8E1E5DAE72E3B5F02A665 /* TerminalSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D3AD5BBE52F5FFB6122234 /* TerminalSession.swift */; };
+		8632992F89AC992678B892D1 /* ibm_plex_sans_semibold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3C97FFCA97BFFACA81C95B76 /* ibm_plex_sans_semibold.ttf */; };
+		96CF5961AE6F37008498FE22 /* jetbrains_mono_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E0B7374F8D9C180FC325106D /* jetbrains_mono_bold.ttf */; };
 		A23CD64B2F21C8B7C7768EDB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B14B7CA12E8A34265F002E07 /* PrivacyInfo.xcprivacy */; };
 		B091CBB3B088B4CA0ABE0520 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E06610F4FF5A35D5D9D672FD /* AppModel.swift */; };
 		B09E6F4C6BF330F0D9DFED93 /* PocketAgentApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD8FB6BCCD59245B35EC8206 /* PocketAgentApp.swift */; };
@@ -33,6 +40,7 @@
 		F9F063A77FD05CE2A7DBFDAC /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 798191B938A4B3A5A21DD829 /* Theme.swift */; };
 		FC6A6EAC71BF38AF082F69F1 /* InboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE236F57BE6333B120D173F6 /* InboxView.swift */; };
 		FE6CA63AB49F34018CED228C /* FilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BF361506D38505EFD997599 /* FilesView.swift */; };
+		FEC495C2804B6AF89D576938 /* ibm_plex_mono_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3DC3E2A845152D1C0D03FF31 /* ibm_plex_mono_regular.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -54,15 +62,21 @@
 
 /* Begin PBXFileReference section */
 		0BF5952ECA7DF8181B486092 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		2D79A98962CCC3ED3F0FAD31 /* ibm_plex_mono_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = ibm_plex_mono_bold.ttf; sourceTree = "<group>"; };
 		31B8CD9F53BB049F42BC6190 /* PairingLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingLink.swift; sourceTree = "<group>"; };
 		33984E964C55A97F1B1F00CB /* PocketAgentUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketAgentUITests.swift; sourceTree = "<group>"; };
 		39EA570087C4AAF171C9E18E /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		3C8CC0DFEEC5AC767BDB51D8 /* DeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentity.swift; sourceTree = "<group>"; };
+		3C97FFCA97BFFACA81C95B76 /* ibm_plex_sans_semibold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = ibm_plex_sans_semibold.ttf; sourceTree = "<group>"; };
+		3DC3E2A845152D1C0D03FF31 /* ibm_plex_mono_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = ibm_plex_mono_regular.ttf; sourceTree = "<group>"; };
 		45F7A9D2BE694A39A58AAC89 /* SSHConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHConnection.swift; sourceTree = "<group>"; };
+		4C407BC6908A40CAC7199AC0 /* ibm_plex_sans_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = ibm_plex_sans_regular.ttf; sourceTree = "<group>"; };
+		4D85EFA7D608CD4A6C139789 /* ibm_plex_sans_medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = ibm_plex_sans_medium.ttf; sourceTree = "<group>"; };
 		5E20FE65FDD30D5F1C890A99 /* CoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreTests.swift; sourceTree = "<group>"; };
 		6B4DD87A59FF19E9F26C2D32 /* PocketAgentUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PocketAgentUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6BAF3CCA0C131465873B54AE /* HostsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostsView.swift; sourceTree = "<group>"; };
 		798191B938A4B3A5A21DD829 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		7DC29857EBA72DD4C9DC751E /* jetbrains_mono_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = jetbrains_mono_regular.ttf; sourceTree = "<group>"; };
 		7FDB3779313550EFC3CDB14E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		80D40F33E48BC0D97B9647E8 /* PocketAgentTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PocketAgentTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		884942195545A46C3D6F37C3 /* BackendClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendClient.swift; sourceTree = "<group>"; };
@@ -70,11 +84,13 @@
 		A1D3AD5BBE52F5FFB6122234 /* TerminalSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSession.swift; sourceTree = "<group>"; };
 		AD8FB6BCCD59245B35EC8206 /* PocketAgentApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketAgentApp.swift; sourceTree = "<group>"; };
 		B14B7CA12E8A34265F002E07 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		BCD778D152CEAE003B3EAD87 /* ibm_plex_sans_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = ibm_plex_sans_bold.ttf; sourceTree = "<group>"; };
 		C1B9ED0EA79C8F62CBA70B3A /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		C665F785846C7EF4BFDF68CC /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		D152642A35566777105E7E5E /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
 		D2D200A4C100BE742B333300 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		E06610F4FF5A35D5D9D672FD /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		E0B7374F8D9C180FC325106D /* jetbrains_mono_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = jetbrains_mono_bold.ttf; sourceTree = "<group>"; };
 		E901918E882C6D22A1FA4148 /* PocketAgent.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PocketAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F59648D76D829C269B95DDA5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F61C189D357DFCE532794634 /* TerminalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalScreen.swift; sourceTree = "<group>"; };
@@ -234,8 +250,24 @@
 				7FDB3779313550EFC3CDB14E /* Assets.xcassets */,
 				F59648D76D829C269B95DDA5 /* Info.plist */,
 				B14B7CA12E8A34265F002E07 /* PrivacyInfo.xcprivacy */,
+				E11E03C3AA391AE3E6F7420A /* Fonts */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		E11E03C3AA391AE3E6F7420A /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				2D79A98962CCC3ED3F0FAD31 /* ibm_plex_mono_bold.ttf */,
+				3DC3E2A845152D1C0D03FF31 /* ibm_plex_mono_regular.ttf */,
+				BCD778D152CEAE003B3EAD87 /* ibm_plex_sans_bold.ttf */,
+				4D85EFA7D608CD4A6C139789 /* ibm_plex_sans_medium.ttf */,
+				4C407BC6908A40CAC7199AC0 /* ibm_plex_sans_regular.ttf */,
+				3C97FFCA97BFFACA81C95B76 /* ibm_plex_sans_semibold.ttf */,
+				E0B7374F8D9C180FC325106D /* jetbrains_mono_bold.ttf */,
+				7DC29857EBA72DD4C9DC751E /* jetbrains_mono_regular.ttf */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 		E3CF3AD820796774D6B2DABC /* Features */ = {
@@ -371,6 +403,14 @@
 			files = (
 				EB4BA347C0BA21795C6941CC /* Assets.xcassets in Resources */,
 				A23CD64B2F21C8B7C7768EDB /* PrivacyInfo.xcprivacy in Resources */,
+				0ADAC86E8B5EA139B9DACB10 /* ibm_plex_mono_bold.ttf in Resources */,
+				FEC495C2804B6AF89D576938 /* ibm_plex_mono_regular.ttf in Resources */,
+				63CAD20774F13021F0F9471D /* ibm_plex_sans_bold.ttf in Resources */,
+				5A122E04831CC4A00F1C6E1F /* ibm_plex_sans_medium.ttf in Resources */,
+				316564860EE7D777D9CB68C0 /* ibm_plex_sans_regular.ttf in Resources */,
+				8632992F89AC992678B892D1 /* ibm_plex_sans_semibold.ttf in Resources */,
+				96CF5961AE6F37008498FE22 /* jetbrains_mono_bold.ttf in Resources */,
+				001E50A256722972226F544D /* jetbrains_mono_regular.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

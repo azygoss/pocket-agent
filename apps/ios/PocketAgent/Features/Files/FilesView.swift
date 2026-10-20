@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 struct FilesView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
     let host: Host
     @State private var path = ""
     @State private var files: [RemoteFile] = []
@@ -29,54 +30,66 @@ struct FilesView: View {
     var visible: [RemoteFile] { files.filter { showHidden || !$0.name.hasPrefix(".") } }
 
     var body: some View {
-        List {
-            Section {
-                breadcrumbs
-            }
-            if let busy { Section { HStack { ProgressView(); Text(busy) } } }
-            switch state {
-            case .idle, .loading:
-                Section { HStack { ProgressView(); Text("Yükleniyor…").foregroundStyle(.secondary) } }
-            case let .failed(msg):
-                Section { ErrorBanner(message: msg) { Task { await load() } } }
-            case .loaded:
-                if visible.isEmpty {
-                    Section { Text("Klasör boş").foregroundStyle(.secondary) }
-                }
-                Section {
-                    ForEach(visible) { f in
-                        Button { Task { await tap(f) } } label: { FileRow(file: f) }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("file-\(f.name)")
-                            .swipeActions {
-                                Button("Sil", role: .destructive) { Task { await remove(f) } }
-                                Button("Ad") { renaming = f; newName = f.name }.tint(.blue)
-                            }
-                            .contextMenu {
-                                Button { renaming = f; newName = f.name } label: { Label("Yeniden adlandır", systemImage: "pencil") }
-                                if !f.isDirectory {
-                                    Button { Task { await download(f, share: true) } } label: { Label("Paylaş / indir", systemImage: "square.and.arrow.up") }
-                                }
-                                Button(role: .destructive) { Task { await remove(f) } } label: { Label("Sil", systemImage: "trash") }
-                            }
+        PocketScreen {
+            VStack(spacing: 0) {
+                PocketTopBar(path == "" ? "Dosyalar" : (path as NSString).lastPathComponent, subtitle: host.address, back: { dismiss() }) {
+                    Menu {
+                        Button { importing = true } label: { Label("Dosya yükle", systemImage: "square.and.arrow.down") }
+                        Button { askFolder = true } label: { Label("Yeni klasör", systemImage: "folder.badge.plus") }
+                        Toggle(isOn: $showHidden) { Label("Gizli dosyalar", systemImage: "eye") }
+                    } label: {
+                        Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).foregroundStyle(PA.text)
+                            .frame(width: 40, height: 40)
                     }
+                    .accessibilityIdentifier("filesMenu")
                 }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: PA.Space.md) {
+                        breadcrumbs
+                        if let busy {
+                            HStack(spacing: PA.Space.md) {
+                                ProgressView().tint(PA.accent)
+                                Text(busy).font(PAFont.bodyMedium).foregroundStyle(PA.text2)
+                            }.padding(.horizontal, PA.Space.xs)
+                        }
+                        switch state {
+                        case .idle, .loading:
+                            HStack(spacing: PA.Space.md) {
+                                ProgressView().tint(PA.accent)
+                                Text("Yükleniyor…").font(PAFont.bodyMedium).foregroundStyle(PA.text2)
+                            }.padding(PA.Space.lg).pocketCard()
+                        case let .failed(msg):
+                            ErrorBanner(message: msg) { Task { await load() } }
+                        case .loaded:
+                            if visible.isEmpty {
+                                EmptyState(icon: "folder", title: "Klasör boş", message: "Yüklemek için sağ üstteki menüyü kullan.")
+                                    .pocketCard()
+                            } else {
+                                VStack(spacing: 0) {
+                                    ForEach(Array(visible.enumerated()), id: \.element.id) { i, f in
+                                        Button { Task { await tap(f) } } label: { FileRow(file: f) }
+                                            .buttonStyle(.plain)
+                                            .accessibilityIdentifier("file-\(f.name)")
+                                            .contextMenu {
+                                                Button { renaming = f; newName = f.name } label: { Label("Yeniden adlandır", systemImage: "pencil") }
+                                                if !f.isDirectory {
+                                                    Button { Task { await download(f, share: true) } } label: { Label("Paylaş / indir", systemImage: "square.and.arrow.up") }
+                                                }
+                                                Button(role: .destructive) { Task { await remove(f) } } label: { Label("Sil", systemImage: "trash") }
+                                            }
+                                        if i < visible.count - 1 { InsetDivider(inset: 66) }
+                                    }
+                                }
+                                .pocketCard()
+                            }
+                        }
+                    }
+                    .screenPadding().padding(.bottom, PA.Space.x3)
+                }
+                .refreshable { await load() }
             }
         }
-        .navigationTitle(path == "" ? "Dosyalar" : (path as NSString).lastPathComponent)
-        .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await load() }
         .task { if path.isEmpty { await load() } }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button { importing = true } label: { Label("Dosya yükle", systemImage: "square.and.arrow.down") }
-                    Button { askFolder = true } label: { Label("Yeni klasör", systemImage: "folder.badge.plus") }
-                    Toggle(isOn: $showHidden) { Label("Gizli dosyalar", systemImage: "eye") }
-                } label: { Image(systemName: "ellipsis.circle") }
-                .accessibilityIdentifier("filesMenu")
-            }
-        }
         .sheet(item: $preview) { p in FilePreviewView(preview: p) }
         .sheet(item: Binding(get: { shareURL.map { ShareItem(url: $0) } }, set: { _ in shareURL = nil })) { item in
             ShareSheet(url: item.url)
@@ -98,19 +111,24 @@ struct FilesView: View {
 
     private var breadcrumbs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
+            HStack(spacing: 2) {
                 let parts = path.split(separator: "/").map(String.init)
-                Button { Task { await go("/") } } label: { Image(systemName: "externaldrive") }
+                Button { Task { await go("/") } } label: {
+                    Image(systemName: "externaldrive").font(.system(size: 14, weight: .medium)).foregroundStyle(PA.accent).frame(width: 28, height: 28)
+                }
                 ForEach(parts.indices, id: \.self) { i in
-                    Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
-                    Button(parts[i]) { Task { await go("/" + parts[0...i].joined(separator: "/")) } }
-                        .font(.footnote.monospaced())
+                    Button { Task { await go("/" + parts[0...i].joined(separator: "/")) } } label: {
+                        Text("/" + parts[i])
+                            .font(PAFont.mono(13, i == parts.count - 1 ? .bold : .regular))
+                            .foregroundStyle(i == parts.count - 1 ? PA.text : PA.text2)
+                    }
                 }
             }
+            .padding(.horizontal, PA.Space.md).frame(height: 40)
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
+        .background(PA.card, in: Capsule())
     }
-
     private func sftp() async throws -> SFTPClient {
         try await model.connection(for: host).sftp()
     }
@@ -235,35 +253,29 @@ struct ShareItem: Identifiable {
 struct FileRow: View {
     let file: RemoteFile
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon).font(.title3).foregroundStyle(file.isDirectory ? Color.accentColor : .secondary).frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(file.name).foregroundStyle(.primary).lineLimit(1)
-                HStack(spacing: 6) {
-                    if !file.isDirectory { Text(ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file)) }
-                    if let m = file.modified { Text(m.relative) }
-                }.font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            if file.isDirectory { Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary) }
+        let (icon, tone) = kind
+        var sub = ""
+        if !file.isDirectory { sub = ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file) }
+        if let m = file.modified { sub += (sub.isEmpty ? "" : " · ") + m.relative }
+        return ListRow(file.name, subtitle: sub, titleMono: true) {
+            IconTile(icon: icon, tone: tone, size: 38)
+        } trailing: {
+            if file.isDirectory { Chevron() }
         }
-        .contentShape(Rectangle())
     }
-
-    private var icon: String {
-        if file.isDirectory { return "folder.fill" }
-        if file.isSymlink { return "link" }
+    private var kind: (String, Tone) {
+        if file.isDirectory { return ("folder.fill", .accent) }
+        if file.isSymlink { return ("link", .neutral) }
         switch (file.name as NSString).pathExtension.lowercased() {
-        case "swift", "go", "kt", "js", "ts", "py", "rs", "c", "h", "sh", "rb": return "chevron.left.forwardslash.chevron.right"
-        case "md", "txt", "log": return "doc.text"
-        case "png", "jpg", "jpeg", "gif", "heic", "webp": return "photo"
-        case "json", "yaml", "yml", "toml": return "curlybraces"
-        case "zip", "gz", "tar", "tgz": return "archivebox"
-        default: return "doc"
+        case "swift", "go", "kt", "js", "ts", "py", "rs", "c", "h", "sh", "rb": return ("chevron.left.forwardslash.chevron.right", .busy)
+        case "md", "txt", "log", "pdf": return ("doc.text", .neutral)
+        case "png", "jpg", "jpeg", "gif", "heic", "webp", "svg": return ("photo", .violet)
+        case "json", "yaml", "yml", "toml", "csv", "xml": return ("curlybraces", .neutral)
+        case "zip", "gz", "tar", "tgz", "7z", "bz2": return ("archivebox", .warn)
+        default: return ("doc", .neutral)
         }
     }
 }
-
 struct FilePreviewView: View {
     let preview: FilesView.FilePreview
     @Environment(\.dismiss) private var dismiss
@@ -272,7 +284,7 @@ struct FilePreviewView: View {
             Group {
                 if let text = preview.text {
                     ScrollView([.vertical, .horizontal]) {
-                        Text(text).font(.caption.monospaced()).textSelection(.enabled).padding()
+                        Text(text).font(PAFont.mono(12)).foregroundStyle(PA.text).textSelection(.enabled).padding()
                             .accessibilityIdentifier("filePreviewText")
                     }
                 } else if let img = UIImage(contentsOfFile: preview.localURL.path) {
@@ -282,8 +294,11 @@ struct FilePreviewView: View {
                                message: "Bu dosya türü gösterilemiyor; paylaş ile başka uygulamada aç.")
                 }
             }
+            .background(PA.bg)
             .navigationTitle(preview.file.name)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(PA.card, for: .navigationBar)
+            .tint(PA.accent)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Kapat") { dismiss() } }
                 ToolbarItem(placement: .primaryAction) { ShareLink(item: preview.localURL) }

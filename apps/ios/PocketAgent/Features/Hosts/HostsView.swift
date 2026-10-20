@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
 
+/// Hub: open sessions, hosts and agent activity (Android HubScreen).
 struct HostsView: View {
     @EnvironmentObject var model: AppModel
     @Binding var showPair: Bool
@@ -8,29 +9,22 @@ struct HostsView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if !model.openTerminals.isEmpty {
-                    Section("Açık terminaller") {
-                        ForEach(model.openTerminals) { t in
-                            NavigationLink(value: Route.terminal(t.id)) {
-                                OpenTerminalRow(session: t)
-                            }
-                            .swipeActions { Button("Kapat", role: .destructive) { model.closeTerminal(t) } }
+            PocketScreen {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: PA.Space.lg) {
+                        header
+                        if model.pendingApprovals > 0 {
+                            Banner(message: "\(model.pendingApprovals) ajan isteği onay bekliyor. Gelen kutusuna bak.",
+                                   tone: .warn, icon: "hand.raised.fill")
                         }
+                        if !model.openTerminals.isEmpty { openSessions }
+                        hosts
                     }
+                    .screenPadding()
+                    .padding(.bottom, PA.Space.x3)
                 }
-                Section("Host'lar") {
-                    ForEach(model.hosts) { host in
-                        NavigationLink(value: Route.host(host.id)) { HostRow(host: host) }
-                            .accessibilityIdentifier("host-\(host.name)")
-                    }
-                    .onDelete { idx in idx.map { model.hosts[$0] }.forEach(model.forget) }
-                    if model.hosts.isEmpty {
-                        Text("Henüz host yok. Sağ üstten eşle.").foregroundStyle(.secondary)
-                    }
-                }
+                .refreshable { await model.refreshInbox() }
             }
-            .navigationTitle("Oturumlar")
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case let .host(id):
@@ -41,16 +35,66 @@ struct HostsView: View {
                     if let h = model.hosts.first(where: { $0.id == id }) { FilesView(host: h) }
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button { showPair = true } label: { Label("Kodla eşle", systemImage: "qrcode.viewfinder") }
-                        Button { addManual = true } label: { Label("Elle ekle", systemImage: "plus.rectangle.on.rectangle") }
-                    } label: { Image(systemName: "plus.circle.fill").font(.title3) }
-                    .accessibilityIdentifier("addHost")
+            .sheet(isPresented: $addManual) { ManualHostView() }
+        }
+        .tint(PA.accent)
+    }
+
+    private var header: some View {
+        HStack(spacing: PA.Space.md) {
+            BrandMark(size: 30)
+            Text("Pocket Agent").font(PAFont.titleLarge).foregroundStyle(PA.text)
+            Spacer()
+            Menu {
+                Button { showPair = true } label: { Label("QR veya kodla eşle", systemImage: "qrcode.viewfinder") }
+                Button { addManual = true } label: { Label("Host'u elle ekle", systemImage: "server.rack") }
+            } label: {
+                Image(systemName: "plus").font(.system(size: 17, weight: .semibold)).foregroundStyle(PA.text)
+                    .frame(width: 40, height: 40).background(PA.card, in: Circle())
+            }
+            .accessibilityIdentifier("addHost")
+            .accessibilityLabel("Ekle")
+        }
+        .frame(minHeight: 64)
+    }
+
+    private var openSessions: some View {
+        VStack(spacing: PA.Space.xs) {
+            SectionHeader("Açık oturumlar", count: model.openTerminals.count)
+            VStack(spacing: 0) {
+                ForEach(Array(model.openTerminals.enumerated()), id: \.element.id) { i, t in
+                    NavigationLink(value: Route.terminal(t.id)) { OpenTerminalRow(session: t) }
+                        .buttonStyle(.plain)
+                        .contextMenu { Button("Oturumu kapat", role: .destructive) { model.closeTerminal(t) } }
+                    if i < model.openTerminals.count - 1 { InsetDivider() }
                 }
             }
-            .sheet(isPresented: $addManual) { ManualHostView() }
+            .pocketCard()
+        }
+    }
+
+    private var hosts: some View {
+        VStack(spacing: PA.Space.xs) {
+            SectionHeader("Host'lar", count: model.hosts.count) {
+                Button("Eşle") { showPair = true }.buttonStyle(.ghost)
+            }
+            if model.hosts.isEmpty {
+                EmptyState(icon: "server.rack", title: "Henüz host yok",
+                           message: "Host'ta `pocket-agent pair` çalıştır, sonra QR'ı tara ya da kodu yaz.",
+                           actionTitle: "QR veya kodla eşle") { showPair = true }
+                    .pocketCard()
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(model.hosts.enumerated()), id: \.element.id) { i, host in
+                        NavigationLink(value: Route.host(host.id)) { HostRow(host: host) }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("host-\(host.name)")
+                            .contextMenu { Button("Host'u unut", role: .destructive) { model.forget(host) } }
+                        if i < model.hosts.count - 1 { InsetDivider() }
+                    }
+                }
+                .pocketCard()
+            }
         }
     }
 }
@@ -65,28 +109,23 @@ struct HostRow: View {
     @EnvironmentObject var model: AppModel
     let host: Host
     var body: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.accent(host.accent).gradient)
-                Image(systemName: "server.rack").foregroundStyle(.white)
-            }.frame(width: 44, height: 44)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(host.name).font(.headline)
-                Text(host.address).font(.caption.monospaced()).foregroundStyle(.secondary)
+        ListRow(host.name, subtitle: host.address, subtitleMono: true) {
+            HostAvatar(name: host.name, color: Theme.accent(host.accent).opacity(0.22))
+        } trailing: {
+            HStack(spacing: PA.Space.sm) {
+                statusView
+                Chevron()
             }
-            Spacer()
-            statusView
         }
-        .padding(.vertical, 4)
     }
-
     @ViewBuilder private var statusView: some View {
         switch model.connectionStatus[host.id] {
-        case .connected: StatusDot(color: .green)
-        case .connecting: ProgressView().controlSize(.small)
-        case .failed: Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+        case .connected: StatusDot(color: PA.live)
+        case .connecting: StatusDot(color: PA.busy, pulsing: true)
+        case .failed: StatusDot(color: PA.danger)
         case nil:
-            if let d = host.lastConnected { Text(d.relative).font(.caption2).foregroundStyle(.tertiary) }
+            if let d = host.lastConnected { Text(d.relative).font(PAFont.labelSmall).foregroundStyle(PA.text2) }
+            else { StatusDot(color: PA.text2, hollow: true) }
         }
     }
 }
@@ -94,20 +133,26 @@ struct HostRow: View {
 struct OpenTerminalRow: View {
     @ObservedObject var session: TerminalSession
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: session.tmuxName == nil ? "apple.terminal" : "rectangle.stack")
-                .foregroundStyle(Theme.accent(session.host.accent))
-            VStack(alignment: .leading) {
-                Text(session.title).font(.subheadline.weight(.semibold))
-                Text(session.host.name).font(.caption).foregroundStyle(.secondary)
+        ListRow(session.title, subtitle: session.host.address, subtitleMono: true) {
+            IconTile(icon: session.tmuxName == nil ? "terminal" : "rectangle.stack", tone: toneFor(session.state), size: 40)
+        } trailing: {
+            HStack(spacing: PA.Space.sm) {
+                switch session.state {
+                case .connected: StatusChip(text: "Canlı", tone: .live, pulsing: true)
+                case .connecting: StatusChip(text: "Bağlanıyor", tone: .busy, pulsing: true)
+                case .closed: StatusChip(text: "Kapandı", tone: .neutral)
+                case .failed: StatusChip(text: "Hata", tone: .danger)
+                }
+                Chevron()
             }
-            Spacer()
-            switch session.state {
-            case .connected: StatusDot(color: .green, pulsing: true)
-            case .connecting: ProgressView().controlSize(.small)
-            case .closed: Text("Kapalı").font(.caption).foregroundStyle(.secondary)
-            case .failed: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-            }
+        }
+    }
+    private func toneFor(_ s: TerminalSession.State) -> Tone {
+        switch s {
+        case .connected: .live
+        case .connecting: .busy
+        case .closed: .neutral
+        case .failed: .danger
         }
     }
 }
@@ -122,84 +167,29 @@ struct HostDetailView: View {
     @State private var newName = ""
     @State private var askName = false
     @State private var confirmForget = false
-    @State private var path = [Route]()
     @State private var openError: String?
+    @State private var activeTerminal: TerminalSession?
 
     var body: some View {
-        List {
-            Section {
-                HStack(spacing: 16) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.accent(host.accent).gradient)
-                        Image(systemName: "server.rack").font(.title2).foregroundStyle(.white)
-                    }.frame(width: 58, height: 58)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(host.name).font(.title3.bold())
-                        Text(host.address).font(.footnote.monospaced()).foregroundStyle(.secondary)
-                        connectionLabel
-                    }
-                }
-                .padding(.vertical, 6)
-                HStack(spacing: 10) {
-                    quickAction("Shell", "apple.terminal") { await open(nil) }
-                    NavigationLink(value: Route.files(host.id)) {
-                        VStack(spacing: 6) {
-                            Image(systemName: "folder.fill").font(.title3)
-                            Text("Dosyalar").font(.caption.weight(.semibold))
-                        }.frame(maxWidth: .infinity).padding(.vertical, 10)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("openFiles")
-                    quickAction("Yeni tmux", "plus.rectangle.on.rectangle") { askName = true }
-                }
-                .buttonStyle(.plain)
-            }
-            if let openError { Section { ErrorBanner(message: openError) } }
-            Section {
-                switch state {
-                case .idle, .loading:
-                    HStack { ProgressView(); Text("tmux oturumları aranıyor…").foregroundStyle(.secondary) }
-                case let .failed(msg):
-                    ErrorBanner(message: msg) { Task { await load() } }
-                case .loaded:
-                    if !hasTmux {
-                        Label("Host'ta tmux yok. Kalıcı oturumlar için tmux kur.", systemImage: "info.circle")
-                            .foregroundStyle(.secondary)
-                    } else if sessions.isEmpty {
-                        Text("Açık tmux oturumu yok. \"Yeni tmux\" ile başlat.").foregroundStyle(.secondary)
-                    }
-                    ForEach(sessions) { s in
-                        Button { Task { await open(s.name) } } label: { TmuxRow(session: s) }
-                            .accessibilityIdentifier("tmux-\(s.name)")
-                            .swipeActions {
-                                Button("Sonlandır", role: .destructive) { Task { await kill(s.name) } }
-                            }
-                    }
-                }
-            } header: {
-                HStack {
-                    Text("tmux oturumları")
-                    Spacer()
-                    Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+        PocketScreen {
+            VStack(spacing: 0) {
+                PocketTopBar(host.name, subtitle: host.address, back: { dismiss() }) {
+                    IconAction(icon: "arrow.clockwise", label: "Yenile") { Task { await load() } }
                         .accessibilityIdentifier("refreshTmux")
                 }
-            }
-            Section("Güvenlik") {
-                LabeledContent("Host anahtarı") {
-                    Text(host.pinnedHostKeys.first ?? "İlk bağlantıda sorulur")
-                        .font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: PA.Space.lg) {
+                        hero
+                        if let openError { ErrorBanner(message: openError) }
+                        tmuxSection
+                        securitySection
+                    }
+                    .screenPadding()
+                    .padding(.bottom, PA.Space.x3)
                 }
-                if let b = host.backendURL { LabeledContent("Backend", value: URL(string: b)?.host ?? b) }
-                LabeledContent("Eşlendi", value: host.pairedAt.formatted(date: .abbreviated, time: .shortened))
-                if case let .failed(msg) = model.connectionStatus[host.id], msg.contains("anahtar") {
-                    Button("Host anahtarını sıfırla ve yeniden doğrula", role: .destructive) { model.resetHostKey(host) }
-                }
-                Button("Host'u unut", role: .destructive) { confirmForget = true }
+                .refreshable { await load() }
             }
         }
-        .navigationTitle(host.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await load() }
         .task { await load() }
         .alert("Yeni tmux oturumu", isPresented: $askName) {
             TextField("ad", text: $newName).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -220,26 +210,108 @@ struct HostDetailView: View {
         }
     }
 
-    @State private var activeTerminal: TerminalSession?
-
-    @ViewBuilder private var connectionLabel: some View {
-        switch model.connectionStatus[host.id] {
-        case .connected: Label("Bağlı", systemImage: "circle.fill").font(.caption).foregroundStyle(.green)
-        case .connecting: Label("Bağlanıyor", systemImage: "circle.dotted").font(.caption).foregroundStyle(.secondary)
-        case .failed: Label("Bağlantı hatası", systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange)
-        case nil: Label("Bağlı değil", systemImage: "circle").font(.caption).foregroundStyle(.secondary)
+    private var hero: some View {
+        PocketCard {
+            VStack(alignment: .leading, spacing: PA.Space.lg) {
+                HStack(spacing: PA.Space.lg) {
+                    HostAvatar(name: host.name, size: 58, color: Theme.accent(host.accent).opacity(0.22))
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(host.name).font(PAFont.titleLarge).foregroundStyle(PA.text)
+                        Text(host.address).font(PAFont.mono(12.5)).foregroundStyle(PA.text2)
+                        connectionChip
+                    }
+                    Spacer()
+                }
+                HStack(spacing: PA.Space.sm) {
+                    quickAction("Shell", "terminal") { await open(nil) }
+                    NavigationLink(value: Route.files(host.id)) { quickLabel("Dosyalar", "folder") }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("openFiles")
+                    quickAction("Yeni tmux", "plus.rectangle.on.rectangle") { askName = true }
+                }
+            }
         }
     }
 
-    private func quickAction(_ title: String, _ icon: String, _ action: @escaping () async -> Void) -> some View {
-        Button { Task { await action() } } label: {
-            VStack(spacing: 6) {
-                Image(systemName: icon).font(.title3)
-                Text(title).font(.caption.weight(.semibold))
-            }.frame(maxWidth: .infinity).padding(.vertical, 10)
+    @ViewBuilder private var connectionChip: some View {
+        switch model.connectionStatus[host.id] {
+        case .connected: StatusChip(text: "Bağlı", tone: .live)
+        case .connecting: StatusChip(text: "Bağlanıyor", tone: .busy, pulsing: true)
+        case .failed: StatusChip(text: "Bağlantı hatası", tone: .danger)
+        case nil: StatusChip(text: "Bağlı değil", tone: .neutral)
         }
-        .buttonStyle(.bordered)
-        .accessibilityIdentifier("action-\(title)")
+    }
+
+    private func quickLabel(_ title: String, _ icon: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon).font(.system(size: 18, weight: .medium)).foregroundStyle(PA.accent)
+            Text(title).font(PAFont.labelMedium).foregroundStyle(PA.text)
+        }
+        .frame(maxWidth: .infinity).frame(height: 64)
+        .background(PA.raised, in: RoundedRectangle(cornerRadius: PA.Radius.field, style: .continuous))
+        .contentShape(Rectangle())
+    }
+
+    private func quickAction(_ title: String, _ icon: String, _ action: @escaping () async -> Void) -> some View {
+        Button { Task { await action() } } label: { quickLabel(title, icon) }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("action-\(title)")
+    }
+
+    private var tmuxSection: some View {
+        VStack(spacing: PA.Space.xs) {
+            SectionHeader("tmux oturumları", count: sessions.count) {
+                Button("Yeni") { askName = true }.buttonStyle(.ghost)
+            }
+            VStack(spacing: 0) {
+                switch state {
+                case .idle, .loading:
+                    HStack(spacing: PA.Space.md) {
+                        ProgressView().tint(PA.accent)
+                        Text("tmux oturumları aranıyor…").font(PAFont.bodyMedium).foregroundStyle(PA.text2)
+                    }.padding(PA.Space.lg)
+                case let .failed(msg):
+                    ErrorBanner(message: msg) { Task { await load() } }.padding(PA.Space.sm)
+                case .loaded:
+                    if !hasTmux {
+                        Banner(message: "Host'ta tmux yok. Kalıcı oturumlar için tmux kur.", tone: .neutral, icon: "info.circle")
+                            .padding(PA.Space.sm)
+                    } else if sessions.isEmpty {
+                        EmptyState(icon: "rectangle.stack", title: "Açık tmux oturumu yok",
+                                   message: "Yeni bir oturum başlat; bağlantı kopsa da iş sunucuda sürer.",
+                                   actionTitle: "Yeni tmux") { askName = true }
+                    }
+                    ForEach(Array(sessions.enumerated()), id: \.element.id) { i, s in
+                        Button { Task { await open(s.name) } } label: { TmuxRow(session: s) }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("tmux-\(s.name)")
+                            .contextMenu { Button("Sonlandır", role: .destructive) { Task { await kill(s.name) } } }
+                        if i < sessions.count - 1 { InsetDivider() }
+                    }
+                }
+            }
+            .pocketCard()
+        }
+    }
+
+    private var securitySection: some View {
+        VStack(spacing: PA.Space.xs) {
+            SectionHeader("Güvenlik")
+            PocketCard {
+                VStack(alignment: .leading, spacing: PA.Space.md) {
+                    ValueBox(label: "Host anahtarı", value: host.pinnedHostKeys.first ?? "İlk bağlantıda sorulur")
+                    HStack(spacing: PA.Space.md) {
+                        if let b = host.backendURL { ValueBox(label: "Backend", value: URL(string: b)?.host ?? b) }
+                        ValueBox(label: "Eşlendi", value: host.pairedAt.formatted(date: .abbreviated, time: .shortened), mono: false)
+                    }
+                    if case let .failed(msg) = model.connectionStatus[host.id], msg.contains("anahtar") {
+                        Button("Host anahtarını sıfırla ve yeniden doğrula") { model.resetHostKey(host) }
+                            .buttonStyle(TonalButtonStyle(tone: .warn))
+                    }
+                    Button("Host'u unut") { confirmForget = true }.buttonStyle(TonalButtonStyle(tone: .danger))
+                }
+            }
+        }
     }
 
     private func load() async {
@@ -253,16 +325,11 @@ struct HostDetailView: View {
             state = .failed(error.localizedDescription)
         }
     }
-
     private func open(_ tmux: String?) async {
         openError = nil
-        do {
-            activeTerminal = try await model.openTerminal(host: host, tmux: tmux)
-        } catch {
-            openError = error.localizedDescription
-        }
+        do { activeTerminal = try await model.openTerminal(host: host, tmux: tmux) }
+        catch { openError = error.localizedDescription }
     }
-
     private func kill(_ name: String) async {
         do {
             try await model.connection(for: host).killTmux(name)
@@ -277,21 +344,15 @@ struct HostDetailView: View {
 struct TmuxRow: View {
     let session: TmuxSession
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "rectangle.stack.fill").foregroundStyle(.tint)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(session.name).font(.body.monospaced().weight(.medium)).foregroundStyle(.primary)
-                HStack(spacing: 6) {
-                    Text("\(session.windows) pencere")
-                    if let a = session.activity { Text("· \(a.relative)") }
-                }.font(.caption).foregroundStyle(.secondary)
+        var sub = "\(session.windows) pencere"
+        if let a = session.activity { sub += " · \(a.relative)" }
+        return ListRow(session.name, subtitle: sub, titleMono: true) {
+            IconTile(icon: "rectangle.stack.fill", tone: session.attached ? .live : .neutral, size: 38)
+        } trailing: {
+            HStack(spacing: PA.Space.sm) {
+                if session.attached { Tag(text: "bağlı", tone: .live) }
+                Chevron()
             }
-            Spacer()
-            if session.attached {
-                Text("bağlı").font(.caption2.bold()).padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(.green.opacity(0.18), in: Capsule()).foregroundStyle(.green)
-            }
-            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
         }
     }
 }
@@ -307,32 +368,49 @@ struct ManualHostView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Bağlantı") {
-                    TextField("Ad (isteğe bağlı)", text: $name)
-                    TextField("Adres (ör. 10.0.0.2)", text: $hostname).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                    TextField("Port", text: $port).keyboardType(.numberPad)
-                    TextField("Kullanıcı", text: $user).textInputAutocapitalization(.never).autocorrectionDisabled()
-                }
-                Section {
-                    Text(model.identity?.publicKeyOpenSSH ?? "").font(.caption.monospaced()).textSelection(.enabled)
-                    Button(copied ? "Kopyalandı" : "Public key'i kopyala") {
-                        UIPasteboard.general.string = model.identity?.publicKeyOpenSSH
-                        copied = true
+            PocketScreen {
+                VStack(spacing: 0) {
+                    PocketTopBar("Host'u elle ekle", back: { dismiss() }) {
+                        Button("Kaydet") {
+                            model.upsert(Host(name: name.isEmpty ? hostname : name, hostname: hostname,
+                                              port: Int(port) ?? 22, user: user, accent: model.hosts.count))
+                            dismiss()
+                        }
+                        .buttonStyle(.tonal)
+                        .disabled(hostname.isEmpty || user.isEmpty)
                     }
-                } header: { Text("Bu cihazın public key'i") } footer: {
-                    Text("Elle eklenen host'ta bu satırı ~/.ssh/authorized_keys'e ekle. Kodla eşleme bunu otomatik yapar.")
-                }
-            }
-            .navigationTitle("Elle ekle")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Vazgeç") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Kaydet") {
-                        model.upsert(Host(name: name.isEmpty ? hostname : name, hostname: hostname,
-                                          port: Int(port) ?? 22, user: user, accent: model.hosts.count))
-                        dismiss()
-                    }.disabled(hostname.isEmpty || user.isEmpty)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: PA.Space.lg) {
+                            SectionHeader("Bağlantı")
+                            PocketCard {
+                                VStack(spacing: PA.Space.sm) {
+                                    PocketField(placeholder: "Ad (isteğe bağlı)", text: $name, icon: "tag")
+                                    PocketField(placeholder: "Adres (ör. 10.0.0.2)", text: $hostname, mono: true, icon: "network")
+                                        .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                                    HStack(spacing: PA.Space.sm) {
+                                        PocketField(placeholder: "Kullanıcı", text: $user, mono: true, icon: "person")
+                                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                                        PocketField(placeholder: "Port", text: $port, mono: true, icon: "number")
+                                            .keyboardType(.numberPad).frame(width: 120)
+                                    }
+                                }
+                            }
+                            SectionHeader("Bu cihazın public key'i")
+                            PocketCard {
+                                VStack(alignment: .leading, spacing: PA.Space.md) {
+                                    Text(model.identity?.publicKeyOpenSSH ?? "")
+                                        .font(PAFont.mono(12)).foregroundStyle(PA.text).textSelection(.enabled)
+                                    Button(copied ? "Kopyalandı" : "Public key'i kopyala") {
+                                        UIPasteboard.general.string = model.identity?.publicKeyOpenSSH
+                                        copied = true
+                                    }.buttonStyle(.tonal)
+                                    Text("Elle eklenen host'ta bu satırı ~/.ssh/authorized_keys'e ekle. Kodla eşleme bunu otomatik yapar.")
+                                        .font(PAFont.bodySmall).foregroundStyle(PA.text2)
+                                }
+                            }
+                        }
+                        .screenPadding().padding(.bottom, PA.Space.x3)
+                    }
                 }
             }
         }

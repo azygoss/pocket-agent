@@ -4,7 +4,16 @@ import SwiftUI
 @main
 struct PocketAgentApp: App {
     @StateObject private var model = AppModel()
-    @AppStorage("appearance") private var appearance = 0
+    @AppStorage("appearance") private var appearance = 2
+
+    init() {
+        let tab = UITabBarAppearance()
+        tab.configureWithOpaqueBackground()
+        tab.backgroundColor = UIColor(PA.card)
+        tab.shadowColor = UIColor(PA.line)
+        UITabBar.appearance().standardAppearance = tab
+        UITabBar.appearance().scrollEdgeAppearance = tab
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -38,6 +47,7 @@ struct RootView: View {
                     SettingsView()
                         .tabItem { Label("Ayarlar", systemImage: "gearshape") }.tag(2)
                 }
+                .tint(PA.accent)
             }
         }
         .sheet(isPresented: $showPair) { PairingView() }
