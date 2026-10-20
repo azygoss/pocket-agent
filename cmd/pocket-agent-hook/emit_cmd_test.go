@@ -21,11 +21,11 @@ func TestFlushJournal(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("POCKET_HOME", dir)
 	posted := 0
-	var lastTenant string
+	var lastAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/events") {
 			posted++
-			lastTenant = r.Header.Get("X-Tenant")
+			lastAuth = r.Header.Get("Authorization")
 			w.WriteHeader(202)
 			return
 		}
@@ -33,6 +33,7 @@ func TestFlushJournal(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv("POCKET_BACKEND", srv.URL)
+	t.Setenv("POCKET_HOST_TOKEN", "pah_test")
 
 	j, err := journal.Open(journalPath())
 	if err != nil {
@@ -50,8 +51,8 @@ func TestFlushJournal(t *testing.T) {
 	if posted != 1 {
 		t.Fatalf("1 event postlanmalıydı, %d", posted)
 	}
-	if lastTenant != "default" {
-		t.Fatalf("varsayılan tenant 'default' olmalı: %q", lastTenant)
+	if lastAuth != "Bearer pah_test" {
+		t.Fatalf("host token Bearer olarak gitmeli: %q", lastAuth)
 	}
 	// Tekrar flush: yeni kayıt yok — offset korundu.
 	flushJournal(stateDir())
@@ -80,6 +81,7 @@ func TestEmitEventDirectPostFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv("POCKET_BACKEND", srv.URL)
+	t.Setenv("POCKET_HOST_TOKEN", "pah_test")
 
 	if err := emitEvent("claude", "task_complete", "id-1", "sess-1", "tamam"); err != nil {
 		t.Fatal(err)

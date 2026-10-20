@@ -18,7 +18,7 @@ func TestWebhookTokenHashed(t *testing.T) {
 	if hash == tok {
 		t.Fatal("token must be hash-stored")
 	}
-	s := &Server{Store: store.New()}
+	s := New(store.New())
 	req := httptest.NewRequest("POST", "/v1/webhooks/"+tok, strings.NewReader(`{}`))
 	w := httptest.NewRecorder()
 	s.routes().ServeHTTP(w, req)
